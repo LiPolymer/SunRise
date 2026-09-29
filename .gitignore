@@ -1,0 +1,11 @@
+# Build output
+build/
+out/
+.gradle/
+.kotlin/
+
+# Local configuration
+local.properties
+
+# IDE user-specific (project-level .idea settings are tracked)
+*.iml

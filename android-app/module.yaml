@@ -1,0 +1,22 @@
+product: android/app
+
+dependencies:
+  - ../shared
+  - androidx.activity:activity-compose:1.13.0
+  - org.jetbrains.compose.ui:ui-tooling-preview:1.12.1
+
+settings:
+  kotlin:
+    version: 2.4.20
+  compose:
+    enabled: true
+    version: 1.12.1
+  junit: junit-4
+  android:
+    namespace: ink.lipoly.app.sunrise
+    applicationId: ink.lipoly.app.sunrise
+    compileSdk: 37
+    targetSdk: 37
+    minSdk: 24
+    versionCode: 1
+    versionName: "1.0"

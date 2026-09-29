@@ -1,0 +1,27 @@
+product:
+  type: kmp/lib
+  platforms: [ jvm, android ]
+
+dependencies:
+  - $compose.foundation: exported
+  - $compose.material3: exported
+
+  - $compose.ui
+  - org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0
+
+dependencies@android:
+  - androidx.activity:activity-compose:1.13.0
+  - org.jetbrains.compose.ui:ui-tooling-preview:1.12.1
+
+settings:
+  kotlin:
+    version: 2.4.20
+    freeCompilerArgs: [ -Xexpect-actual-classes ]
+  compose:
+    enabled: true
+    version: 1.12.1
+  junit: junit-4
+  android:
+    namespace: ink.lipoly.app.sunrise.shared
+    compileSdk: 37
+    minSdk: 24
