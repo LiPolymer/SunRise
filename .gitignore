@@ -9,3 +9,5 @@ local.properties
 
 # IDE user-specific (project-level .idea settings are tracked)
 *.iml
+.idea/workspace.xml
+.ai/
