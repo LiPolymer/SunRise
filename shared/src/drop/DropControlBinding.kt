@@ -26,7 +26,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** All protocol state, controls and pending replies belong to exactly one GATT epoch. */
+/**
+ * 单个 GATT epoch 的协议事务、初始化、控件与状态所有者；不可跨会话复用。
+ * [session] 的对象身份及 id 由控制器核对，任何状态写入、回复与事件均受 isCurrent 守卫。
+ * 自有 scope 负责初始化和收集，lifetime 只取消外部调用的子 Job，不关闭原生 GATT。
+ */
 internal class DropControlBinding(
     val session: GattSession,
     parentScope: CoroutineScope,
@@ -35,12 +39,12 @@ internal class DropControlBinding(
     private val publishState: (DropControlBinding) -> Unit,
     private val publishEvent: (DropControlBinding, DropEvent) -> Unit,
 ) : DropControlSession {
-    // The lifetime sentinel has no children: external calls are cancelled immediately,
-    // even while a binding-owned initialization coroutine is still unwinding.
+    // lifetime 不含初始化子任务，解绑可立即取消外部调用，不必等初始化协程收尾。
     private val lifetime = Job(parentScope.coroutineContext[Job])
     private val scope = CoroutineScope(SupervisorJob(parentScope.coroutineContext[Job]) + Dispatchers.Default)
     private val closed = MutableStateFlow(false)
     private val started = MutableStateFlow(false)
+    /** GAIA 和 9ECA 共用一个绑定内事务锁；不同设备的锁相互独立，无全局 pending 槽。 */
     private val transactions = Mutex()
     private val pendingGaia = MutableStateFlow<PendingGaia?>(null)
     private val pendingSource = MutableStateFlow<PendingSource?>(null)
@@ -63,6 +67,7 @@ internal class DropControlBinding(
     }
     private val mutableState = MutableStateFlow(DropState(phase = DropPhase.PROBING, protocols = protocols))
     override val state = mutableState.asStateFlow()
+    /** 状态观察与 awaitReady 共用的初始化结果；每个 epoch 仅启动一次，调用方取消不取消它。 */
     val ready = CompletableDeferred<Unit>()
     val gaia: GaiaControls = GaiaControlsImpl(this)
     val source: SourceControls = SourceControlsImpl(this)
@@ -76,6 +81,7 @@ internal class DropControlBinding(
         lifetime.invokeOnCompletion { close() }
     }
 
+    /** 原子抢占初始化启动权；失败发布 ERROR 后退休绑定，同会话不在此自动重试。 */
     fun startInitialization() {
         if (!started.compareAndSet(false, true)) return
         if (!isOpen) {
@@ -108,6 +114,7 @@ internal class DropControlBinding(
         }
     }
 
+    /** 失败化初始化/回复并取消调用与收集；幂等，不关闭 session 或撤销其 CCCD。 */
     fun close() {
         if (!closed.compareAndSet(false, true)) return
         val failure = DropException.Disconnected()
@@ -116,7 +123,7 @@ internal class DropControlBinding(
         pendingSource.value?.reply?.completeExceptionally(failure)
         lifetime.cancel(BindingDisconnectedCancellation())
         scope.cancel(BindingDisconnectedCancellation())
-        // Notifications and native GATT operations are owned by the session, not us.
+        // 通知配置与已开始的原生 GATT 操作属于 session，而非此绑定。
     }
 
     override fun profile(): DropProfile {
@@ -129,6 +136,7 @@ internal class DropControlBinding(
         return selectedAncPath
     }
 
+    /** 修改前后都核对 epoch；旧 GET/通知不能将旧状态写入新绑定。 */
     override fun mutate(block: (DropState) -> DropState) {
         ensureBound()
         mutableState.update { current -> if (isOpen && isCurrent(this)) block(current) else current }
@@ -143,7 +151,11 @@ internal class DropControlBinding(
         if (!isOpen || !isCurrent(this)) throw DropException.Disconnected()
     }
 
-    /** Binding loss cancels our child only; caller cancellation remains its own cancellation. */
+    /**
+     * 为传输入口建立调用方的子 Job，并注册 lifetime 完成监听。
+     * 解绑仅取消该子 Job，转为 Disconnected；调用方取消保持 CancellationException。
+     * 原生已开始操作继续由 session 排空，直接 capability/info 读取也受同一生命周期保护。
+     */
     private suspend fun <T> inBinding(block: suspend () -> T): T = try {
         coroutineScope {
             val call = currentCoroutineContext().job
@@ -162,9 +174,13 @@ internal class DropControlBinding(
         throw normalize(e)
     }
 
+    /**
+     * 先订阅原始流再启用 CCCD；响应通知是 mandatory，额外 data/notification 与 MTU247 为可选。
+     * 可选操作失败只在 epoch 仍有效时忽略；原生超时使会话失效时不得发布 READY。
+     */
     private suspend fun initialize() = inBinding {
         if (protocols.isEmpty()) throw DropException.UnsupportedDevice()
-        // UNDISPATCHED reaches SharedFlow subscription before any CCCD/write can reply.
+        // UNDISPATCHED 保证在任何 CCCD/write 可能回包前已经订阅 SharedFlow。
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             session.events.collect { event ->
                 if (event is GattEvent.ValueChanged && isOpen && isCurrent(this@DropControlBinding)) {
@@ -176,7 +192,7 @@ internal class DropControlBinding(
                                 onSource(event.value)
                         }
                     } catch (_: DropException.Disconnected) {
-                        // A disconnect can overtake decoding; the retired frame is ignored.
+                        // 断连可能超越解码，退休帧不能继续修改状态。
                     }
                 }
             }
@@ -199,12 +215,17 @@ internal class DropControlBinding(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            // Rejection on a live session is best-effort; native timeout/loss is not.
+            // 会话仍有效时拒绝可 best-effort；原生超时/连接丢失不可忽略。
             if (!isOpen || !isCurrent(this)) throw normalize(e)
         }
         ensureBound()
     }
 
+    /**
+     * GAIA 能力最多读取八页，完整性独立于是否 READY；ANC 优先 AC→V2→V1，未知时逐个 GET 探测。
+     * 9ECA 优先读取 info，失败退 GET_FW_VERSION；capability 特征不参与协议存在性判断。
+     * 已存在协议的探测完整性合取；失败且会话仍活跃可保留部分能力并 READY。
+     */
     private suspend fun probe() {
         var features = emptySet<Int>()
         var gaiaComplete = DropProtocol.GAIA_BLE !in protocols
@@ -281,6 +302,10 @@ internal class DropControlBinding(
 
     override suspend fun requestGaia(command: GaiaCommand): GaiaPacket = requestGaia(command, probing = false)
 
+    /**
+     * 安装 pending 后再校验 epoch，写入完成后最多等六秒协议回复。
+     * 只匹配 RESPONSE 的 vendor/feature/command；finally 用身份 compareAndSet 清理槽。
+     */
     private suspend fun requestGaia(command: GaiaCommand, probing: Boolean): GaiaPacket = inBinding {
         transactions.withLock {
             requireProtocol(DropProtocol.GAIA_BLE, probing)
@@ -306,6 +331,7 @@ internal class DropControlBinding(
         null
     }
 
+    /** 只在事务锁内完成原生写，不建立回复槽；SET ANC、关机及 sendRaw 使用此路径。 */
     override suspend fun sendGaia(command: GaiaCommand) = inBinding {
         transactions.withLock {
             requireProtocol(DropProtocol.GAIA_BLE, probing = false)
@@ -316,6 +342,7 @@ internal class DropControlBinding(
     override suspend fun requestSource(commandId: Int, payload: ByteArray): ByteArray =
         requestSource(commandId, payload, probing = false)
 
+    /** commandId 与循环字节 sequence 双匹配；写入之后六秒回复期限不等于底层原生操作期限。 */
     private suspend fun requestSource(commandId: Int, payload: ByteArray, probing: Boolean): ByteArray = inBinding {
         transactions.withLock {
             requireProtocol(DropProtocol.SOURCE_9ECA, probing)
@@ -332,6 +359,7 @@ internal class DropControlBinding(
         }
     }
 
+    /** 直接可读 capability 不走协议回复槽；缺失/不可读特征为 UnsupportedCapability，不否定 9ECA。 */
     override suspend fun readSourceCapability(): ByteArray = inBinding {
         requireProtocol(DropProtocol.SOURCE_9ECA, probing = false)
         session.read(sourceCapability ?: throw DropException.UnsupportedCapability("9ECA capability characteristic"))
@@ -339,6 +367,7 @@ internal class DropControlBinding(
 
     override suspend fun readSourceInfo(): ByteArray = readSourceInfo(probing = false)
 
+    /** 初始化及显式固件查询共用的直接读取入口，仍必须受绑定 lifetime 保护。 */
     private suspend fun readSourceInfo(probing: Boolean): ByteArray = inBinding {
         requireProtocol(DropProtocol.SOURCE_9ECA, probing)
         session.read(sourceInfo ?: throw DropException.UnsupportedCapability("9ECA info characteristic"))
@@ -352,6 +381,7 @@ internal class DropControlBinding(
             throw DropException.UnsupportedCapability(if (protocol == DropProtocol.GAIA_BLE) "GAIA" else "9ECA")
     }
 
+    /** 回复完成内部 pending；通知事件独立发布，电量字节对合并到当前绑定快照。 */
     private fun onGaia(bytes: ByteArray) {
         if (!isOpen || !isCurrent(this)) return
         val packet = GaiaCodec.decode(bytes) ?: return
@@ -382,6 +412,7 @@ internal class DropControlBinding(
         }
     }
 
+    /** RESPONSE 不作通知；通知 129/130、133、134、136 分别更新音源、音量、EQ、麦克风。 */
     private fun onSource(bytes: ByteArray) {
         if (!isOpen || !isCurrent(this)) return
         val frame = SourceCodec.decode(bytes) ?: return
@@ -399,11 +430,15 @@ internal class DropControlBinding(
                     136 -> mutate { it.copy(micGain = SourceCodec.micGain(frame.payload)) }
                 }
             } catch (_: DropException.Protocol) {
-                // A malformed unsolicited value does not invalidate an outstanding request.
+                // 畸形非请求通知不使正在等待的请求失效。
             }
         }
     }
 
+    /**
+     * 只对通用传输错误转换；Timeout/Disconnected/UnsupportedOperation/InvalidGattHandle/
+     * PacketTooLarge 分别转控制异常，其余保留原异常为 Transport.cause；调用方取消在外层透传。
+     */
     private fun normalize(error: Exception): DropException = when (error) {
         is DropException -> error
         is BtException.Timeout -> DropException.Timeout(error.operation)

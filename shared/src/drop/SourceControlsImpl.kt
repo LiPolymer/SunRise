@@ -4,6 +4,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
+/**
+ * 单绑定 9ECA 控件：通常验证首状态字节=0 后解析，SET_AUDIO_SOURCE 特许 5/9。
+ * SET 多数保存自身响应而非再 GET；PEQ 只返回结构，不缓存到 DropState。
+ * 所有传输入口依赖绑定的 lifetime/epoch 守卫，caller cancellation 不转为成功。
+ */
 internal class SourceControlsImpl(private val client: DropControlSession) : SourceControls {
     private suspend fun request(command: Int, payload: ByteArray = byteArrayOf()): ByteArray =
         client.requestSource(command, payload).also {
@@ -17,6 +22,10 @@ internal class SourceControlsImpl(private val client: DropControlSession) : Sour
             client.mutate { it.copy(sourceStatus = status) }
         }
 
+    /**
+     * 首响应即保存；awaitStable 再轮询 GET。期限为 (max(fadeSeconds,1)+3) 秒、间隔 200ms。
+     * 最终接受 0/9 并不额外证明目标已达成，使用者必须检查 currentSource 与 stableSuccess。
+     */
     override suspend fun setAudioSource(sourceId: Int, options: SourceSwitchOptions): SourceStatus {
         require(sourceId in 0..255 && options.fadeSeconds in 0..60)
         val first = SourceCodec.sourceStatus(request(SourceIds.SET_AUDIO_SOURCE,
@@ -45,6 +54,7 @@ internal class SourceControlsImpl(private val client: DropControlSession) : Sour
     override suspend fun readSourceCapability(): SourceCapability =
         SourceCodec.sourceCapability(client.readSourceCapability())
 
+    /** 直接 info 失败可 fallback 命令；CancellationException 始终优先透传，不吞取消。 */
     override suspend fun getFirmwareInfo(): SourceFirmwareInfo {
         val direct = try { SourceCodec.firmware(client.readSourceInfo()) }
         catch (e: CancellationException) { throw e }
@@ -72,6 +82,7 @@ internal class SourceControlsImpl(private val client: DropControlSession) : Sour
             client.mutate { it.copy(presetEq = eq) }
         }
 
+    /** 设置响应只改变已存在预设快照的 current，不能凭 ACK 创建 count/可编辑编号。 */
     override suspend fun setPresetEq(index: Int): SourcePresetEqChange {
         require(index in 0..255)
         return SourceCodec.presetChange(request(SourceIds.SET_PRESET_EQ, byteArrayOf(index.toByte()))).also { change ->
@@ -125,6 +136,7 @@ internal class SourceControlsImpl(private val client: DropControlSession) : Sour
     override suspend fun getEarbudColor(): Int = SourceCodec.earbudInfo(request(SourceIds.GET_COLOR))
     override suspend fun getEarbudLanguage(): Int = SourceCodec.earbudInfo(request(SourceIds.GET_LANGUAGE))
 
+    /** 两块分别验证总长/偏移/长度，再拼成原始 20 字节，不解码字符集。 */
     override suspend fun getEarbudSerial(side: EarbudSide): ByteArray {
         val command = if (side == EarbudSide.LEFT) SourceIds.GET_LEFT_SN else SourceIds.GET_RIGHT_SN
         val first = SourceCodec.snChunk(request(command, byteArrayOf(0)), 0)

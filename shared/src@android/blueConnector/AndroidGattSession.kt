@@ -25,6 +25,15 @@ import java.util.IdentityHashMap
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * 一次原生 GATT 的资源边界：稳定服务/特征、单 pending 槽、操作队列和通知发布 scope。
+ *
+ * guard 只保护原生身份、活动性和 pending；等待回调不持锁。每会话自有容量 64 的操作队列，
+ * 原生读/写/CCCD 为 10 秒、MTU 为 5 秒；期限到达关闭会话，防止晚回调错配下一项。
+ * 通知回调复制平台缓冲并投递容量 64 channel，溢出明确以 Transport 终止会话，不静默丢包。
+ * @property device 本会话的稳定设备；scope 受其管理器拥有的 Job 管理。
+ * @param onTerminated 同步报告失效；设备所有者必须按对象身份拒绝旧会话结果。
+ */
 internal class AndroidGattSession(
     override val device: AndroidBtDevice,
     private val onTerminated: (AndroidGattSession, BtException) -> Unit,
@@ -55,6 +64,7 @@ internal class AndroidGattSession(
     private var pending: NativeOperation<*>? = null
     internal val isActive: Boolean get() = !closed
 
+    /** 原生特征对象与所属会话双重身份；UUID 只用于查询，不能替代句柄归属验证。 */
     private class Characteristic(
         val session: AndroidGattSession,
         val native: BluetoothGattCharacteristic,
@@ -71,6 +81,7 @@ internal class AndroidGattSession(
         }
     }
 
+    /** 仅一个原生操作可等待回调；按类型及特征/描述符对象身份匹配，不按 UUID 粗略匹配。 */
     private sealed class NativeOperation<T : Any> {
         val result = CompletableDeferred<T>()
         class Read(val characteristic: BluetoothGattCharacteristic) : NativeOperation<ByteArray>()
@@ -83,7 +94,7 @@ internal class AndroidGattSession(
         scope.launch {
             for (event in notifications) {
                 if (!isActive) break
-                // Suspends for slow collectors; the bounded callback channel supplies backpressure.
+                // 慢收集者使发布挂起；有界回调 channel 饱和时显式关闭会话。
                 mutableEvents.emit(event)
             }
         }
@@ -94,7 +105,7 @@ internal class AndroidGattSession(
             val accepted = synchronized(guard) {
                 if (closed || (nativeGatt != null && nativeGatt !== gatt)) false
                 else {
-                    // Android may deliver its first callback before connectGatt has returned.
+                    // 第一个系统回调可能先于 connectGatt 返回，允许这里先接纳原生对象。
                     if (nativeGatt == null) nativeGatt = gatt
                     true
                 }
@@ -137,12 +148,13 @@ internal class AndroidGattSession(
             deliver(gatt, characteristic, value)
         }
 
+        /** 仅当前原生对象和已发现特征可投递；字节归本层所有，绝不逐通知启动无界协程。 */
         private fun deliver(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
             val handle = synchronized(guard) {
                 if (closed || nativeGatt !== gatt) return
                 handles[characteristic] ?: return
             }
-            // The platform owns/reuses callback arrays. No unbounded per-notification coroutine.
+            // 平台可能复用回调数组，必须复制后交给异步发布队列。
             val sent = notifications.trySend(GattEvent.ValueChanged(handle, value.copyOf()))
             if (sent.isFailure && isActive)
                 invalidate(BtException.Transport("GATT notification buffer overflow"))
@@ -218,6 +230,10 @@ internal class AndroidGattSession(
         }
     }
 
+    /**
+     * 显式非 autoConnect 的 LE 连接；连接及服务发现各等 12 秒，完成后冻结服务快照。
+     * 不做协议探测、MTU 请求或订阅；发布 CONNECTED 由 [AndroidBtGatt] 在锁内核对归属后完成。
+     */
     internal suspend fun open() {
         device.owner.requireBluetooth()
         @Suppress("DEPRECATION")
@@ -229,7 +245,7 @@ internal class AndroidGattSession(
                 else device.nativeDevice.connectGatt(device.owner.context, false, callback)
             } ?: throw BtException.Transport("connectGatt returned null")
             if (closed || (nativeGatt != null && nativeGatt !== gatt)) {
-                // A synchronous first callback may already have adopted and closed this handle.
+                // 同步早到回调可能已接纳并关闭此对象，不能因返回握手重复释放。
                 if (nativeGatt !== gatt) closeNative(gatt)
                 throw BtException.Disconnected()
             }
@@ -260,6 +276,7 @@ internal class AndroidGattSession(
         }
     }
 
+    /** 校验会话身份及 READ，再入自有操作队列；回调返回值已复制，成功不是读取通知缓存。 */
     override suspend fun read(characteristic: GattCharacteristic): ByteArray {
         val handle = resolve(characteristic)
         if (GattProperty.READ !in handle.properties) throw BtException.UnsupportedOperation("GATT read")
@@ -268,12 +285,16 @@ internal class AndroidGattSession(
         }
     }
 
+    /**
+     * 仅 WRITE_TYPE_DEFAULT 带响应写；入队前和开始时均检查 MTU-3，并复制调用方数组。
+     * API 33+ 使用传值/状态码 API；旧版本先设置特征 value/writeType 再调用 Boolean API。
+     */
     override suspend fun write(characteristic: GattCharacteristic, value: ByteArray) {
         val handle = resolve(characteristic)
         if (GattProperty.WRITE !in handle.properties)
             throw BtException.UnsupportedOperation("GATT write with response")
         if (value.size > mutableMtu.value - 3) throw BtException.PacketTooLarge()
-        // Own the packet before waiting in the queue; callers may reuse their buffer meanwhile.
+        // 在等待入队前拥有负载副本；调用方可以随后复用其原始缓冲。
         val packet = value.copyOf()
         nativeOperation(NativeOperation.Write(handle.native), "GATT write", 10_000) { gatt ->
             if (packet.size > mutableMtu.value - 3) throw BtException.PacketTooLarge()
@@ -289,6 +310,10 @@ internal class AndroidGattSession(
         }
     }
 
+    /**
+     * 串行设置本地通知开关并写 CCCD，NOTIFY 优先于 INDICATE；禁用不做订阅引用计数。
+     * 缺属性/描述符抛 UnsupportedOperation，平台设置或写失败不保证回滚本地开关。
+     */
     override suspend fun setNotifications(characteristic: GattCharacteristic, enabled: Boolean) {
         val handle = resolve(characteristic)
         val notify = GattProperty.NOTIFY in handle.properties
@@ -315,12 +340,14 @@ internal class AndroidGattSession(
         }
     }
 
+    /** 请求值必须为 23..517；返回回调实际值，协商期限 5 秒且超时使整个会话失效。 */
     override suspend fun requestMtu(value: Int): Int {
         require(value in 23..517) { "GATT MTU must be in 23..517" }
         ensureActive()
         return nativeOperation(NativeOperation.Mtu(), "GATT MTU request", 5_000) { it.requestMtu(value) }
     }
 
+    /** 先检查有效性，再验证实现类型、所属会话和原生对象映射；旧会话句柄不可换绑。 */
     private fun resolve(characteristic: GattCharacteristic): Characteristic = synchronized(guard) {
         ensureActive()
         val handle = characteristic as? Characteristic ?: throw BtException.InvalidGattHandle()
@@ -328,6 +355,11 @@ internal class AndroidGattSession(
         handle
     }
 
+    /**
+     * worker 内安装 pending 并提交；调用方取消不取消已开始的原生等待。
+     * withTimeoutOrNull 仅把自有期限转 Timeout，期限丢失使会话/队列整体失效；
+     * finally 仅清理自身 pending，旧请求不得清除替代槽。
+     */
     private suspend fun <T : Any> nativeOperation(
         request: NativeOperation<T>,
         operation: String,
@@ -347,7 +379,7 @@ internal class AndroidGattSession(
             val result = withTimeoutOrNull(timeoutMillis) { request.result.await() }
             if (result == null) {
                 val failure = BtException.Timeout(operation)
-                // Losing an ATT callback makes the connection unsafe for the next queued operation.
+                // 原生 ATT 回调丢失后无法安全进入下一操作，必须失效整个会话。
                 invalidate(failure)
                 throw failure
             }
@@ -372,8 +404,13 @@ internal class AndroidGattSession(
         else operation.result.completeExceptionally(BtException.Transport("$name failed: $status"))
     }
 
+    /** 使用 Disconnected 同步失效；不关闭所属管理器，旧会话关闭也不能更改替代会话状态。 */
     override fun close() = invalidate()
 
+    /**
+     * guard 内一次性标记 closed 并失败化所有直接等待，锁外关闭队列/通知/scope/原生资源。
+     * nativeGatt 保留身份以防早到 callback 与 connectGatt 返回握手导致重复释放。
+     */
     internal fun invalidate(cause: BtException = BtException.Disconnected()) {
         val previous = synchronized(guard) {
             if (closed) return
@@ -382,7 +419,7 @@ internal class AndroidGattSession(
             discovered.completeExceptionally(cause)
             pending?.result?.completeExceptionally(cause)
             pending = null
-            // Retain its identity so an early callback/return handshake cannot close it twice.
+            // 保留身份，防止早到回调与连接返回握手重复关闭同一个原生对象。
             nativeGatt
         }
         operations.close(cause)
@@ -394,7 +431,7 @@ internal class AndroidGattSession(
 
     private fun closeNative(gatt: BluetoothGatt?) {
         if (gatt == null) return
-        // Closing must still release native resources after radio/permission loss.
+        // 无线关闭或权限撤销后仍必须尽力释放原生资源，关闭异常不向外抛。
         runCatching { gatt.disconnect() }
         runCatching { gatt.close() }
     }

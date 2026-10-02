@@ -45,7 +45,20 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Application-owned selection, connection lifetime, and polling for a single audio headset. */
+/**
+ * 应用自有的单耳机组合入口：选择音频身份、显式连接 GATT、创建 [DropController] 并执行重试和轮询。
+ *
+ * 公共 common API 不提供构造入口；Android 宿主通过平台工厂创建，并拥有注入的 [BtManager]。
+ * 本类关闭自己的控制器和尝试端点，但不关闭管理器，也不管理其他设备的会话。
+ * 不按品牌过滤，不配对、不建立系统音频连接，也不提供 RFCOMM 回退。
+ *
+ * 每次选择替换独立连接 epoch，新选择等待前一选择清理完成后才开始无线操作。
+ * 同一设备上多个客户端/独立控制器的连接所有权并不隔离，宿主应避免共享受本类控制的端点。
+ *
+ * @param bt 外部拥有的蓝牙管理器；设备选择应使用此管理器返回的句柄。
+ * @param associations 应用私有音频地址到 BLE 端点的成功关联记录。
+ * @param options 传给每次新建控制器的协议配置；profile 匹配始终使用所选音频设备身份。
+ */
 class HeadsetClient internal constructor(
     private val bt: BtManager,
     private val associations: HeadsetAssociations,
@@ -58,14 +71,35 @@ class HeadsetClient internal constructor(
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val mutableState = MutableStateFlow(HeadsetState())
     private val mutableEvents = MutableSharedFlow<HeadsetEvent>(extraBufferCapacity = 32)
+    /**
+     * 当前应用连接快照；功能数据位于 [HeadsetState.controls]，切换/清理不会保留旧会话读值。
+     * 即使应用阶段为 READY，也须单独判断协议和能力，并处理操作时发生的断连。
+     */
     val state: StateFlow<HeadsetState> = mutableState.asStateFlow()
+    /**
+     * 不重放的界面事件流，额外缓冲容量为 32，使用 `tryEmit` 尽力投递。
+     * 无订阅者不会保存历史，慢订阅者可能错过事件；不可依赖它匹配协议回复或恢复当前状态。
+     */
     val events: SharedFlow<HeadsetEvent> = mutableEvents.asSharedFlow()
 
+    /**
+     * 当前已采纳且仍就绪的 GAIA 控件；每次操作重新取值，不缓存跨重连引用。
+     *
+     * 此 getter 检查应用/控制阶段和会话身份，但不证明 GAIA 或具体能力存在。
+     * @throws DropException.NotReady 尚未就绪、正在重连或已关闭；关闭后此 getter 仍抛 NotReady。
+     */
     val gaia: GaiaControls get() = readyController().gaia
+    /**
+     * 当前已采纳且仍就绪的 9ECA 控件；实际方法仍会检查协议/特征支持。
+     * 旧引用在绑定失效后不可复用，应在每次调用时重新获取。
+     * @throws DropException.NotReady 无有效 READY 端点（包括本客户端已关闭）。
+     */
     val source: SourceControls get() = readyController().source
 
-    // Identity is the facade epoch. Each replacement waits for its predecessor's cleanup,
-    // including when an intervening replacement was cancelled before starting radio work.
+    /**
+     * 对象身份就是 facade epoch，不用地址或阶段判断新旧任务。
+     * 新连接必须等前驱 [finished]，即使前驱在无线操作开始前被另一轮替换取消，也要完成清理链。
+     */
     private class Connection(
         val auto: Boolean,
         selected: HeadsetDevice?,
@@ -78,6 +112,10 @@ class HeadsetClient internal constructor(
         val attempt = MutableStateFlow<Attempt?>(null)
     }
 
+    /**
+     * 单次端点尝试及其资源；[ownsGatt] 在挂起 connect 前设置，保证尚未拿到 session 的取消也会 disconnect。
+     * [adopted] 仅在控制器 READY、会话身份仍匹配且关联已保存后成立，探测完成不等于应用采纳。
+     */
     private class Attempt(val endpoint: BtDevice, val controller: DropController) {
         val session = MutableStateFlow<GattSession?>(null)
         val adopted = MutableStateFlow(false)
@@ -101,11 +139,27 @@ class HeadsetClient internal constructor(
         }
     }
 
+    /**
+     * 刷新并返回系统当前已连接音频设备的快照，不扫描 LE、不建立 GATT、不按品牌或协议过滤。
+     *
+     * 本方法不改变当前选择；多候选时由调用方展示列表再调用 [connect]。
+     * @return 管理器的原始音频候选，每项名称与关联标记均在本次映射时读取。
+     * @throws DropException.Disconnected 本客户端已关闭。
+     * @throws BtException 系统枚举所需权限、蓝牙可用性或传输操作失败；调用方取消原样传播。
+     */
     suspend fun discoverConnectedDevices(): List<HeadsetDevice> {
         ensureOpen()
         return bt.refreshConnectedAudioDevices().map(::snapshot)
     }
 
+    /**
+     * 启动新的自动选择循环并替换既有连接；不是幂等的“若尚未启动”检查，也不挂起等待 READY。
+     *
+     * 音频候选数为 0 时 IDLE、1 时尝试、多个时 SELECTION_REQUIRED。发现循环以合并的蓝牙事件
+     * 唤醒或最多 5 秒等待再次刷新；目标循环失败后最多等待 4 秒再试，自动目标消失则回到发现。
+     * 失败通过 [state]/[events] 报告；[disconnect] 停止自动模式，需要显式调用本方法重启。
+     * @throws DropException.Disconnected 本客户端已关闭。
+     */
     fun startAutoConnect() {
         ensureOpen()
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -118,11 +172,33 @@ class HeadsetClient internal constructor(
         }
     }
 
+    /**
+     * 通过本管理器取得地址句柄和当前名称快照，再按 [connect] 的手动选择策略连接。
+     * 无需地址已出现在音频候选中；不会替调用方建立系统音频连接。
+     * @param address 平台管理器接受的蓝牙地址，不是名称；地址校验由 [BtManager.device] 完成。
+     * @throws BtException.InvalidDevice 地址无法取得有效设备句柄。
+     * @throws DropException.Disconnected 客户端已关闭；其他失败和取消规则同设备重载。
+     */
     suspend fun connect(address: String) {
         ensureOpen()
         connect(snapshot(bt.device(address)))
     }
 
+    /**
+     * 替换当前选择并等待首次有效 READY；显示及 profile 匹配保留音频身份，通讯可使用不同 BLE 端点。
+     *
+     * 尝试顺序为缓存关联、所选地址、已配对 LE/DUAL 同名设备、LE 扫描结果，按地址去重。
+     * 同名仅是应用候选策略，不证明物理身份。首次手动连接失败结束本轮并抛实际异常；
+     * 首次成功后的会话丢失则在本客户端自有任务中继续重连，方法返回不结束连接生命周期。
+     *
+     * 调用方在等待时取消会失效本轮选择，在不可取消清理中关闭控制器并显式断开尝试 GATT，
+     * 等待清理完成后原样传播取消。返回后取消原调用方不会自动撤销已由客户端接管的连接。
+     *
+     * @param device 同一注入管理器的选择快照；关联标记会重新从存储读取。
+     * @throws DropException.Disconnected 已关闭或本轮在 READY 前被替换/断开。
+     * @throws BtException 实际蓝牙失败；扫描缺权限可跳过，不会抹掉直接连接失败。
+     * @throws DropException 实际控制探测失败；非“不支持”的失败优先于候选的 UnsupportedDevice。
+     */
     suspend fun connect(device: HeadsetDevice) {
         ensureOpen()
         val first = CompletableDeferred<Unit>()
@@ -147,6 +223,13 @@ class HeadsetClient internal constructor(
         }
     }
 
+    /**
+     * 停止自动/手动连接生命周期，立即失效当前选择并重置状态，然后等待该轮清理完成。
+     *
+     * 等待部分在不可取消上下文中执行；也会清理尚未返回会话的 GATT 连接尝试。
+     * 不关闭注入管理器或其他设备，不删除关联记录；可再次显式启动/连接，关闭后调用也可作空清理。
+     * 若需要确定本轮资源已释放，使用此挂起方法，而非仅依赖 [close] 返回。
+     */
     suspend fun disconnect() {
         val previous = lifecycle.withLock {
             connection.getAndUpdate { null }.also {
@@ -158,6 +241,13 @@ class HeadsetClient internal constructor(
         withContext(NonCancellable) { previous?.finished?.await() }
     }
 
+    /**
+     * 幂等终结本客户端：同步设置关闭标记、失效 epoch、关闭当前控制器并重置为默认 IDLE。
+     *
+     * 非挂起调用不等待原生 GATT 断开；连接协程的不可取消 finally 随后释放尝试资源。
+     * 不关闭注入管理器或其他设备，宿主仍负责管理器最终释放。不能再次 start/connect/discover；
+     * [gaia]/[source] getter 关闭后抛 NotReady，而已取得的旧控件因绑定失效抛 Disconnected。
+     */
     fun close() {
         if (!closed.compareAndSet(false, true)) return
         val previous = connection.getAndUpdate { null }
@@ -184,7 +274,7 @@ class HeadsetClient internal constructor(
                 device = selected,
             )
         }
-        // Synchronous close does not wait for this mutex.
+        // close 同步失效 epoch，不等待此锁；发布后必须再次检查关闭标记。
         if (closed.value) {
             connection.compareAndSet(next, null)
             next.job.cancel()
@@ -193,8 +283,8 @@ class HeadsetClient internal constructor(
     }
 
     private fun launchConnection(next: Connection, previous: Connection?) {
-        // UNDISPATCHED entry installs the cleanup finally even if close cancelled next.job
-        // between replacement and launch. No radio operation or join runs under lifecycle.
+        // UNDISPATCHED 确保 replacement 与 launch 之间 close 取消 job 时仍安装 finally。
+        // 等待前驱清理与无线操作均在 lifecycle 锁外，避免切换/断开被慢连接阻塞。
         CoroutineScope(scope.coroutineContext + next.job).launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 withContext(NonCancellable) { previous?.finished?.await() }
@@ -244,6 +334,10 @@ class HeadsetClient internal constructor(
         }
     }
 
+    /**
+     * 首次手动失败结束本轮；自动首次失败和任何曾 READY 的目标继续重试。
+     * 自动目标以系统音频地址事实为边界，GATT 断连不等同于系统音频消失；手动目标没有音频观察约束。
+     */
     private suspend fun connectionLoop(current: Connection, retryFirst: Boolean) {
         try {
             coroutineScope {
@@ -329,7 +423,7 @@ class HeadsetClient internal constructor(
             val cached = try {
                 bt.device(address)
             } catch (_: BtException.InvalidDevice) {
-                // Old preferences may contain malformed addresses; they are not candidates.
+                // 历史偏好可能含无效地址，忽略该记录，不把它当作实际端点尝试。
                 null
             } catch (e: CancellationException) {
                 throw e
@@ -362,17 +456,22 @@ class HeadsetClient internal constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (_: BtException.MissingPermission) {
-            // A missing scan grant does not invalidate direct GATT attempts.
+            // 扫描缺权限只跳过扫描阶段，不否定已经执行的直接 GATT 尝试。
             emptyList()
         } catch (e: Exception) {
             lastFailure = e
             emptyList()
         }
         for (endpoint in scanned) tryCandidate(endpoint)?.let { return it }
-        // Unsupported is conclusive only when every attempted connection had that result.
+        // 只有没有其他真实失败时，候选的 UnsupportedDevice 才是最终失败；不能把超时改写成不支持。
         throw lastFailure ?: unsupported ?: DropException.Disconnected()
     }
 
+    /**
+     * 先安装独立 Attempt 与观察，再调用 connect；即使 connect 未返回也必须具备显式 disconnect 所有权。
+     * 控制器使用 selected 的 profile 身份，仅在会话仍匹配且控制 READY 时保存关联并采纳。
+     * 任意失败/取消路径都先 releaseAttempt，再允许下一候选或新选择进入无线操作。
+     */
     private suspend fun tryEndpoint(
         current: Connection,
         endpoint: BtDevice,
@@ -432,6 +531,11 @@ class HeadsetClient internal constructor(
         }
     }
 
+    /**
+     * 不可取消清理先失效本轮 attempt、关闭控制器与订阅，再在锁外 disconnect。
+     * 不要求 session 已返回：泛型 GATT 的独立连接任务不会因其调用方取消而自动结束。
+     * epoch 条件发布确保旧清理只能释放自己的资源，不能覆盖新选择的状态。
+     */
     private suspend fun releaseAttempt(current: Connection, attempt: Attempt) = withContext(NonCancellable) {
         lifecycle.withLock {
             if (current.attempt.compareAndSet(attempt, null)) {
@@ -447,11 +551,12 @@ class HeadsetClient internal constructor(
             attempt.observers.forEach { it.cancel() }
         }
         if (attempt.ownsGatt) {
-            // connect's caller cancellation does not cancel the manager's independent radio job.
+            // 仅取消 connect 的等待者不会取消管理器自有无线任务，必须显式 disconnect。
             attempt.endpoint.gatt.disconnect()
         }
     }
 
+    /** 转发同时检查连接 epoch、attempt 身份和已知 session；READY 必须等应用采纳，不能仅凭 probe 完成。 */
     private suspend fun forwardState(current: Connection, attempt: Attempt) {
         lifecycle.withLock {
             if (!isCurrentAttempt(current, attempt)) return@withLock
@@ -473,6 +578,10 @@ class HeadsetClient internal constructor(
         }
     }
 
+    /**
+     * 每次成功采纳后尝试初读 ANC（仅能力集合非空），并在 GAIA 可用时立即读电量、每 30 秒再次读。
+     * 两个自有任务随 attempt 清理取消；普通读取失败保留未知/最近读值，绝不写入猜测成功值。
+     */
     private fun startPolling(current: Connection, attempt: Attempt) {
         val polling = CoroutineScope(current.job + Dispatchers.Default)
         attempt.observers += polling.launch {
@@ -482,7 +591,7 @@ class HeadsetClient internal constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
-                    // Leave an unknown or previously observed mode intact when the initial read fails.
+                    // 初读失败不构造模式，保留未知或当前已观察模式。
                 }
             }
         }
@@ -495,7 +604,7 @@ class HeadsetClient internal constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
-                        // Polling cannot replace the last observed battery with a fabricated value.
+                        // 轮询失败不能用构造的电量覆盖最近真实读值。
                     }
                 }
                 delay(30_000)
@@ -528,6 +637,7 @@ class HeadsetClient internal constructor(
         return session != null && gatt.phase == GattPhase.CONNECTED && gatt.session === session
     }
 
+    /** 此 facade 的 getter 始终以 NotReady 表达不可用（含 close）；旧控制器控件的失效异常另属绑定层。 */
     private fun readyController(): DropController {
         val current = connection.value ?: throw DropException.NotReady()
         val attempt = current.attempt.value ?: throw DropException.NotReady()
@@ -547,7 +657,7 @@ class HeadsetClient internal constructor(
 
     private fun publishLocked(current: Connection, change: (HeadsetState) -> HeadsetState) {
         if (isCurrent(current)) mutableState.value = change(mutableState.value)
-        // close may have invalidated the epoch without waiting for lifecycle.
+        // close 可能不等待 lifecycle 就使 epoch 失效，最后一次写入仍必须恢复默认状态。
         if (closed.value) mutableState.value = HeadsetState()
     }
 
@@ -569,7 +679,7 @@ class HeadsetClient internal constructor(
     }
 
     private suspend fun awaitWake(timeoutMillis: Long) {
-        // Discard the coalesced notifications caused by the attempt that just finished.
+        // 丢弃刚结束尝试自身引起的合并通知，避免立即自唤醒重试；后续事件仍可提前唤醒。
         wake.tryReceive()
         withTimeoutOrNull(timeoutMillis) { wake.receiveCatching() }
     }

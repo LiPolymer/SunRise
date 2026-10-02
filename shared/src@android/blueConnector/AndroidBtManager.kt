@@ -25,6 +25,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/**
+ * Android 真实蓝牙管理器，持有应用上下文、广播和 SupervisorJob + IO 作用域。
+ *
+ * cache 以规范大写地址保存稳定句柄，observed 独立记录实际观测，区分 device() 与发现。
+ * lock 保护同步身份/关闭事实；audioMutex 串行音频快照，发现另有扫描锁，GATT 逐设备独立。
+ * 管理器事件经自有无界 channel 串行发布（不是 GATT 的有界原始通知队列），无历史重放。
+ * @property context 工厂提供的 applicationContext，不依附 Activity。
+ */
 internal class AndroidBtManager(internal val context: Context) : BtManager {
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Any()
@@ -45,6 +53,10 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
     override val connectedAudioDevices = mutableAudioDevices.asStateFlow()
     override val events = mutableEvents.asSharedFlow()
 
+    /**
+     * 监听无线状态、ACL、名称/配对与 A2DP/HEADSET 变化，在后台刷新事实而非回调里等待无线。
+     * 经典 ACL 断开不直接断开 GATT；GATT 生命周期由对应原生 callback 决定。
+     */
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (isClosed) return
@@ -91,6 +103,7 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         }
     }
 
+    /** 无适配器优先为 UNAVAILABLE；缺 CONNECT 权限或读取受拒时为 UNKNOWN，不触发授权 UI。 */
     private fun readAvailability(): BtAvailability {
         if (isClosed) return BtAvailability.CLOSED
         if (adapter == null) return BtAvailability.UNAVAILABLE
@@ -102,6 +115,7 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         }
     }
 
+    /** 非 ENABLED 状态使音频快照清空、发现请求和所有设备会话失效，但保留稳定设备身份。 */
     private fun refreshAvailability(forced: BtAvailability? = null) {
         val value = forced ?: readAvailability()
         val handles = synchronized(lock) {
@@ -120,6 +134,11 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         }
     }
 
+    /**
+     * 每次无线操作检查关闭、权限和适配器开启事实；检查成功可将 availability 刷新为 ENABLED。
+     * @param scan 是否额外需要扫描权限。
+     * @throws BtException 关闭、缺权限或无线不可用，不隐式开启蓝牙。
+     */
     internal fun requireBluetooth(scan: Boolean = false): BluetoothAdapter {
         if (isClosed) throw BtException.Disconnected()
         val missing = BtPermissions.missing(context, scan)
@@ -136,6 +155,7 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         return result
     }
 
+    /** 平台异常统一映射；取消和已有 BtException 不改写，SecurityException 再检查完整权限名。 */
     internal fun <T> platformOperation(operation: String, scan: Boolean = false, block: () -> T): T {
         try {
             return block()
@@ -146,7 +166,7 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         } catch (e: SecurityException) {
             val missing = BtPermissions.missing(context, scan)
             if (missing.isNotEmpty()) throw BtException.MissingPermission(missing)
-            // A permission may be revoked between the platform call and the recheck.
+            // 平台调用与复查之间可能撤销权限；保留本操作类别的完整所需权限名。
             val required = if (Build.VERSION.SDK_INT >= 31) {
                 if (scan) setOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
                 else setOf(Manifest.permission.BLUETOOTH_CONNECT)
@@ -158,6 +178,7 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         }
     }
 
+    /** 只规范/缓存地址句柄，不观测信息或发发现事件；取句柄不要求先扫描。 */
     override fun device(address: String): BtDevice {
         val normalized = normalizeAddress(address)
         return synchronized(lock) {
@@ -177,6 +198,10 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         return result
     }
 
+    /**
+     * 读取系统事实，名称为空时回退到扫描名；首次实际观测发 OnDiscovered，
+     * 后续仅信息发生变化才发 OnDeviceChanged，按地址而非名称合并。
+     */
     internal fun observe(native: BluetoothDevice, scannedName: String? = null): AndroidBtDevice {
         requireBluetooth()
         val address = normalizeAddress(native.address)
@@ -206,6 +231,7 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         }
     }
 
+    /** 串行刷新音频事实；返回值与公开快照采用同一去重/排序列表，不做应用候选筛选。 */
     override suspend fun refreshConnectedAudioDevices(): List<BtDevice> = audioMutex.withLock {
         refreshAvailability()
         val result = discovery.connectedAudioDevices().map { observe(it) }
@@ -228,6 +254,7 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         return discovery.scanLe(name, normalized, timeoutMillis)
     }
 
+    /** GATT 状态发布后，带 error 的快照额外发布 OnError；直接调用失败不保证走此路径。 */
     internal fun publishGatt(device: AndroidBtDevice, state: GattState) {
         publish(BtEvent.OnGattStateChanged(device, state, this))
         state.error?.let { publish(BtEvent.OnError(it, this, device)) }
@@ -237,6 +264,10 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         eventQueue.trySend(event)
     }
 
+    /**
+     * 先同步发布 CLOSED，再尽力注销广播并失效所有所属 GATT/发现任务，最后停止自有作用域。
+     * 幂等；缓存快照保留，但句柄后续无线操作失败，最终事件仅 tryEmit 不保证被收集。
+     */
     override fun close() {
         val handles = synchronized(lock) {
             if (isClosed) return

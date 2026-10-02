@@ -1,5 +1,10 @@
 package ink.lipoly.app.sunrise.drop
 
+/**
+ * 单绑定 GAIA 控件：GET 将可展示功能写入快照，常规 SET 等回复后 GET 读回。
+ * ANC 例外只 SET 一次并最多四次 GET；Unverified 清 ancMode，Mismatch 保留 GET 的实际值。
+ * codec/低音/左右反转/EQ/原始命令不在 DropState 中缓存，不能把写完成当成应用成功。
+ */
 internal class GaiaControlsImpl(private val client: DropControlSession) : GaiaControls {
     private suspend fun request(feature: Int, command: Int, payload: ByteArray = byteArrayOf()): GaiaPacket =
         client.requestGaia(GaiaCommand(feature, command, payload))
@@ -10,6 +15,7 @@ internal class GaiaControlsImpl(private val client: DropControlSession) : GaiaCo
 
     private suspend fun boolean(feature: Int, command: Int): Boolean = value(feature, command) != 0
 
+    /** 严格要求非空偶数负载；只替换出现的组件，未知编号忽略，原始电量字节不裁剪。 */
     override suspend fun getBattery(): EarbudBattery {
         val answer = request(GaiaIds.BATTERY, GaiaIds.Battery.LEVELS)
         if (answer.payload.size < 2 || answer.payload.size % 2 != 0)
@@ -30,6 +36,7 @@ internal class GaiaControlsImpl(private val client: DropControlSession) : GaiaCo
         }
     }
 
+    /** 绑定选中的路径固定于 epoch，不在操作中改变协议路径或自动重新探测。 */
     private fun ancCommand(get: Boolean): Pair<Int, Int> = when (client.ancPath()) {
         AncPath.V1 -> GaiaIds.ANC_V1 to (if (get) GaiaIds.Anc.V1_GET else GaiaIds.Anc.V1_SET)
         AncPath.AUDIO_CURATION -> GaiaIds.AUDIO_CURATION to
@@ -47,6 +54,7 @@ internal class GaiaControlsImpl(private val client: DropControlSession) : GaiaCo
         return mode
     }
 
+    /** 写 map 与读 map 独立；模式缺失在写前拒绝，读回失败后避免保留虚假的目标值。 */
     override suspend fun setAncMode(mode: AncMode): AncMode {
         val deviceValue = DropProfiles.toDevice(client.ancPath(), mode, client.profile())
             ?: throw DropException.UnsupportedCapability("ANC mode $mode")

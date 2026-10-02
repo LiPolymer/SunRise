@@ -12,17 +12,28 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
+/**
+ * 管理器自有的音频 profile 枚举与串行 LE 扫描，不占用任何设备 GATT 队列。
+ *
+ * pendingLock 只管理可被无线关闭/管理器关闭失败化的请求集合，不持锁等待平台回调；
+ * 扫描回调投递容量 64 的 channel，溢出明确失败，而非静默丢弃发现。
+ */
 internal class AndroidBtDiscovery(private val owner: AndroidBtManager) {
     private val scanMutex = Mutex()
     private val pendingLock = Any()
     private val profileRequests = mutableSetOf<CompletableDeferred<List<BluetoothDevice>>>()
     private val scans = mutableSetOf<Channel<ScanResult>>()
 
+    /** 无线不可用/关闭时立即失败化正在等待的 profile 和扫描；最终资源释放仍在各 finally 中。 */
     internal fun invalidate(cause: BtException) = synchronized(pendingLock) {
         profileRequests.forEach { it.completeExceptionally(cause) }
         scans.forEach { it.close(cause) }
     }
 
+    /**
+     * 顺序查询 A2DP 和 HEADSET，按大写地址合并并排序；不做品牌、协议或双地址关联。
+     * profile 代理被拒绝、服务断开或 1,500 毫秒内未返回时，该 profile 贡献空列表。
+     */
     suspend fun connectedAudioDevices(): List<BluetoothDevice> {
         val adapter = owner.requireBluetooth()
         val devices = LinkedHashMap<String, BluetoothDevice>()
@@ -32,6 +43,7 @@ internal class AndroidBtDiscovery(private val owner: AndroidBtManager) {
         return devices.values.sortedBy { it.address }
     }
 
+    /** 注册可失效的代理请求；晚到回调也必须关闭自身 proxy，取消不能转移其资源所有权。 */
     private suspend fun profileDevices(adapter: BluetoothAdapter, profile: Int): List<BluetoothDevice> {
         val answer = CompletableDeferred<List<BluetoothDevice>>()
         synchronized(pendingLock) {
@@ -63,6 +75,11 @@ internal class AndroidBtDiscovery(private val owner: AndroidBtManager) {
         }
     }
 
+    /**
+     * 持扫描锁完成单次扫描；名称/地址 OR 匹配，命中地址可提前结束。
+     * null scanner 和正常期限返回已找到列表；onScanFailed/溢出保存失败，即使提前命中也不掩盖。
+     * 调用者取消透传；finally 尽力 stopScan 并注销请求。过滤掉的结果不进入 manager.observe。
+     */
     suspend fun scanLe(name: String?, address: String?, timeoutMillis: Long): List<BtDevice> = scanMutex.withLock {
         val adapter = owner.requireBluetooth(scan = true)
         val scanner = owner.platformOperation("obtain LE scanner", scan = true) { adapter.bluetoothLeScanner }

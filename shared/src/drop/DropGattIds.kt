@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.drop
 
-/** Protocol UUIDs belong to Drop, not to the generic Bluetooth transport. */
+/** GAIA/9ECA 完整小写 UUID 属于协议层；通用 blueConnector 不依赖这些协议标识。 */
 internal object DropGattIds {
     const val GAIA_SERVICE = "00001100-d102-11e1-9b23-00025b00a5a5"
     const val GAIA_COMMAND = "00001101-d102-11e1-9b23-00025b00a5a5"

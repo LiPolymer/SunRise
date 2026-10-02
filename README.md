@@ -1,5 +1,10 @@
 # SunRise
 
+> [!caution]
+> <img src="https://lipoly.ink/assets/badges/llmWarn.svg" alt="This project contains unaudited AI generated code" width="200">
+> 
+> under construction
+
 Kotlin Toolchain 0.12.2 项目，包含 Android 应用、JVM 桌面应用和 Android/JVM 共享库。`shared/src/blueConnector` 是协议无关的蓝牙通讯契约，`shared/src/drop` 是平台无关的 GAIA / 9ECA 控制器，`shared/src/headset` 是本应用的单耳机连接与选择策略；`shared/src/compose` 是两平台共用的概览、设置和诊断界面。平台蓝牙实现位于 `shared/src@android/blueConnector`，JVM actual 明确不可用。Kotlin 包名仍为 `ink.lipoly.app.sunrise`。
 
 ## 运行
@@ -25,11 +30,23 @@ Android Activity 只创建一个 `BtManager`，再通过 `createHeadsetClient(co
 
 通讯包为 `ink.lipoly.app.sunrise.blueConnector`；仅迁移包与目录，`BtManager`、`BtDevice`、`GattSession`、`BtHost`、`BtPermissions` 和 `createBtManager` 等名称不变。调用方应更新 import，旧包不保留别名或转发。
 
-接入和所有权示例见 [使用指南](shared/src/drop/DOCS.md)。通用 `BtManager` 以规范地址保存稳定 `BtDevice`，每台设备独立管理 GATT。`OnDiscovered(device, sender)` 只表示系统枚举或扫描观测到了设备，不表示 GATT 已连、品牌匹配或协议可用。
+通用 `BtManager` 以规范地址保存稳定 `BtDevice`，每台设备独立管理 GATT。`OnDiscovered(device, sender)` 只表示系统枚举或扫描观测到了设备，不表示 GATT 已连、品牌匹配或协议可用。
 
 调用方显式 `device.gatt.connect()`，再用 `DropController(device).awaitReady()` 初始化控制。控制器关闭不关闭 GATT；不同设备可同时使用各自的控制器，旧会话帧和旧控件引用不能影响新会话。不保证同一设备上重复控制器并行控制同一协议。
 
 应用继续使用单耳机界面：连接阶段、音频设备身份与错误在 `HeadsetState`，协议、能力、电量与 ANC 在 `state.controls`。0 台音频候选等待，1 台尝试，多个要求选择；缓存端点、音频地址、同名已配对 LE/DUAL、LE 扫描依次尝试。同名不是物理设备关联的证明。ANC 一次 SET 后依据读回确认，失配保留实际模式，无法验证时清除未知值；电量轮询由应用 facade 拥有，而不是控制器。
+
+## 开发者文档
+
+| 文档 | 查阅内容 |
+| --- | --- |
+| [blueConnector / Docs.md](shared/src/blueConnector/Docs.md) | 通用蓝牙 API、Android 权限和发现、设备级 GATT、读写与通知、并发取消、异常与 JVM 限制 |
+| [drop / Docs.md](shared/src/drop/Docs.md) | DropController 会话绑定、GAIA/9ECA 功能与参数、能力探测、ANC 读回、设备映射与协议异常 |
+| [headset / Docs.md](shared/src/headset/Docs.md) | Android/Compose 接入、单耳机自动与手动选择、音频/BLE 关联、重连、轮询、状态与资源所有权 |
+
+接入现有应用先读 `headset`；直接控制协议先读 `drop`；只需要通用蓝牙通讯先读 `blueConnector`。三份文档互相链接，并各自给出源码索引和调用示例。
+
+源码注释采用 KDoc：公开类型、模型字段、属性和方法说明可在 Android Studio / IntelliJ 的快速文档中查阅；队列、会话绑定和连接切换处同时记录内部生命周期约束。未增加文档构建模块或新的运行依赖。
 
 ## 本轮验证边界
 
