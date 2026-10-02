@@ -19,19 +19,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
-import ink.lipoly.app.sunrise.drop.DropState
+import ink.lipoly.app.sunrise.headset.HeadsetPhase
+import ink.lipoly.app.sunrise.headset.HeadsetState
 import ink.lipoly.app.sunrise.drop.GainLevel
 import ink.lipoly.app.sunrise.drop.HeadTrackingMode
 
 @Composable
 internal fun OverviewScreen(
-    state: DropState,
+    state: HeadsetState,
     missingPermissions: Set<String>,
     clientAvailable: Boolean,
     english: Boolean,
@@ -47,13 +52,15 @@ internal fun OverviewScreen(
     onSpatial: (Boolean) -> Unit,
     onTracking: (HeadTrackingMode) -> Unit,
 ) {
-    val ready = state.hasReadyGaia()
+    val controlState = state.controls
+    val ready = state.phase == HeadsetPhase.READY && controlState.hasReadyGaia()
     val enabled = ready && working == null && missingPermissions.isEmpty()
-    val controls = confirmedOverviewControls(state, confirmedReads)
+    val controls = if (ready) confirmedOverviewControls(controlState, confirmedReads) else emptySet()
+    var connectionDetailsExpanded by remember { mutableStateOf(false) }
     LazyColumn(
         modifier = modifier,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
             Card(
@@ -61,11 +68,11 @@ internal fun OverviewScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Surface(
-                        color = if (state.phase == DropPhase.READY) MaterialTheme.colorScheme.primary
+                        color = if (state.phase == HeadsetPhase.READY) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
                         shape = MaterialTheme.shapes.large,
                     ) {
@@ -73,12 +80,14 @@ internal fun OverviewScreen(
                             state.phase.display(english),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (state.phase == DropPhase.READY) MaterialTheme.colorScheme.onPrimary
+                            color = if (state.phase == HeadsetPhase.READY) MaterialTheme.colorScheme.onPrimary
                                 else MaterialTheme.colorScheme.onSurface,
                         )
                     }
                     Text(
-                        state.device?.name ?: tr(english, "等待耳机", "Waiting for headset"),
+                        state.device?.name?.takeIf { it.isNotBlank() }
+                            ?: state.device?.address
+                            ?: tr(english, "等待耳机", "Waiting for headset"),
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
@@ -87,15 +96,28 @@ internal fun OverviewScreen(
                     } else if (missingPermissions.isNotEmpty()) {
                         Text(tr(english, "需要蓝牙权限才能发现并连接耳机。", "Bluetooth permission is required to find and connect a headset."))
                         Button(onClick = onRequestPermissions) { Text(tr(english, "授予权限", "Grant permission")) }
-                    } else if (state.phase != DropPhase.READY) {
+                    } else if (state.phase != HeadsetPhase.READY) {
                         Text(
-                            if (state.phase == DropPhase.SELECTION_REQUIRED)
-                                tr(english, "发现多台音频设备，请选择耳机。", "Multiple audio devices found. Choose your headset.")
-                            else tr(english, "打开耳机并将其连接到系统蓝牙。", "Turn on the headset and connect it in Bluetooth settings."),
+                            when (state.phase) {
+                                HeadsetPhase.SELECTION_REQUIRED ->
+                                    tr(english, "发现多台已连接的音频设备。选择你的耳机以继续连接。", "Multiple connected audio devices were found. Choose your headset to continue.")
+                                HeadsetPhase.DISCOVERING, HeadsetPhase.CONNECTING, HeadsetPhase.PROBING, HeadsetPhase.RECONNECTING ->
+                                    tr(english, "正在寻找耳机并检查连接，请稍候。", "Finding your headset and checking the connection…")
+                                else ->
+                                    tr(english, "尚未连接耳机。请先在系统蓝牙设置中连接耳机，然后重试。", "No headset connected. Connect it in your device's Bluetooth settings, then retry.")
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        OutlinedButton(onClick = onRetry, enabled = working == null) {
-                            Text(tr(english, "重新连接", "Reconnect"))
+                        if (state.phase == HeadsetPhase.SELECTION_REQUIRED ||
+                            state.phase == HeadsetPhase.IDLE || state.phase == HeadsetPhase.ERROR
+                        ) {
+                            OutlinedButton(onClick = onRetry, enabled = working == null) {
+                                Text(
+                                    if (state.phase == HeadsetPhase.SELECTION_REQUIRED)
+                                        tr(english, "选择耳机", "Choose headset")
+                                    else tr(english, "重新连接", "Reconnect")
+                                )
+                            }
                         }
                     }
                     state.error?.let { Text(it.message ?: "", color = MaterialTheme.colorScheme.error) }
@@ -106,39 +128,37 @@ internal fun OverviewScreen(
         item {
             OverviewCard(tr(english, "电量", "Battery")) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    BatteryCell(tr(english, "左耳", "Left"), state.battery.left, Modifier.weight(1f))
-                    BatteryCell(tr(english, "右耳", "Right"), state.battery.right, Modifier.weight(1f))
-                    if (state.battery.case != null) BatteryCell(tr(english, "充电盒", "Case"), state.battery.case, Modifier.weight(1f))
+                    BatteryCell(tr(english, "左耳", "Left"), controlState.battery.left, Modifier.weight(1f))
+                    BatteryCell(tr(english, "右耳", "Right"), controlState.battery.right, Modifier.weight(1f))
+                    if (controlState.battery.case != null) BatteryCell(tr(english, "充电盒", "Case"), controlState.battery.case, Modifier.weight(1f))
                 }
             }
         }
 
         item {
             OverviewCard(tr(english, "降噪模式", "Noise control")) {
-                Text(
-                    state.ancMode?.display(english)
-                        ?: if (ready) tr(english, "当前模式未知，请刷新重试", "Current mode unknown; refresh to retry")
-                        else tr(english, "连接后可用", "Available after connecting"),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (state.ancMode == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
-                )
-                val modes = shownAncModes(state, showWind)
+                val modes = if (ready) shownAncModes(controlState, showWind) else emptyList()
+                if (controlState.ancMode == null || controlState.ancMode !in modes) {
+                    Text(
+                        controlState.ancMode?.display(english)
+                            ?: if (ready && modes.isEmpty()) tr(english, "未检测到可用降噪模式。", "No available noise-control modes were detected.")
+                            else if (ready) tr(english, "当前模式未知，请刷新重试", "Current mode unknown; refresh to retry")
+                            else tr(english, "连接后可用", "Available after connecting"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (modes.isNotEmpty()) {
                     ChipRow {
                         modes.forEach { mode ->
                             FilterChip(
-                                selected = state.ancMode == mode,
+                                selected = controlState.ancMode == mode,
                                 onClick = { onAnc(mode) },
                                 label = { Text(mode.display(english)) },
                                 enabled = enabled,
                             )
                         }
                     }
-                } else if (ready) {
-                    Text(
-                        tr(english, "未检测到可用降噪模式。", "No available noise-control modes were detected."),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
         }
@@ -147,57 +167,80 @@ internal fun OverviewScreen(
                 OverviewCard(tr(english, "扩展控制", "More controls")) {
                     if (OverviewControl.GAIN in controls) {
                         Text(tr(english, "增益", "Gain"), style = MaterialTheme.typography.titleSmall)
-                        if (state.gain == null) UnknownValue(english)
+                        if (controlState.gain == null) UnknownValue(english)
                         ChipRow {
                             GainLevel.entries.forEach { gain ->
                                 FilterChip(
-                                    selected = state.gain == gain,
+                                    selected = controlState.gain == gain,
                                     onClick = { onGain(gain) },
                                     label = { Text(gain.display(english)) },
-                                    enabled = enabled && state.gain != null,
+                                    enabled = enabled && controlState.gain != null,
                                 )
                             }
                         }
                     }
                     if (OverviewControl.SPATIAL in controls) {
                         ControlSwitch(
-                            tr(english, "空间音频", "Spatial audio"), state.spatialOn,
-                            enabled && state.spatialOn != null, english, onSpatial,
+                            tr(english, "空间音频", "Spatial audio"), controlState.spatialOn,
+                            enabled && controlState.spatialOn != null, english, onSpatial,
                         )
                     }
                     if (OverviewControl.HEAD_TRACKING in controls) {
                         Text(tr(english, "头部追踪", "Head tracking"), style = MaterialTheme.typography.titleSmall)
-                        if (state.headTracking == null) UnknownValue(english)
+                        if (controlState.headTracking == null) UnknownValue(english)
                         ChipRow {
                             HeadTrackingMode.entries.forEach { mode ->
                                 FilterChip(
-                                    selected = state.headTracking == mode,
+                                    selected = controlState.headTracking == mode,
                                     onClick = { onTracking(mode) },
                                     label = { Text(mode.display(english)) },
-                                    enabled = enabled && state.spatialOn == true && state.headTracking != null,
+                                    enabled = enabled && controlState.spatialOn == true && controlState.headTracking != null,
                                 )
                             }
                         }
                     }
                     if (OverviewControl.LED in controls) {
-                        ControlSwitch("LED", state.ledOn, enabled && state.ledOn != null, english, onLed)
+                        ControlSwitch("LED", controlState.ledOn, enabled && controlState.ledOn != null, english, onLed)
                     }
                 }
             }
         }
         item {
-            OverviewCard(tr(english, "连接详情", "Connection details")) {
-                InfoLine(tr(english, "地址", "Address"), state.device?.address ?: "—")
-                InfoLine(
-                    tr(english, "控制协议", "Control protocol"),
-                    state.protocols.joinToString(" · ") { it.display() }.ifEmpty { "—" },
-                )
-                if (!state.capabilities.complete && state.phase == DropPhase.READY) {
-                    Text(
-                        tr(english, "部分能力尚未确认；可在高级诊断中测试。", "Some capabilities are unconfirmed; test them in diagnostics."),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            Card(
+                onClick = { connectionDetailsExpanded = !connectionDetailsExpanded },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(tr(english, "连接详情", "Connection details"), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (connectionDetailsExpanded) tr(english, "收起", "Hide") else tr(english, "展开", "Show"),
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                    if (connectionDetailsExpanded) {
+                        InfoLine(tr(english, "地址", "Address"), state.device?.address ?: "—")
+                        InfoLine(
+                            tr(english, "控制协议", "Control protocol"),
+                            controlState.protocols.joinToString(" · ") { it.display() }.ifEmpty { "—" },
+                        )
+                        if (!controlState.capabilities.complete &&
+                            state.phase == HeadsetPhase.READY && controlState.phase == DropPhase.READY
+                        ) {
+                            Text(
+                                tr(english, "部分能力尚未确认；可在高级诊断中测试。", "Some capabilities are unconfirmed; test them in diagnostics."),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -217,10 +260,10 @@ internal fun OverviewScreen(
 private fun OverviewCard(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(title, style = MaterialTheme.typography.titleMedium)
             content()
         }
     }
@@ -237,7 +280,7 @@ private fun InfoLine(label: String, value: String) {
 @Composable
 private fun BatteryCell(label: String, percent: Int?, modifier: Modifier = Modifier) {
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(percent?.let { "$it%" } ?: "—", style = MaterialTheme.typography.titleLarge)
             if (percent != null) {
@@ -286,20 +329,19 @@ private fun ControlSwitch(
     }
 }
 
-private fun DropPhase.display(english: Boolean): String = when (this) {
-    DropPhase.IDLE -> tr(english, "等待连接", "Waiting")
-    DropPhase.DISCOVERING -> tr(english, "发现设备中", "Finding devices")
-    DropPhase.CONNECTING -> tr(english, "连接中", "Connecting")
-    DropPhase.PROBING -> tr(english, "检测能力中", "Checking capabilities")
-    DropPhase.READY -> tr(english, "已连接", "Connected")
-    DropPhase.RECONNECTING -> tr(english, "重新连接中", "Reconnecting")
-    DropPhase.SELECTION_REQUIRED -> tr(english, "请选择设备", "Choose a device")
-    DropPhase.ERROR -> tr(english, "连接错误", "Connection error")
+private fun HeadsetPhase.display(english: Boolean): String = when (this) {
+    HeadsetPhase.IDLE -> tr(english, "等待连接", "Waiting")
+    HeadsetPhase.DISCOVERING -> tr(english, "发现设备中", "Finding devices")
+    HeadsetPhase.CONNECTING -> tr(english, "连接中", "Connecting")
+    HeadsetPhase.PROBING -> tr(english, "检测能力中", "Checking capabilities")
+    HeadsetPhase.READY -> tr(english, "已连接", "Connected")
+    HeadsetPhase.RECONNECTING -> tr(english, "重新连接中", "Reconnecting")
+    HeadsetPhase.SELECTION_REQUIRED -> tr(english, "请选择设备", "Choose a device")
+    HeadsetPhase.ERROR -> tr(english, "连接错误", "Connection error")
 }
 
 private fun DropProtocol.display(): String = when (this) {
     DropProtocol.GAIA_BLE -> "GAIA BLE"
-    DropProtocol.GAIA_RFCOMM -> "GAIA RFCOMM"
     DropProtocol.SOURCE_9ECA -> "9ECA"
 }
 

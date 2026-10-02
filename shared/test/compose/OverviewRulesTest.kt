@@ -28,7 +28,7 @@ class OverviewRulesTest {
             setOf(OverviewControl.GAIN, OverviewControl.SPATIAL, OverviewControl.HEAD_TRACKING, OverviewControl.LED),
             confirmedOverviewControls(ready, setOf(OverviewControl.LED)),
         )
-        assertEquals(emptySet(), confirmedOverviewControls(ready.copy(phase = DropPhase.RECONNECTING), setOf(OverviewControl.LED)))
+        assertEquals(emptySet(), confirmedOverviewControls(ready.copy(phase = DropPhase.IDLE), setOf(OverviewControl.LED)))
     }
 
     @Test fun windSettingOnlyFiltersTheButton() {

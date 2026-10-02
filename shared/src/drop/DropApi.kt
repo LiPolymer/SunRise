@@ -1,17 +1,8 @@
 package ink.lipoly.app.sunrise.drop
 
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
+enum class DropPhase { IDLE, PROBING, READY, ERROR }
 
-/** A candidate is not trusted until a GAIA or 9ECA service (or GAIA SPP reply) is observed. */
-data class DropDevice(val address: String, val name: String?, val verified: Boolean = false)
-
-enum class DropPhase {
-    IDLE, DISCOVERING, CONNECTING, PROBING, READY, RECONNECTING,
-    SELECTION_REQUIRED, ERROR
-}
-
-enum class DropProtocol { GAIA_BLE, GAIA_RFCOMM, SOURCE_9ECA }
+enum class DropProtocol { GAIA_BLE, SOURCE_9ECA }
 enum class AncMode { OFF, NOISE_CANCELLING, TRANSPARENCY, WIND, ADAPTIVE, LIVE }
 enum class GainLevel { LOW, MEDIUM, HIGH }
 enum class HeadTrackingMode { OFF, THIRTY_DEGREES, SURROUND }
@@ -31,7 +22,6 @@ enum class SourceFeature { AUDIO_SOURCE, VOLUME, PRESET_EQ, PEQ, MIC_GAIN }
 
 data class DropState(
     val phase: DropPhase = DropPhase.IDLE,
-    val device: DropDevice? = null,
     val protocols: Set<DropProtocol> = emptySet(),
     val capabilities: DropCapabilities = DropCapabilities(),
     val battery: EarbudBattery = EarbudBattery(),
@@ -54,9 +44,6 @@ sealed interface DropEvent {
 }
 
 sealed class DropException(message: String, cause: Throwable? = null) : Exception(message, cause) {
-    class BluetoothUnavailable : DropException("Bluetooth is unavailable or disabled")
-    class MissingPermission(val permissions: Set<String>) : DropException("Missing Bluetooth permissions: ${permissions.joinToString()}")
-    class InvalidDevice(message: String) : DropException(message)
     class UnsupportedDevice : DropException("Device does not expose GAIA or 9ECA")
     class UnsupportedCapability(val capability: String) : DropException("Unsupported capability: $capability")
     class NotReady : DropException("Earbud protocol is not ready")
@@ -72,20 +59,6 @@ sealed class DropException(message: String, cause: Throwable? = null) : Exceptio
 }
 
 data class DropOptions(val profileOverrides: List<DropProfile> = emptyList())
-
-/** One active headset per client. Call close() to release receivers, scans, and sockets. */
-interface DropClient {
-    val state: StateFlow<DropState>
-    val events: SharedFlow<DropEvent>
-    val gaia: GaiaControls
-    val source: SourceControls
-    suspend fun discoverConnectedDevices(): List<DropDevice>
-    fun startAutoConnect()
-    suspend fun connect(address: String)
-    suspend fun connect(device: DropDevice) = connect(device.address)
-    suspend fun disconnect()
-    fun close()
-}
 
 interface GaiaControls {
     suspend fun getBattery(): EarbudBattery

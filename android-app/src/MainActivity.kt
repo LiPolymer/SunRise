@@ -11,32 +11,37 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.tooling.preview.Preview
 import ink.lipoly.app.sunrise.compose.App
-import ink.lipoly.app.sunrise.drop.DropPermissions
-import ink.lipoly.app.sunrise.drop.createDropClient
+import ink.lipoly.app.sunrise.blueConnector.BtPermissions
+import ink.lipoly.app.sunrise.blueConnector.createBtManager
+import ink.lipoly.app.sunrise.headset.createHeadsetClient
 
 class MainActivity : ComponentActivity() {
     private val missingPermissions = mutableStateOf(emptySet<String>())
     private val permissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
-        missingPermissions.value = DropPermissions.missing(this)
+        missingPermissions.value = BtPermissions.missing(this)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        missingPermissions.value = DropPermissions.missing(this)
+        missingPermissions.value = BtPermissions.missing(this)
         setContent {
-            val client = remember { createDropClient(applicationContext) }
-            DisposableEffect(client) {
-                onDispose { client.close() }
+            val bt = remember { createBtManager(applicationContext) }
+            val client = remember(bt) { createHeadsetClient(applicationContext, bt) }
+            DisposableEffect(client, bt) {
+                onDispose {
+                    client.close()
+                    bt.close()
+                }
             }
             App(
                 client = client,
                 missingPermissions = missingPermissions.value,
                 onRequestPermissions = {
-                    val missing = DropPermissions.missing(this)
+                    val missing = BtPermissions.missing(this)
                     if (missing.isNotEmpty()) permissionRequest.launch(missing.toTypedArray())
                     else missingPermissions.value = emptySet()
                 },
@@ -46,7 +51,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        missingPermissions.value = DropPermissions.missing(this)
+        missingPermissions.value = BtPermissions.missing(this)
     }
 }
 

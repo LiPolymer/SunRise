@@ -36,7 +36,7 @@ class GaiaControlsImplTest {
         var readFails = false
         private var rawMode = 0
 
-        override fun profile(): DropProfile = DropProfiles.resolve(DropOptions(), null)
+        override fun profile(): DropProfile = DropProfiles.resolve(DropOptions(), null, null)
         override fun ancPath(): AncPath = AncPath.V1
         override fun mutate(block: (DropState) -> DropState) { mutableState.update(block) }
 

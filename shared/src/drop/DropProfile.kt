@@ -44,11 +44,11 @@ internal object DropProfiles {
         DropProfile(DropProfileMatch.NameContains("PILL"), gainWrite = defaultGain),
         DropProfile(DropProfileMatch.NameContains("MOCA"), gainWrite = defaultGain))
 
-    fun resolve(options: DropOptions, device: DropDevice?): DropProfile {
+    fun resolve(options: DropOptions, address: String?, name: String?): DropProfile {
         val overrides = options.profileOverrides
-        val builtinMatch = builtin.firstOrNull { matches(it.match, device) }
-        val override = overrides.firstOrNull { it.match is DropProfileMatch.Address && matches(it.match, device) }
-            ?: overrides.firstOrNull { matches(it.match, device) }
+        val builtinMatch = builtin.firstOrNull { matches(it.match, address, name) }
+        val override = overrides.firstOrNull { it.match is DropProfileMatch.Address && matches(it.match, address, name) }
+            ?: overrides.firstOrNull { matches(it.match, address, name) }
         if (override == null) return builtinMatch ?: DropProfile(DropProfileMatch.NameContains(""))
         return override.copy(
             audioCurationWrite = override.audioCurationWrite ?: builtinMatch?.audioCurationWrite,
@@ -59,10 +59,10 @@ internal object DropProfiles {
         )
     }
 
-    private fun matches(match: DropProfileMatch, device: DropDevice?): Boolean = when (match) {
-        is DropProfileMatch.Address -> device?.address?.equals(match.value, ignoreCase = true) == true
+    private fun matches(match: DropProfileMatch, address: String?, name: String?): Boolean = when (match) {
+        is DropProfileMatch.Address -> address?.equals(match.value, ignoreCase = true) == true
         is DropProfileMatch.NameContains -> match.value.isNotBlank() &&
-            device?.name?.contains(match.value, ignoreCase = true) == true
+            name?.contains(match.value, ignoreCase = true) == true
     }
 
     fun supportedModes(path: AncPath, profile: DropProfile): Set<AncMode> = when (path) {

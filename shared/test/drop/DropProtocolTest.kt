@@ -4,7 +4,6 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DropProtocolTest {
@@ -25,21 +24,21 @@ class DropProtocolTest {
     }
 
     @Test fun profileUsesIndependentReadAndWriteMaps() {
-        val ga2 = DropProfiles.resolve(DropOptions(), DropDevice("AA:BB:CC:DD:EE:FF", "Golden Ages 2"))
+        val ga2 = DropProfiles.resolve(DropOptions(), "AA:BB:CC:DD:EE:FF", "Golden Ages 2")
         assertEquals(4, DropProfiles.toDevice(AncPath.AUDIO_CURATION, AncMode.TRANSPARENCY, ga2))
         assertEquals(AncMode.TRANSPARENCY, DropProfiles.fromDevice(AncPath.AUDIO_CURATION, 2, ga2))
         assertEquals(2, DropProfiles.gainToDevice(GainLevel.LOW, ga2))
-        val pudding = DropProfiles.resolve(DropOptions(), DropDevice("AA:BB:CC:DD:EE:FF", "Pudding"))
+        val pudding = DropProfiles.resolve(DropOptions(), "AA:BB:CC:DD:EE:FF", "Pudding")
         assertEquals(4, DropProfiles.toDevice(AncPath.V2, AncMode.NOISE_CANCELLING, pudding))
         assertEquals(AncMode.ADAPTIVE, DropProfiles.fromDevice(AncPath.V2, 1, pudding))
         val custom = DropProfile(DropProfileMatch.Address("AA:BB:CC:DD:EE:FF"),
             audioCurationWrite = mapOf(AncMode.OFF to 9))
         val resolved = DropProfiles.resolve(DropOptions(listOf(custom)),
-            DropDevice("AA:BB:CC:DD:EE:FF", "Golden Ages 2"))
+            "AA:BB:CC:DD:EE:FF", "Golden Ages 2")
         assertEquals(9, resolved.audioCurationWrite?.get(AncMode.OFF))
         assertEquals(AncMode.TRANSPARENCY, resolved.audioCurationRead?.get(2))
         assertEquals(2, DropProfiles.gainToDevice(GainLevel.LOW, resolved))
-        val plain = DropProfiles.resolve(DropOptions(), DropDevice("00:00:00:00:00:00", "unknown"))
+        val plain = DropProfiles.resolve(DropOptions(), "00:00:00:00:00:00", "unknown")
         assertEquals(5, DropProfiles.toDevice(AncPath.V2, AncMode.LIVE, plain))
     }
 
@@ -56,18 +55,5 @@ class DropProtocolTest {
         assertEquals(6L, fw.buildId)
         assertEquals(-100, SourceCodec.peqPreGain(byteArrayOf(0, 255.toByte(), 0x9c.toByte(), 255.toByte(), 1)).centiDb)
         assertFailsWith<DropException.Protocol> { SourceCodec.snChunk(byteArrayOf(0), 0) }
-    }
-
-    @Test fun rfcommFramerHandlesFragmentsAndBarePdus() {
-        val pdu = byteArrayOf(0, 0x1d, 0, 1, 0x12)
-        val frame = byteArrayOf(0xff.toByte(), 4, 0, 1) + pdu
-        val framer = GaiaRfcommFramer()
-        assertTrue(framer.feed(frame.copyOfRange(0, 3)).isEmpty())
-        assertContentEquals(pdu, framer.feed(frame.copyOfRange(3, frame.size)).single())
-        assertTrue(framer.feed(pdu).isEmpty())
-        assertContentEquals(pdu, framer.feed(byteArrayOf(), endOfBurst = true).single())
-        assertFalse(framer.feed(byteArrayOf(0, 0x1d, 0)).isNotEmpty())
-        framer.reset()
-        assertContentEquals(pdu, framer.feed(byteArrayOf(0xff.toByte(), 3, 2, 1) + pdu).single())
     }
 }

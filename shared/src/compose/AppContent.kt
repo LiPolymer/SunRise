@@ -2,18 +2,21 @@ package ink.lipoly.app.sunrise.compose
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -24,13 +27,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import ink.lipoly.app.sunrise.drop.DropClient
-import ink.lipoly.app.sunrise.drop.DropDevice
-import ink.lipoly.app.sunrise.drop.DropEvent
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.dp
+import ink.lipoly.app.sunrise.headset.HeadsetClient
+import ink.lipoly.app.sunrise.headset.HeadsetDevice
+import ink.lipoly.app.sunrise.headset.HeadsetEvent
 import ink.lipoly.app.sunrise.drop.DropException
-import ink.lipoly.app.sunrise.drop.DropPhase
-import ink.lipoly.app.sunrise.drop.DropState
+import ink.lipoly.app.sunrise.headset.HeadsetPhase
+import ink.lipoly.app.sunrise.headset.HeadsetState
 import ink.lipoly.app.sunrise.drop.GaiaIds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -50,7 +54,7 @@ internal fun rememberAppNavigationState(): AppNavigationState = remember { AppNa
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AppContent(
-    client: DropClient?,
+    client: HeadsetClient?,
     missingPermissions: Set<String>,
     onRequestPermissions: () -> Unit,
     settings: UiSettings,
@@ -61,16 +65,17 @@ internal fun AppContent(
 ) {
         val page = navigation.page
         val diagnostics = navigation.diagnostics
-        val state = client?.state?.collectAsState()?.value ?: DropState()
+        val state = client?.state?.collectAsState()?.value ?: HeadsetState()
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
-        var candidates by remember(client) { mutableStateOf<List<DropDevice>>(emptyList()) }
-        var recentEvents by remember(client) { mutableStateOf<List<DropEvent>>(emptyList()) }
-        var confirmedReads by remember(client) { mutableStateOf<Set<OverviewControl>>(emptySet()) }
+        var candidates by remember(client) { mutableStateOf<List<HeadsetDevice>>(emptyList()) }
+        var recentEvents by remember(client) { mutableStateOf<List<HeadsetEvent>>(emptyList()) }
+        var confirmedReads by remember(client, state.device?.device, state.phase, state.controls.phase) {
+            mutableStateOf<Set<OverviewControl>>(emptySet())
+        }
         var working by remember(client) { mutableStateOf<String?>(null) }
         var notice by remember { mutableStateOf<String?>(null) }
         var refreshGeneration by remember { mutableIntStateOf(0) }
-        val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
         LaunchedEffect(notice) {
             notice?.let {
@@ -87,7 +92,7 @@ internal fun AppContent(
             if (client != null && missingPermissions.isEmpty()) client.startAutoConnect()
         }
         LaunchedEffect(client, state.phase, missingPermissions.isEmpty()) {
-            if (client != null && missingPermissions.isEmpty() && state.phase == DropPhase.SELECTION_REQUIRED) {
+            if (client != null && missingPermissions.isEmpty() && state.phase == HeadsetPhase.SELECTION_REQUIRED) {
                 try {
                     candidates = client.discoverConnectedDevices()
                 } catch (e: CancellationException) {
@@ -95,16 +100,17 @@ internal fun AppContent(
                 } catch (e: Exception) {
                     notice = tr(english, "发现设备失败：", "Device discovery failed: ") + errorMessage(e, english)
                 }
-            } else if (state.phase != DropPhase.SELECTION_REQUIRED) {
+            } else if (state.phase != HeadsetPhase.SELECTION_REQUIRED) {
                 candidates = emptyList()
             }
         }
-        LaunchedEffect(client, state.phase, state.device?.address, refreshGeneration) {
+        LaunchedEffect(client, state.phase, state.controls.phase, state.device?.device, missingPermissions.isEmpty(), refreshGeneration) {
             confirmedReads = emptySet()
-            if (client == null || !state.hasReadyGaia()) return@LaunchedEffect
+            if (client == null || missingPermissions.isNotEmpty() ||
+                state.phase != HeadsetPhase.READY || !state.controls.hasReadyGaia()) return@LaunchedEffect
             delay(500.milliseconds) // Let the client's initial battery/ANC reads run first.
-            val advertised = state.capabilities.gaiaFeatures
-            val incomplete = !state.capabilities.complete
+            val advertised = state.controls.capabilities.gaiaFeatures
+            val incomplete = !state.controls.capabilities.complete
             for (control in OverviewControl.entries) {
                 val feature = when (control) {
                     OverviewControl.GAIN -> GaiaIds.DAC_GAIN
@@ -116,6 +122,8 @@ internal fun AppContent(
                     OverviewControl.SPATIAL !in confirmedReads) continue
                 while (working != null) delay(100.milliseconds)
                 try {
+                    val current = client.state.value
+                    if (current.phase != HeadsetPhase.READY || !current.controls.hasReadyGaia()) return@LaunchedEffect
                     when (control) {
                         OverviewControl.GAIN -> client.gaia.getGain()
                         OverviewControl.LED -> client.gaia.isLedOn()
@@ -131,12 +139,16 @@ internal fun AppContent(
             }
         }
 
-        fun runAction(label: String, action: suspend DropClient.() -> Unit) {
+        fun runAction(label: String, control: Boolean = false, action: suspend HeadsetClient.() -> Unit) {
             val activeClient = client ?: return
             if (working != null || missingPermissions.isNotEmpty()) return
+            if (control && (activeClient.state.value.phase != HeadsetPhase.READY ||
+                !activeClient.state.value.controls.hasReadyGaia())) return
             working = label
             scope.launch {
                 try {
+                    if (control && (activeClient.state.value.phase != HeadsetPhase.READY ||
+                        !activeClient.state.value.controls.hasReadyGaia())) throw DropException.NotReady()
                     activeClient.action()
                 } catch (e: CancellationException) {
                     throw e
@@ -148,15 +160,34 @@ internal fun AppContent(
             }
         }
 
+        fun retryConnection() {
+            if (client == null || missingPermissions.isNotEmpty()) return
+            if (state.phase == HeadsetPhase.SELECTION_REQUIRED) {
+                scope.launch {
+                    try {
+                        candidates = client.discoverConnectedDevices()
+                        if (candidates.isEmpty()) {
+                            notice = tr(english, "未找到已连接的音频设备", "No connected audio devices found")
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        notice = tr(english, "发现设备失败：", "Device discovery failed: ") + errorMessage(e, english)
+                    }
+                }
+            } else {
+                client.startAutoConnect()
+            }
+        }
+
         val title = when {
             diagnostics -> tr(english, "高级诊断", "Advanced diagnostics")
-            page == MainPage.OVERVIEW -> tr(english, "概览", "Overview")
+            page == MainPage.OVERVIEW -> "SunRise"
             else -> tr(english, "设置", "Settings")
         }
         Scaffold(
-            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
-                LargeTopAppBar(
+                TopAppBar(
                     title = { Text(title) },
                     navigationIcon = {
                         if (diagnostics) TextButton(onClick = { navigation.diagnostics = false }) {
@@ -167,10 +198,10 @@ internal fun AppContent(
                         if (!diagnostics && page == MainPage.OVERVIEW) {
                             TextButton(onClick = {
                                 refreshGeneration++
-                                if (state.hasReadyGaia()) {
-                                    runAction(tr(english, "刷新", "Refresh")) {
+                                if (state.phase == HeadsetPhase.READY && state.controls.hasReadyGaia()) {
+                                    runAction(tr(english, "刷新", "Refresh"), control = true) {
                                         var firstFailure: Exception? = null
-                                        if (state.capabilities.ancModes.isNotEmpty()) {
+                                        if (state.controls.capabilities.ancModes.isNotEmpty()) {
                                             try {
                                                 gaia.getAncMode()
                                             } catch (e: CancellationException) {
@@ -188,13 +219,15 @@ internal fun AppContent(
                                         }
                                         firstFailure?.let { throw it }
                                     }
-                                } else if (state.phase != DropPhase.READY && client != null && missingPermissions.isEmpty()) {
-                                    client.startAutoConnect()
+                                } else if (state.phase != HeadsetPhase.READY) {
+                                    retryConnection()
                                 }
-                            }, enabled = client != null && working == null) { Text(tr(english, "刷新", "Refresh")) }
+                            }, enabled = client != null && missingPermissions.isEmpty() && working == null &&
+                                (state.phase != HeadsetPhase.READY || state.controls.hasReadyGaia())) {
+                                Text(tr(english, "刷新", "Refresh"))
+                            }
                         }
                     },
-                    scrollBehavior = scrollBehavior,
                 )
             },
             bottomBar = {
@@ -202,13 +235,13 @@ internal fun AppContent(
                     NavigationBarItem(
                         selected = page == MainPage.OVERVIEW,
                         onClick = { navigation.page = MainPage.OVERVIEW },
-                        icon = { Text("◉") },
+                        icon = { Text("◉", modifier = Modifier.clearAndSetSemantics {}) },
                         label = { Text(tr(english, "概览", "Overview")) },
                     )
                     NavigationBarItem(
                         selected = page == MainPage.SETTINGS,
                         onClick = { navigation.page = MainPage.SETTINGS },
-                        icon = { Text("⚙") },
+                        icon = { Text("⚙", modifier = Modifier.clearAndSetSemantics {}) },
                         label = { Text(tr(english, "设置", "Settings")) },
                     )
                 }
@@ -234,12 +267,12 @@ internal fun AppContent(
                     working = working,
                     modifier = Modifier.fillMaxSize().padding(padding),
                     onRequestPermissions = onRequestPermissions,
-                    onRetry = { client?.startAutoConnect() },
-                    onAnc = { mode -> runAction(tr(english, "设置降噪", "Set ANC")) { gaia.setAncMode(mode) } },
-                    onGain = { gain -> runAction(tr(english, "设置增益", "Set gain")) { gaia.setGain(gain) } },
-                    onLed = { enabled -> runAction("LED") { gaia.setLedOn(enabled) } },
-                    onSpatial = { enabled -> runAction(tr(english, "空间音频", "Spatial audio")) { gaia.setSpatialOn(enabled) } },
-                    onTracking = { mode -> runAction(tr(english, "头部追踪", "Head tracking")) { gaia.setHeadTracking(mode) } },
+                    onRetry = ::retryConnection,
+                    onAnc = { mode -> runAction(tr(english, "设置降噪", "Set ANC"), control = true) { gaia.setAncMode(mode) } },
+                    onGain = { gain -> runAction(tr(english, "设置增益", "Set gain"), control = true) { gaia.setGain(gain) } },
+                    onLed = { enabled -> runAction("LED", control = true) { gaia.setLedOn(enabled) } },
+                    onSpatial = { enabled -> runAction(tr(english, "空间音频", "Spatial audio"), control = true) { gaia.setSpatialOn(enabled) } },
+                    onTracking = { mode -> runAction(tr(english, "头部追踪", "Head tracking"), control = true) { gaia.setHeadTracking(mode) } },
                 )
                 else -> SettingsScreen(
                     settings = settings,
@@ -255,20 +288,26 @@ internal fun AppContent(
             }
         }
 
-        if (state.phase == DropPhase.SELECTION_REQUIRED && candidates.isNotEmpty()) {
+        if (state.phase == HeadsetPhase.SELECTION_REQUIRED && candidates.isNotEmpty()) {
             AlertDialog(
                 onDismissRequest = { candidates = emptyList() },
                 title = { Text(tr(english, "选择耳机", "Choose a headset")) },
-                text = { Column {
-                    candidates.forEach { candidate ->
-                        TextButton(onClick = {
-                            candidates = emptyList()
-                            runAction(tr(english, "连接", "Connect")) { connect(candidate) }
-                        }) {
-                            Text("${candidate.name ?: tr(english, "未知设备", "Unknown device")} · ${candidate.address}")
+                text = {
+                    Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                        Text(tr(english, "选择已连接的耳机：", "Select a connected headset:"))
+                        candidates.forEach { candidate ->
+                            TextButton(
+                                onClick = {
+                                    candidates = emptyList()
+                                    runAction(tr(english, "连接", "Connect")) { connect(candidate) }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("${candidate.name ?: tr(english, "未知设备", "Unknown device")} · ${candidate.address}")
+                            }
                         }
                     }
-                } },
+                },
                 confirmButton = {
                     TextButton(onClick = { candidates = emptyList() }) {
                         Text(tr(english, "稍后", "Later"))

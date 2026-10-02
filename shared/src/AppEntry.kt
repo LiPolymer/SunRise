@@ -4,11 +4,11 @@ import androidx.compose.runtime.Composable
 import ink.lipoly.app.sunrise.compose.AppContent
 import ink.lipoly.app.sunrise.compose.AppNavigationState
 import ink.lipoly.app.sunrise.compose.UiSettings
-import ink.lipoly.app.sunrise.drop.DropClient
+import ink.lipoly.app.sunrise.headset.HeadsetClient
 
 @Composable
 internal fun AppEntry(
-    client: DropClient?,
+    client: HeadsetClient?,
     missingPermissions: Set<String>,
     onRequestPermissions: () -> Unit,
     settings: UiSettings,

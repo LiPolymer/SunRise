@@ -7,21 +7,34 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="4da5517a-7372-45e2-b086-000027b1260f" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/AndroidProjectSystem.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/amper.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android-app/module.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android-app/src/AndroidManifest.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android-app/src/MainActivity.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/jvm-app/module.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/jvm-app/src/main.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kotlin" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/kotlin.bat" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/project.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/shared/module.yaml" afterDir="false" />
+    <list default="true" id="4da5517a-7372-45e2-b086-000027b1260f" name="Changes" comment="e">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android-app/src/MainActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android-app/src/MainActivity.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/module.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/shared/module.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/AppEntry.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/src/AppEntry.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/compose/AppContent.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/src/compose/AppContent.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/compose/DropDiagnostics.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/src/compose/DropDiagnostics.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/compose/OverviewRules.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/src/compose/OverviewRules.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/compose/OverviewScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/src/compose/OverviewScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/compose/SettingsScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/src/compose/SettingsScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/drop/AncVerification.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/src/drop/AncVerification.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/drop/DropApi.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/src/drop/DropApi.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/drop/DropPlatform.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/drop/DropProfile.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/src/drop/DropProfile.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src/drop/GaiaRfcommFramer.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src@android/compose/App.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/src@android/compose/App.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src@android/drop/AndroidDiscovery.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src@android/drop/AndroidDropClient.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src@android/drop/AndroidGattLink.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src@android/drop/AndroidRfcommLink.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src@android/drop/DropPlatform.android.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/src@jvm/drop/DropPlatform.jvm.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/test/compose/OverviewRulesTest.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/test/compose/OverviewRulesTest.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/test/drop/AncVerificationTest.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/test/drop/AncVerificationTest.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/test/drop/DropProtocolTest.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/test/drop/DropProtocolTest.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/test/drop/GaiaControlsImplTest.kt" beforeDir="false" afterPath="$PROJECT_DIR$/shared/test/drop/GaiaControlsImplTest.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/shared/test@jvm/drop/DropPlatformTest.kt" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -29,9 +42,10 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="64" />
+    <option name="cachedIndexableFilesCount" value="69" />
+    <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
-  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[PhysicalDevice::serial=R52Y703KZ5Y]" />
+  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[]" />
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
@@ -52,29 +66,33 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Android App.Module android-app.executor&quot;: &quot;Run&quot;,
-    &quot;CidrDebugProfileConversion&quot;: &quot;true&quot;,
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
-    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Android App.Module android-app.executor": "Run",
+    "CidrDebugProfileConversion": "true",
+    "Kotlin CLI.Module jvm-app.executor": "Run",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "cidr.known.project.marker": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "git-widget-placeholder": "master",
+    "kotlin-language-version-configured": "true",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "project.structure.last.edited": "Modules",
+    "project.structure.proportion": "0.0",
+    "project.structure.side.proportion": "0.0",
+    "settings.editor.selected.configurable": "preferences.pluginManager"
   }
-}</component>
+}]]></component>
   <component name="RunManager" selected="Android App.Module android-app">
     <configuration name="Module jvm-app" type="Amper.Run" nameIsGenerated="true">
       <option name="command" value="run" />
@@ -130,8 +148,8 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-jdk-30f59d01ecdd-a203e0a19954-intellij.indexing.shared.core-IU-262.10315.125" />
-        <option value="bundled-js-predefined-d6986cc7102b-4abd2a77f808-JavaScript-IU-262.10315.125" />
+        <option value="bundled-jdk-30f59d01ecdd-a203e0a19954-intellij.indexing.shared.core-IU-262.10968.63" />
+        <option value="bundled-js-predefined-d6986cc7102b-4abd2a77f808-JavaScript-IU-262.10968.63" />
       </set>
     </attachedChunks>
   </component>
@@ -147,6 +165,10 @@
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="e" />
+    <option name="LAST_COMMIT_MESSAGE" value="e" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />

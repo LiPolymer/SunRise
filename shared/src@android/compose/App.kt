@@ -7,12 +7,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import ink.lipoly.app.sunrise.AppEntry
-import ink.lipoly.app.sunrise.drop.DropClient
+import ink.lipoly.app.sunrise.headset.HeadsetClient
 
 @Composable
 @Preview
 fun App(
-    client: DropClient? = null,
+    client: HeadsetClient? = null,
     missingPermissions: Set<String> = emptySet(),
     onRequestPermissions: () -> Unit = {},
 ) {

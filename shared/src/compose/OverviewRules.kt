@@ -8,9 +8,8 @@ import ink.lipoly.app.sunrise.drop.GaiaIds
 
 enum class OverviewControl { GAIN, LED, SPATIAL, HEAD_TRACKING }
 
-fun DropState.hasReadyGaia(): Boolean = phase == DropPhase.READY && protocols.any {
-    it == DropProtocol.GAIA_BLE || it == DropProtocol.GAIA_RFCOMM
-}
+fun DropState.hasReadyGaia(): Boolean =
+    phase == DropPhase.READY && DropProtocol.GAIA_BLE in protocols
 
 fun shownAncModes(state: DropState, showWind: Boolean): List<AncMode> =
     if (!state.hasReadyGaia()) emptyList() else AncMode.entries.filter {

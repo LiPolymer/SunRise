@@ -2,6 +2,7 @@ package ink.lipoly.app.sunrise.drop
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Some headsets apply an ANC SET without sending a matching GAIA response.
@@ -11,7 +12,7 @@ internal suspend fun writeAndVerifyAncMode(
     requested: AncMode,
     write: suspend () -> Unit,
     read: suspend () -> AncMode,
-    wait: suspend (Long) -> Unit = { delay(it) },
+    wait: suspend (Long) -> Unit = { delay(it.milliseconds) },
 ): AncMode {
     write()
     wait(300)
