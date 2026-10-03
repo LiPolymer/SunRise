@@ -2,6 +2,7 @@ package ink.lipoly.app.sunrise.composeLegacy
 
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqFilter
+import ink.lipoly.app.sunrise.drop.PeqBiquad
 import kotlin.math.abs
 import kotlin.test.*
 import org.junit.Test
@@ -176,5 +177,28 @@ class ParamEqValuesTest {
         assertTrue(peqDraggedQ(4096, -10f, 320f, -1) < 4096)
         assertTrue(peqDraggedGain(119, -10f, 180f, 12.0) > 119)
         assertTrue(peqDraggedFrequency(1000, 10f, 320f) > 1000)
+    }
+
+    @Test fun pinchPreservesPrecisionDirectionAndRelativeSensitivity() {
+        assertEquals(4097, peqPinchedQ(4097, 0f, 320f))
+        assertTrue(peqPinchedQ(4097, 20f, 320f) < 4097)
+        assertTrue(peqPinchedQ(4097, -20f, 320f) > 4097)
+        assertEquals(peqPinchedQ(4097, 20f, 320f), peqPinchedQ(4097, 50f, 800f))
+        // Independently derive the half-bandwidth difference for Q=1 -> Q=2.
+        val halfDifference = (kotlin.math.asinh(0.25) - kotlin.math.asinh(0.5)) / kotlin.math.ln(2.0)
+        val span = (halfDifference * 2 * 320 / kotlin.math.log2(1000.0)).toFloat()
+        assertTrue(abs(peqPinchedQ(4096, span, 320f) - 8192) <= 1)
+    }
+
+    @Test fun pinchUsesFullDeviceRangeAndRejectsInvalidGeometry() {
+        assertEquals(1, peqPinchedQ(4097, 10000f, 320f))
+        assertEquals(65535, peqPinchedQ(4097, -10000f, 320f))
+        assertTrue(peqPinchedQ(408, 1f, 320f) < 408)
+        for (delta in listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY)) {
+            assertEquals(4097, peqPinchedQ(4097, delta, 320f))
+        }
+        for (width in listOf(0f, -1f, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY)) {
+            assertEquals(4097, peqPinchedQ(4097, 20f, width))
+        }
     }
 }

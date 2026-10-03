@@ -71,8 +71,10 @@ internal object GaiaBluetrumPeqCodec {
         val bands = List(count) { position ->
             val offset = 4 + 7 * position
             val filterId = payload[offset + 4].toInt() and 0xff
-            val filter = PeqFilter.entries.firstOrNull { it.gaiaId == filterId }
-                ?: throw DropException.UnsupportedCapability("Bluetrum filter $filterId")
+            // Official Bluetrum bulk writes use 0 for peaking, not GAIA's BYPASS=0.
+            val filter = if (filterId == 0) PeqFilter.PEAKING else
+                PeqFilter.entries.firstOrNull { it.gaiaId == filterId }
+                    ?: throw DropException.UnsupportedCapability("Bluetrum filter $filterId")
             val band = GaiaPeqBand(start + position, GaiaCodec.u16be(payload, offset),
                 signed16(payload, offset + 5), GaiaCodec.u16be(payload, offset + 2), filter)
             try {
@@ -89,6 +91,7 @@ internal object GaiaBluetrumPeqCodec {
         require(bands.size in 1..7 && totalGainRaw in -32768..32767)
         bands.forEachIndexed { position, band ->
             validateBand(band)
+            require(band.filter == PeqFilter.PEAKING) { "Bluetrum writes currently support peaking only" }
             require(band.index == bands.first().index + position)
         }
         val payload = ByteArray(4 + 7 * bands.size)
@@ -99,7 +102,7 @@ internal object GaiaBluetrumPeqCodec {
             val offset = 4 + 7 * position
             put16(payload, offset, band.frequencyHz)
             put16(payload, offset + 2, band.qRaw)
-            payload[offset + 4] = band.filter.gaiaId.toByte()
+            payload[offset + 4] = 0
             put16(payload, offset + 5, band.gainRaw)
         }
         return payload

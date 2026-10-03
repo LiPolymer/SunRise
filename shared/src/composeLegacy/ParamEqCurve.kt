@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqFilter
+import ink.lipoly.app.sunrise.drop.PeqBiquad
 import kotlin.math.*
 
 private val bandColors = listOf(Color(0xffe69f00), Color(0xff56b4e9), Color(0xff009e73), Color(0xffcc79a7), Color(0xffd55e00), Color(0xff0072b2))
@@ -106,7 +107,7 @@ internal fun ParamEqCurve(
     }
     Box(modifier
         .onSizeChanged { measuredSize = it }
-        .semantics { contentDescription = tr(english, "参数响应估算；使用下方滑杆可无障碍编辑", "Estimated parameter response; use the sliders below for accessible editing") }
+        .semantics { contentDescription = tr(english, "参数响应估算；双指横向开合调整所选频段 Q，或使用下方滑杆编辑", "Estimated parameter response; spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below") }
         .focusRequester(focusRequester)
         .onKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown || !latestEnabled || editor == null || editor.state.value.isEditing) return@onKeyEvent false
@@ -165,25 +166,91 @@ internal fun ParamEqCurve(
                 val hit = if (handleSide != 0) selected else currentBands
                     .filter { band -> p.point(band)?.let { (it - down.position).getDistance() <= radius } == true }
                     .minWithOrNull(compareBy<GaiaPeqBand> { if (it.index == latestSelected) 0 else 1 }.thenBy { (p.point(it)!! - down.position).getDistance() }.thenBy { it.index })
-                    ?: return@awaitEachGesture
-                if (hit == null) return@awaitEachGesture
-                latestSelect(hit.index)
-                focusRequester.requestFocus()
+                if (hit == null && (down.type != PointerType.Touch || down.isConsumed ||
+                        down.position.x !in p.left..(p.left + p.width) ||
+                        down.position.y !in p.top..(p.top + p.height))) return@awaitEachGesture
+                if (down.type == PointerType.Touch && down.isConsumed) return@awaitEachGesture
+                hit?.let {
+                    latestSelect(it.index)
+                    focusRequester.requestFocus()
+                }
                 var claimed = false
                 var groupStarted = false
                 var removedSlop = Offset.Zero
                 var lockedAxis = 0
                 var released = false
+                var secondId: PointerId? = null
+                var pairEnded = false
+                var pairIndex = -1
+                var initialSpan = 0f
+                var initialQ = 0
+                var pinchWidth = 0f
+                var firstEvent = true
                 try {
                     while (true) {
-                        val event = awaitPointerEvent()
-                        val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+                        // awaitFirstDown may return an event containing both touch downs.
+                        val event = if (firstEvent) {
+                            firstEvent = false
+                            currentEvent
+                        } else awaitPointerEvent()
+                        val pointer = event.changes.firstOrNull { it.id == down.id }
+                        if (secondId != null) {
+                            val second = event.changes.firstOrNull { it.id == secondId }
+                            val now = editor.state.value.draft.firstOrNull { it.index == pairIndex }
+                            if (pointer?.pressed != true || second?.pressed != true || !latestEnabled ||
+                                now == null || now.filter == PeqFilter.BYPASS || now.qRaw <= 0 ||
+                                (!groupStarted && editor.state.value.isEditing)) pairEnded = true
+                            if (!pairEnded && pointer != null && second != null && now != null) {
+                                val difference = abs(pointer.position.x - second.position.x) - initialSpan
+                                val delta = sign(difference) * max(abs(difference) - viewConfiguration.touchSlop, 0f)
+                                val raw = peqPinchedQ(initialQ, delta, pinchWidth)
+                                if (raw != now.qRaw) {
+                                    if (!groupStarted) { editor.beginEdit(); groupStarted = true }
+                                    editor.editBand(now.copy(qRaw = raw))
+                                }
+                            }
+                            // Once a pair is admitted, never fall back to node drag or replace a lost finger.
+                            event.changes.forEach { it.consume() }
+                            if (event.changes.none { it.pressed }) break
+                            continue
+                        }
+                        if (pointer == null) break
                         if (!pointer.pressed) { released = true; break }
-                        if (!latestEnabled || (!claimed && pointer.isConsumed)) break
+                        if (!latestEnabled || (!claimed && pointer.isConsumed) ||
+                            (!groupStarted && editor.state.value.isEditing)) break
+                        if (down.type == PointerType.Touch) {
+                            val second = event.changes.firstOrNull {
+                                it.id != down.id && it.type == PointerType.Touch && it.changedToDown() &&
+                                    it.position.x in p.left..(p.left + p.width) &&
+                                    it.position.y in p.top..(p.top + p.height)
+                            }
+                            val target = editor.state.value.draft.firstOrNull { it.index == (hit?.index ?: latestSelected) }
+                            if (second != null && pointer.position.x in p.left..(p.left + p.width) &&
+                                pointer.position.y in p.top..(p.top + p.height) &&
+                                target != null && target.filter != PeqFilter.BYPASS && target.qRaw > 0) {
+                                secondId = second.id
+                                pairIndex = target.index
+                                initialQ = target.qRaw
+                                initialSpan = abs(pointer.position.x - second.position.x)
+                                pinchWidth = p.width
+                                claimed = true
+                                event.changes.forEach { it.consume() }
+                                continue
+                            }
+                        }
+                        if (hit == null) {
+                            // Observe the parent's final consumption; blank single-finger scrolling wins.
+                            if (awaitPointerEvent(PointerEventPass.Final).changes.any { it.id == down.id && it.isConsumed }) break
+                            continue
+                        }
                         val displacement = pointer.position - down.position
                         if (!claimed) {
                             val distance = displacement.getDistance()
-                            if (distance <= viewConfiguration.touchSlop) continue
+                            if (distance <= viewConfiguration.touchSlop) {
+                                if (down.type == PointerType.Touch &&
+                                    awaitPointerEvent(PointerEventPass.Final).changes.any { it.id == down.id && it.isConsumed }) break
+                                continue
+                            }
                             claimed = true
                             removedSlop = displacement * (viewConfiguration.touchSlop / distance)
                             lockedAxis = if (abs(displacement.x) >= abs(displacement.y)) 1 else 2
@@ -205,7 +272,7 @@ internal fun ParamEqCurve(
                         }
                         pointer.consume()
                     }
-                    if (!claimed && released && mouse && handleSide == 0) {
+                    if (!claimed && released && mouse && handleSide == 0 && hit != null) {
                         if (lastClickIndex == hit.index && down.uptimeMillis - lastClickTime <= viewConfiguration.doubleTapTimeoutMillis) {
                             editor.state.value.draft.firstOrNull { it.index == hit.index }?.let { oneEdit(peqReset(it)) }
                             lastClickIndex = -1

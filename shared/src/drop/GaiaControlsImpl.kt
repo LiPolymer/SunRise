@@ -1,13 +1,48 @@
 package ink.lipoly.app.sunrise.drop
 
+import ink.lipoly.app.sunrise.blueConnector.BtException
+import ink.lipoly.app.sunrise.blueConnector.BtRfcomm
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 /**
- * Single binding controls: codec and Bluetrum PEQ use one transaction for writes and readback.
- * Confirmed snapshots contain device values only; transport completion is not application or Flash saving.
+ * Single binding controls: codec verification and Bluetrum PEQ reads/writes each own one transaction.
+ * PEQ writes complete transport only; confirmed snapshots come exclusively from explicit device reads.
  * ANC retains its bounded GET verification; other existing operations are unchanged.
  */
-internal class GaiaControlsImpl(private val client: DropControlSession) : GaiaControls {
+internal class GaiaControlsImpl(
+    private val client: DropControlSession,
+    /** 经典 RFCOMM 通道；提供时结构化 EQ 写入走该通道，BLE 只用于读取与控件。 */
+    private val classicEq: BtRfcomm? = null,
+) : GaiaControls {
+    /** Transaction-confined sizing only, never a verified current device configuration. */
+    private var paramEqWriteBandCount = 0
+
+    private companion object {
+        /**
+         * Official community apply selects USER63 and calls the bulk write from a 100 ms timer,
+         * without awaiting the selection reply. Measured on device: 105 ms between the two frames.
+         */
+        const val PRESET_ACTIVATION_DELAY_MILLIS = 100L
+
+        /**
+         * 经典通道没有 ATT MTU，可用写入预算是单字节长度字段上限加固定头部；换算后仍为 7 段，
+         * 与官版 `sendBluetrumSetGainsChunk` 的块大小一致。
+         */
+        const val CLASSIC_WRITE_SIZE = GaiaRfcomm.MAX_PAYLOAD + 8
+
+        /** 单帧写入尝试次数：首次之外每次都在重连后重试。实机首帧偶发失败一次以上，故留三次。 */
+        const val CLASSIC_WRITE_ATTEMPTS = 3
+
+        /** 重连前的等待：对端释放刚断开的 SPP 通道需要时间，立即重连容易再次失败。 */
+        const val CLASSIC_RETRY_DELAY_MILLIS = 150L
+    }
+
+    private fun forgetParamEq() {
+        paramEqWriteBandCount = 0
+        clearState { it.copy(paramEq = null) }
+    }
+
     private suspend fun request(feature: Int, command: Int, payload: ByteArray = byteArrayOf()): GaiaPacket =
         client.requestGaia(GaiaCommand(feature, command, payload))
 
@@ -190,7 +225,7 @@ internal class GaiaControlsImpl(private val client: DropControlSession) : GaiaCo
     override suspend fun setEqualizerPreset(index: Int): Int {
         require(index in 0..255)
         return client.withGaiaTransaction {
-            client.mutate { it.copy(paramEq = null) }
+            forgetParamEq()
             request(GaiaCommand(GaiaIds.MUSIC_PROCESSING, GaiaIds.Eq.SET_PRESET, byteArrayOf(index.toByte())))
             GaiaBluetrumPeqCodec.byteValue(
                 request(GaiaCommand(GaiaIds.MUSIC_PROCESSING, GaiaIds.Eq.GET_PRESET)).payload, "EQ preset")
@@ -231,66 +266,102 @@ internal class GaiaControlsImpl(private val client: DropControlSession) : GaiaCo
         }
         return GaiaParamEqState(presets, preset, totalGain!!, bands).also { actual ->
             client.mutate { it.copy(paramEq = actual) }
+            paramEqWriteBandCount = actual.bandCount
         }
     }
 
-    override suspend fun getParamEq(): GaiaParamEqState = try {
-        client.withGaiaTransaction { readParamEq() }
-    } catch (e: Exception) {
-        clearState { it.copy(paramEq = null) }
-        throw e
+    override suspend fun getParamEq(): GaiaParamEqState = client.withGaiaTransaction {
+        try {
+            readParamEq()
+        } catch (e: Exception) {
+            // Invalidate before releasing the mutex, not after a later successful transaction.
+            forgetParamEq()
+            throw e
+        }
     }
 
-    override suspend fun setParamEq(bands: List<GaiaPeqBand>): GaiaParamEqState {
+    override suspend fun setParamEq(bands: List<GaiaPeqBand>) {
         // Snapshot and validate the entire input before issuing any command, including the last band.
         val target = bands.toList()
-        GaiaBluetrumPeqCodec.validateBands(target)
-        var writeAttempted = false
-        return try {
-            client.withGaiaTransaction {
-                val loaded = client.state.value.paramEq
-                    ?: throw DropException.NotReady()
+        val totalGainRaw = PeqHeadroom.preGainRaw(target)
+        client.withGaiaTransaction {
+            try {
+                val expectedCount = paramEqWriteBandCount
+                if (expectedCount == 0) throw DropException.NotReady()
                 val count = eqValue(GaiaIds.Eq.GET_BAND_COUNT)
-                if (count != loaded.bandCount || target.size != count)
+                if (count != expectedCount || target.size != count)
                     throw DropException.Protocol("EQ band count changed; reload before editing")
-                var start = 0
-                while (start < count) {
-                    val end = start + minOf(GaiaBluetrumPeqCodec.batchSize(maxWriteSize), count - start) - 1
-                    val batch = target.subList(start, end + 1)
-                    val payload = GaiaBluetrumPeqCodec.encode(batch, loaded.totalGainRaw)
-                    writeAttempted = true
-                    send(GaiaCommand(GaiaIds.MUSIC_PROCESSING, GaiaIds.Eq.SET_USER_CONFIG, payload))
-                    val readback = readRange(start..end)
-                    if (readback.totalGainRaw != loaded.totalGainRaw || readback.bands != batch)
-                        throw DropException.ParamEqMismatch(readParamEq())
-                    start = end + 1
+                client.mutate { it.copy(paramEq = null) }
+                val channel = classicEq
+                if (channel == null) {
+                    emitParamEq(GaiaBluetrumPeqCodec.batchSize(maxWriteSize), count, target, totalGainRaw) {
+                        send(it)
+                    }
+                } else {
+                    // 官版抓包中 EQ 配置走经典 RFCOMM；同样的字节经 BLE GATT 写入会把设备置于
+                    // 单侧无声状态，因此有经典通道时不再回退到 BLE 写入。
+                    channel.open()
+                    emitParamEq(GaiaBluetrumPeqCodec.batchSize(CLASSIC_WRITE_SIZE), count, target, totalGainRaw) {
+                        channel.writeFrame(it)
+                    }
                 }
-                if (eqValue(GaiaIds.Eq.GET_PRESET) != GaiaBluetrumPeqCodec.USER_PRESET) {
-                    send(GaiaCommand(GaiaIds.MUSIC_PROCESSING, GaiaIds.Eq.SET_PRESET,
-                        byteArrayOf(GaiaBluetrumPeqCodec.USER_PRESET.toByte())))
-                    if (eqValue(GaiaIds.Eq.GET_PRESET) != GaiaBluetrumPeqCodec.USER_PRESET)
-                        throw DropException.ParamEqMismatch(readParamEq())
-                }
-                val actual = readParamEq()
-                if (actual.currentPreset != GaiaBluetrumPeqCodec.USER_PRESET ||
-                    actual.totalGainRaw != loaded.totalGainRaw || actual.bands != target)
-                    throw DropException.ParamEqMismatch(actual)
-                actual
+            } catch (e: Exception) {
+                forgetParamEq()
+                throw e
             }
-        } catch (e: DropException.ParamEqMismatch) {
-            throw e
-        } catch (e: CancellationException) {
-            clearState { it.copy(paramEq = null) }
-            throw e
-        } catch (e: DropException.Disconnected) {
-            clearState { it.copy(paramEq = null) }
-            throw e
-        } catch (e: Exception) {
-            clearState { it.copy(paramEq = null) }
-            if (writeAttempted)
-                throw DropException.Unverified("Parametric EQ (possibly partially applied)", e)
-            throw e
         }
+    }
+
+    /**
+     * 产生一次结构化写入的命令序列：先无条件选择 USER63，等 [PRESET_ACTIVATION_DELAY_MILLIS]，
+     * 再按 [blockBands] 分块发送全部参数。发送通道由 [emit] 提供（BLE 事务或经典 RFCOMM）；
+     * 本方法只负责顺序与分块，不等待任何回执，也不证明 DSP 已应用。
+     */
+    private suspend fun emitParamEq(
+        blockBands: Int,
+        count: Int,
+        target: List<GaiaPeqBand>,
+        totalGainRaw: Int,
+        emit: suspend (GaiaCommand) -> Unit,
+    ) {
+        emit(GaiaCommand(GaiaIds.MUSIC_PROCESSING, GaiaIds.Eq.SET_PRESET,
+            byteArrayOf(GaiaBluetrumPeqCodec.USER_PRESET.toByte())))
+        delay(PRESET_ACTIVATION_DELAY_MILLIS)
+        var start = 0
+        while (start < count) {
+            val end = start + minOf(blockBands, count - start) - 1
+            val payload = GaiaBluetrumPeqCodec.encode(target.subList(start, end + 1), totalGainRaw)
+            emit(GaiaCommand(GaiaIds.MUSIC_PROCESSING, GaiaIds.Eq.SET_USER_CONFIG, payload))
+            start = end + 1
+        }
+    }
+
+    /**
+     * 经典通道的单帧写入：组帧后写出。传输失败时关闭通道、等待后重连，重试同一帧，最多
+     * [CLASSIC_WRITE_ATTEMPTS] 次尝试——只有整帧写出或整帧未写出，不重发已成功的帧，也不回退 BLE；
+     * 权限/未打开等非瞬时错误不做重试。全部尝试失败后按本绑定统一表映射抛出。
+     * 平台写入成功只表示字节已交给 RFCOMM，不表示设备应用了配置。
+     */
+    private suspend fun BtRfcomm.writeFrame(command: GaiaCommand) {
+        val frame = GaiaRfcomm.frame(command)
+        var last: BtException? = null
+        for (attempt in 0 until CLASSIC_WRITE_ATTEMPTS) {
+            try {
+                if (attempt > 0) {
+                    close()
+                    delay(CLASSIC_RETRY_DELAY_MILLIS)
+                    open()
+                }
+                write(frame)
+                return
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: BtException) {
+                last = e
+                if (e !is BtException.Transport) break
+            }
+        }
+        throw client.normalizeTransport(last ?: BtException.Transport("RFCOMM frame was not written"))
     }
 
     override suspend fun getGestureConfiguration(gesture: Int, context: Int): GaiaPacket {

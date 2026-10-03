@@ -36,4 +36,6 @@ internal interface DropControlSession {
     suspend fun readSourceCapability(): ByteArray
     /** 直接读取 info 特征，缺失时拒绝；固件 fallback 由调用者决定。 */
     suspend fun readSourceInfo(): ByteArray
+    /** 把平台蓝牙异常按本绑定的统一表映射为 [DropException]；已是 DropException 的原样返回。 */
+    fun normalizeTransport(error: Exception): DropException
 }

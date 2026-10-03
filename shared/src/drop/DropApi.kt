@@ -18,7 +18,7 @@ enum class HeadTrackingMode { OFF, THIRTY_DEGREES, SURROUND }
 /** 可查询启用开关的 LC3、LDAC、LHDC；开关结果不表示当前音频链路正在使用该编码。 */
 enum class AudioCodec { LC3, LDAC, LHDC }
 
-/** Bluetrum GAIA filter IDs; 9ECA uses a separate format. */
+/** Generic GAIA filter IDs; Bluetrum bulk encoding is separate and currently writes peaking as 0. */
 enum class PeqFilter(val gaiaId: Int) {
     BYPASS(0), LOW_PASS(7), HIGH_PASS(8), LOW_SHELF(10), HIGH_SHELF(11), PEAKING(13),
 }
@@ -158,7 +158,7 @@ sealed class DropException(message: String, cause: Throwable? = null) : Exceptio
     /** 绑定已关闭、换会话、失去连接或控制器已关闭；旧控件引用也抛此异常。 */
     class Disconnected : DropException("Earbud disconnected")
     /**
-     * ANC/codec/PEQ 已写入但后续 GET 无法确认；对应快照变未知，PEQ 可能已部分应用。
+     * ANC/codec 已写入但后续 GET 无法确认；对应快照变未知。
      * @property operation 未能确认的操作。
      * @param cause GET 读回失败的原异常；取消/断连不在此包装。
      */
@@ -174,9 +174,6 @@ sealed class DropException(message: String, cause: Throwable? = null) : Exceptio
     /** Actual device codec option differs from the requested option. */
     class CodecStateMismatch(val codec: AudioCodec, val requested: Boolean, val observed: Boolean) :
         DropException("$codec readback mismatch: requested $requested, observed $observed")
-    /** A write may be partially applied; observed is a complete actual device configuration. */
-    class ParamEqMismatch(val observed: GaiaParamEqState) :
-        DropException("Parametric EQ readback mismatch; device may have partially applied the changes")
     /**
      * 负载短缺、未知枚举、编码不合法或数据超过协商 GATT MTU 等协议错误。
      * @param message 实际结构/数值错误说明。
@@ -252,8 +249,14 @@ interface GaiaControls {
     suspend fun setEqualizerPreset(index: Int): Int
     /** Reads complete GAIA Bluetrum USER63 configuration; unsupported/malformed readback clears paramEq. */
     suspend fun getParamEq(): GaiaParamEqState
-    /** Writes a complete raw snapshot in MTU-sized batches and verifies it; does not save to Flash. */
-    suspend fun setParamEq(bands: List<GaiaPeqBand>): GaiaParamEqState
+    /**
+     * Selects USER63 first, waits 100 ms, then sends one complete peaking-only snapshot using
+     * Bluetrum type 0 and automatic whole-EQ attenuation, mirroring the official apply order.
+     * When the binding has a classic RFCOMM channel, frames go over it (official transport);
+     * otherwise they go over BLE GATT. No preset query, automatic readback or Flash save;
+     * transport completion does not prove DSP application.
+     */
+    suspend fun setParamEq(bands: List<GaiaPeqBand>)
     /** 查询原始手势配置；[gesture]、[context] 均须为 0..255，返回未进一步解释的包。 */
     suspend fun getGestureConfiguration(gesture: Int, context: Int): GaiaPacket
     /** 请求恢复手势配置并返回匹配响应；不声明设备已持久化或读回验证。 */

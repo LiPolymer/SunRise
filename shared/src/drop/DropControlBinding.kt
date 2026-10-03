@@ -1,6 +1,7 @@
 package ink.lipoly.app.sunrise.drop
 
 import ink.lipoly.app.sunrise.blueConnector.BtException
+import ink.lipoly.app.sunrise.blueConnector.BtRfcomm
 import ink.lipoly.app.sunrise.blueConnector.GattCharacteristic
 import ink.lipoly.app.sunrise.blueConnector.GattEvent
 import ink.lipoly.app.sunrise.blueConnector.GattProperty
@@ -38,6 +39,8 @@ internal class DropControlBinding(
     private val isCurrent: (DropControlBinding) -> Boolean,
     private val publishState: (DropControlBinding) -> Unit,
     private val publishEvent: (DropControlBinding, DropEvent) -> Unit,
+    /** 经典 RFCOMM 通道；非空时结构化 EQ 写入走经典链路，BLE 只负责读取与控件。 */
+    classicEq: BtRfcomm? = null,
 ) : DropControlSession {
     // lifetime 不含初始化子任务，解绑可立即取消外部调用，不必等初始化协程收尾。
     private val lifetime = Job(parentScope.coroutineContext[Job])
@@ -69,7 +72,7 @@ internal class DropControlBinding(
     override val state = mutableState.asStateFlow()
     /** 状态观察与 awaitReady 共用的初始化结果；每个 epoch 仅启动一次，调用方取消不取消它。 */
     val ready = CompletableDeferred<Unit>()
-    val gaia: GaiaControls = GaiaControlsImpl(this)
+    val gaia: GaiaControls = GaiaControlsImpl(this, classicEq)
     val source: SourceControls = SourceControlsImpl(this)
     val isOpen: Boolean get() = !closed.value && lifetime.isActive
 
@@ -499,6 +502,8 @@ internal class DropControlBinding(
      * 只对通用传输错误转换；Timeout/Disconnected/UnsupportedOperation/InvalidGattHandle/
      * PacketTooLarge 分别转控制异常，其余保留原异常为 Transport.cause；调用方取消在外层透传。
      */
+    override fun normalizeTransport(error: Exception): DropException = normalize(error)
+
     private fun normalize(error: Exception): DropException = when (error) {
         is DropException -> error
         is BtException.Timeout -> DropException.Timeout(error.operation)

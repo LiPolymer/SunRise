@@ -21,6 +21,8 @@ internal class AndroidBtDevice(
     private val mutableInfo = MutableStateFlow(BtDeviceInfo())
     override val info = mutableInfo.asStateFlow()
     override val gatt = AndroidBtGatt(this)
+    /** LE 地址上该句柄通常找不到 SPP 记录；能否连接由打开结果决定，不在此处推断设备类型。 */
+    override val rfcomm: BtRfcomm = AndroidBtRfcomm(owner, nativeDevice, address)
 
     /** 仅在事实有变化时替换状态，返回是否变化；首次发现事件由管理器的 observed 集合决定。 */
     internal fun updateInfo(value: BtDeviceInfo): Boolean {

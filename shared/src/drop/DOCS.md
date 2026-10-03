@@ -195,12 +195,15 @@ DropController(device, options = DropOptions(), profileDevice = device)
 ### GAIA Bluetrum 参数 EQ
 
 - `getParamEq(): GaiaParamEqState` 在单事务读取 STATE、PRESETS、PRESET、BAND_COUNT 和全部连续范围，完成后才发布。STATE 必须为 1，预设列表严格 `count + count个ID` 且含 USER=63，段数 1..255。STATE=0、无 USER63、未知 filter/不符合 Bluetrum 布局时不可编辑；不能靠设备名或 feature5 宣称支持。9ECA USER=7 和其 PEQ API 不变，普通 EQ 页面不使用该后端。
-- `GaiaPeqBand(index,frequencyHz,gainRaw,qRaw,filter)` 按设备固定索引排列，不按频率重排。`gainDb=gainRaw/60.0`、`q=qRaw/4096.0`；频率 u16、Q u16、gain s16BE。启用段频率20..20000Hz、qRaw1..65535；Bypass 的频率/Q 原始 u16 可为0，未修改字段原样透传。数值输入先拒绝非有限和溢出，再以最近整数 Hz、gain×60/Q×4096 向零截断转换，不能从显示舍入值重建未改 raw。
-- `PeqFilter` IDs：BYPASS=0、LOW_PASS=7、HIGH_PASS=8、LOW_SHELF=10、HIGH_SHELF=11、PEAKING=13。配置负载为 `start:u8,end:u8,totalGain:s16BE,N×(frequency:u16BE,q:u16BE,filter:u8,gain:s16BE)`，严格 `4+7N` 字节。[INFERENCE] offset2..3 与写入 totalGain 对应；只保留原始 s16，不提供总增益控制，也不声明该 header 是已确认的 dB 读值。
+- `GaiaPeqBand(index,frequencyHz,gainRaw,qRaw,filter)` 按设备固定索引排列，不按频率重排。`gainDb=gainRaw/60.0`、`q=qRaw/4096.0`；频率 u16、Q u16、gain s16BE。峰值段频率20..20000Hz、qRaw1..65535。通用编辑模型仍保留 Bypass 原始 u16 字段，但本 Bluetrum 写入路径不接受 Bypass。数值输入先拒绝非有限和溢出，再以最近整数 Hz、gain×60/Q×4096 向零截断转换，不能从显示舍入值重建未改 raw。
+- `PeqFilter.gaiaId` 是通用 GAIA 编号：BYPASS=0、LOW_PASS=7、HIGH_PASS=8、LOW_SHELF=10、HIGH_SHELF=11、PEAKING=13，不是 Bluetrum 批量写入编码。当前写入路径仅允许 PEAKING，写入字节固定 0，与官版实际五段写入日志一致；类型 0 读回按峰值显示并校验频率/Q，不当作 Bypass。其余既有已知编号的读取不变；完整未知字节（包括29）仍抛 UnsupportedCapability，不 mask 或自动改写。类型0读回的 DSP 语义尚待实机验证。配置负载为 `start:u8,end:u8,totalGain:s16BE,N×(frequency:u16BE,q:u16BE,filter:u8,gain:s16BE)`，严格 `4+7N` 字节；写入 header 现在由整组最新参数计算，不沿用读取的原始值。
 - 每个范围最多 `min(7,floor((MTU−3−8)/7))` 段，GET 和 SET 都使用此上限以容纳完整同尺寸回复。MTU23 每包1段、MTU247 最多7段；PDU完整写入，无通用分片/截断，也不拼猜通知聚合。
-- `setParamEq(bands): GaiaParamEqState` 接受全部频段快照，写前整体检查所有 raw/连续索引并重新确认 BAND_COUNT。按已确认 header 批量发送 command6，每批立即 GET 同范围精确比较 raw；首个失配停止后续写，读取完整 actual 并抛 `ParamEqMismatch(observed)`。读不全则清 paramEq 并抛 `Unverified`，不能说全量已应用。
-- 配置逐批确认后才需要时发送 command3 USER63，再 GET 确认激活并完整重读。页面加载零写入；编辑才切用户 EQ。Codec 选项不添加互斥规则、不自动重置 EQ，应用在 codec 修改后重新读取 EQ 以设备响应判断可用性；LHDC 限制不适用于所有型号。
-- 没有自动重试、回滚或 Flash 保存；command7/8 不由结构化 PEQ 调用。写后失败可能已部分应用，取消/断连仍原样传播并尽力清本绑定快照。读回确认不等于断电持久化、设备设置不等于系统协商结果。
+- `setParamEq(bands): Unit` 接受全部频段快照，任何命令前整体检查所有 raw/连续索引及全部为 PEAKING，并计算一次全局前置衰减。必须先成功执行 `getParamEq()` 建立本控件的段数元数据，再重新查询 BAND_COUNT；段数变化要求重新读取。全部 command6 按 MTU 批量发送，同一快照的每包使用同一新 header；不逐批 GET、比较参数或在末尾完整重读。发送开始即清除 `DropState.paramEq`，成功也不合成设备实际配置；只保留最近实际读取的段数作为连续写入元数据。
+- 前置增益由 `PeqHeadroom` 与界面共享的 `PeqBiquad` 计算：48 kHz、20..20000 Hz 的768个对数点，逐点相加各峰值段的响应 dB 得到级联响应，取最大值 M。M<0 时补偿为0；否则 `floor(-10*M)/10`，若结果为负再减0.1 dB。最后 `(preGain*60).toInt()` 向零截断后写入 signed16，不能用 round 或 epsilon 替代：500/1000 Hz 各+6 dB、Q=1 时结果为-491（实际-8.18333…dB），不是-492。平直和全削减不正向放大。非有限响应或超范围补偿在任何命令前抛 IllegalArgumentException，不截断溢出或使用旧 header。
+- 按现有模型已量化的 Hz、gainRaw/60、qRaw/4096 计算；官版是在量化前使用 Flutter 浮点参数，不宣称逐位等价或耳机 DSP/真实峰值保护。频率/Q 修改、撤销、重置、平直均由完整快照重算；不改各段 raw 数据。界面预览按草稿缓存，发送成功仍未验证，曲线不包含前置衰减；读取模型的 `totalGainRaw` 仍保留设备实际原始字节，不替换为估算值。
+- 在同一事务中先查询段数（保留写前一致性检查），再发送 command3 USER63，等待 100 ms，最后发送全部批量参数。这镜像官版社区应用顺序：官版 setEQ(63) 后由 100 ms 定时器提交整组参数、不等待选择回执，实机抓包两帧间隔约 105 ms。激活无条件发送，不再查询当前预设，也不在写入后切换到 63；不执行切换后的确认 GET。选择与参数写入都不是 EQ 参数或 DSP 验证。段数查询失败在参数写入前拒绝；任一发送失败都会失效元数据，完整重读后才可继续。页面加载零写入；编辑才切用户 EQ。Codec 选项不添加互斥规则、不自动重置 EQ，应用在 codec 修改后重新读取 EQ 以设备响应判断可用性；LHDC 限制不适用于所有型号。显式切预设会废弃写入元数据，下次结构化 EQ 写入前须重新读取。
+- **传输选择**：绑定带有经典 RFCOMM 通道时，激活与批量参数经 `GaiaRfcomm` 组帧走后者的字节流，BLE GATT 只保留段数查询、完整读取与控件；没有经典通道时保持原有 BLE 写入。经典帧为 `SOF 0xFF | 版本 0x04 | 标志 0x00 | 负载长度` 加标准 `00 1D` GAIA 帧，长度字节只计 GAIA 负载，因此一块最多 7 段；RFCOMM 自身的地址/控制/长度/校验由平台栈生成。实机对照显示同样字节经 BLE 写入会使设备进入单侧无声状态，而官版经经典链路写入同一组字节正常，因此经典写入失败时不回退 BLE、不重发已成功的帧。单帧传输失败（平台 Transport）时关闭通道、等待 150 ms 后重连再写同一帧，每帧最多三次尝试；权限/未打开等非瞬时错误不重试。全部尝试失败则失效元数据并抛出映射后的异常。
+- 没有整组重试、回滚或 Flash 保存（单帧重连重试见上条，不属于整组重试）；command7/8 不由结构化 PEQ 调用。写入事务失败或取消时清除本控件写入元数据与实际快照，保留原始异常并停止后续批次；可能已部分应用。手动 `getParamEq()` 成功才重新发布实际状态并恢复写入元数据，读取失败同样清除两者。编辑器发送成功仅记录 `lastSent`，显示“已发送，未验证”；手动读取替换草稿并清除发送/撤销记录。设备设置不等于系统协商结果，传输完成不等于 DSP 生效或断电持久化。
 
 ### 手势、基础信息与原始命令
 
@@ -371,10 +374,9 @@ V1 固定 OFF/NC=0/1，不用 AC/V2 map。`capabilities.ancModes` 从所选路�
 | `NotReady` | 没有当前可用 READY 控件/已连接会话 |
 | `Timeout(operation)` | 协议回复、音源稳定等待或映射后的原生操作超时；须按来源区分会话是否失效 |
 | `Disconnected` | controller/binding 关闭、断连、换会话或旧控件使用 |
-| `Unverified(operation,cause)` | ANC/codec/PEQ 写后 GET 无法确认；对应快照未知，PEQ可能部分应用，保留 cause；不包装取消/断连 |
+| `Unverified(operation,cause)` | ANC/codec 写后 GET 无法确认；对应快照未知，保留 cause；不包装取消/断连。EQ 写入不自动读回、不使用此异常包装发送错误 |
 | `AncModeMismatch(requested,observed)` | ANC 读回持续失配；保留实际读回状态 |
 | `CodecStateMismatch(codec,requested,observed)` | 编码选项失配，codecStates 保留 observed（false 不等于未知） |
-| `ParamEqMismatch(observed)` | PEQ 配置/USER63激活失配；observed 是完整 actual，paramEq 保留它，可能已部分应用 |
 | `Protocol(message)` | 包短缺/结构错误/未知枚举/过 MTU 等 |
 | `Rejected(status,operation)` | 9ECA 原始状态拒绝，status 保留 u8 数值 |
 | `Transport(message,cause)` | 其他底层或初始化异常，保留原 cause |

@@ -279,6 +279,8 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         runCatching { context.unregisterReceiver(receiver) }
         discovery.invalidate(BtException.Disconnected())
         handles.forEach { it.gatt.invalidate(closed = true) }
+        // RFCOMM 通道由设备句柄持有，随管理器一起同步释放，不等待写入完成。
+        handles.forEach { (it.rfcomm as? AndroidBtRfcomm)?.closeBlocking() }
         mutableEvents.tryEmit(BtEvent.OnBluetoothStateChanged(BtAvailability.CLOSED, this))
         eventQueue.close()
         scope.cancel()

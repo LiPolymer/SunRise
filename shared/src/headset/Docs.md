@@ -202,6 +202,7 @@ Compose effect 的取消和客户端生命周期不同：`startAutoConnect()` �
 
 - 控制器不会自动连接；无线连接归客户端的 attempt。
 - profile 地址/名称匹配使用音频身份；BLE 地址不同不会悄悄改变用户配置匹配对象。
+- 音频身份与 BLE 端点地址不同时，其经典 RFCOMM 句柄随控制器转交结构化 EQ 写入（见 [drop 传输选择](../drop/Docs.md)）；同地址时不猜测对端提供 SPP 记录。
 - 控制器 PROBING/READY 状态可能先到达；在当前 session 仍有效、控制器确实 READY、成功写入关联并标记采纳后，才公开应用 READY。
 - 失败/取消先释放该次控制器和 GATT，再尝试下一候选，不留下静默后台连接。
 

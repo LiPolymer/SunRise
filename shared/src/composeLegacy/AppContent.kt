@@ -326,6 +326,7 @@ internal fun AppContent(
                     english = english,
                     enabled = working == null && missingPermissions.isEmpty(),
                     modifier = Modifier.fillMaxSize().padding(padding),
+                    filterSelectionEnabled = false,
                 )
                 else -> SettingsScreen(
                     settings = settings,
@@ -385,11 +386,6 @@ internal fun errorMessage(error: Exception, english: Boolean): String = when (er
         english,
         "${error.codec} 读回不一致；设备实际${if (error.observed) "开启" else "关闭"}。",
         "${error.codec} readback mismatch; the device reports ${if (error.observed) "enabled" else "disabled"}.",
-    )
-    is DropException.ParamEqMismatch -> tr(
-        english,
-        "均衡器读回不一致，可能已部分应用。已显示设备实际值；请重新读取后编辑。",
-        "EQ readback mismatch; changes may be partially applied. Actual values are shown; reload before editing.",
     )
     else -> error.message ?: tr(english, "未知错误", "Unknown error")
 }

@@ -116,38 +116,8 @@ internal fun peqDraggedQ(originalRaw: Int, deltaX: Float, width: Float, side: In
     return (peqQFromHalfBandwidth(bandwidth) * 4096).toInt().coerceIn(1, 65535)
 }
 
-/** Normalized RBJ coefficients for a static 48 kHz parameter-response estimate. */
-internal class PeqBiquad private constructor(private val b0: Double, private val b1: Double, private val b2: Double, private val a1: Double, private val a2: Double) {
-    fun responseDb(hz: Double): Double {
-        val w = 2.0 * PI * hz.coerceIn(20.0, 20000.0) / 48000.0
-        val c1 = cos(w)
-        val s1 = sin(w)
-        val c2 = cos(2 * w)
-        val s2 = sin(2 * w)
-        val nr = b0 + b1 * c1 + b2 * c2
-        val ni = b1 * s1 + b2 * s2
-        val dr = 1.0 + a1 * c1 + a2 * c2
-        val di = a1 * s1 + a2 * s2
-        return 10.0 * log10(((nr * nr + ni * ni) / max(1e-24, dr * dr + di * di)).coerceAtLeast(1e-24))
-    }
-    companion object {
-        fun of(band: GaiaPeqBand): PeqBiquad {
-            if (band.filter == PeqFilter.BYPASS) return PeqBiquad(1.0, 0.0, 0.0, 0.0, 0.0)
-            val w = 2 * PI * band.frequencyHz / 48000.0
-            val c = cos(w)
-            val alpha = sin(w) / (2 * band.q)
-            val a = 10.0.pow(band.gainDb / 40.0)
-            val beta = 2 * sqrt(a) * alpha
-            val b0: Double; val b1: Double; val b2: Double; val a0: Double; val a1: Double; val a2: Double
-            when (band.filter) {
-                PeqFilter.PEAKING -> { b0 = 1 + alpha * a; b1 = -2 * c; b2 = 1 - alpha * a; a0 = 1 + alpha / a; a1 = -2 * c; a2 = 1 - alpha / a }
-                PeqFilter.LOW_PASS -> { b0 = (1 - c) / 2; b1 = 1 - c; b2 = b0; a0 = 1 + alpha; a1 = -2 * c; a2 = 1 - alpha }
-                PeqFilter.HIGH_PASS -> { b0 = (1 + c) / 2; b1 = -(1 + c); b2 = b0; a0 = 1 + alpha; a1 = -2 * c; a2 = 1 - alpha }
-                PeqFilter.LOW_SHELF -> { b0 = a * ((a + 1) - (a - 1) * c + beta); b1 = 2 * a * ((a - 1) - (a + 1) * c); b2 = a * ((a + 1) - (a - 1) * c - beta); a0 = (a + 1) + (a - 1) * c + beta; a1 = -2 * ((a - 1) + (a + 1) * c); a2 = (a + 1) + (a - 1) * c - beta }
-                PeqFilter.HIGH_SHELF -> { b0 = a * ((a + 1) + (a - 1) * c + beta); b1 = -2 * a * ((a - 1) + (a + 1) * c); b2 = a * ((a + 1) + (a - 1) * c - beta); a0 = (a + 1) - (a - 1) * c + beta; a1 = 2 * ((a - 1) - (a + 1) * c); a2 = (a + 1) - (a - 1) * c - beta }
-                PeqFilter.BYPASS -> error("Bypass is handled above")
-            }
-            return PeqBiquad(b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0)
-        }
-    }
+internal fun peqPinchedQ(originalRaw: Int, spanDeltaPx: Float, width: Float): Int {
+    if (spanDeltaPx == 0f || !spanDeltaPx.isFinite() || width <= 0f || !width.isFinite()) return originalRaw
+    return peqDraggedQ(originalRaw, spanDeltaPx / 2f, width, 1)
 }
+

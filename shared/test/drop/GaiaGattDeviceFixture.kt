@@ -19,6 +19,8 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
     private var closed = false
     private var notifications = false
     var present = true
+    /** 经典 RFCOMM 通道；非空时结构化 EQ 写入走它，测试不模拟 RFCOMM 组帧。 */
+    var rfcomm: BtRfcomm? = null
     var presets = listOf(0, 2, 63)
     var currentPreset = 2
     var totalGainRaw = -17
@@ -29,11 +31,14 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
     var acceptPresetWrites = true
     val writes = mutableListOf<ByteArray>()
     val commands = mutableListOf<GaiaPacket>()
+    /** May delay or fail a transport send after recording its packet, before touching device storage. */
+    var beforeWrite: suspend (GaiaPacket) -> Unit = {}
     /** May inject malformed readback, drop a response, or suspend a GET after device storage was updated. */
     var beforeReply: suspend (GaiaPacket, ByteArray) -> ByteArray? = { _, payload -> payload }
 
     override val device: BtDevice = object : BtDevice {
         override val address = "00:00:00:00:00:01"
+        override val rfcomm: BtRfcomm? get() = this@GaiaGattDeviceFixture.rfcomm
         override val info = MutableStateFlow(BtDeviceInfo(name = "Bluetrum fixture"))
         override val gatt: BtGatt = object : BtGatt {
             override val state = MutableStateFlow(GattState(GattPhase.CONNECTED, this@GaiaGattDeviceFixture))
@@ -85,6 +90,7 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
         check(packet.type == GaiaCodec.COMMAND)
         writes += value.copyOf()
         commands += packet
+        beforeWrite(packet)
         val payload: ByteArray? = when (packet.feature) {
             GaiaIds.BASIC -> byteArrayOf(0, GaiaIds.MUSIC_PROCESSING.toByte(), 1, GaiaIds.CODEC_TYPE.toByte(), 1, GaiaIds.ANC_V2.toByte(), 1)
             GaiaIds.CODEC_TYPE -> codecCommand(packet)
@@ -135,9 +141,10 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
             for (index in start..end) {
                 val offset = 4 + (index - start) * 7
                 val filterId = packet.payload[offset + 4].toInt() and 0xff
+                require(filterId == 0) { "Official Bluetrum bulk filter must be 0, received $filterId" }
                 updated[index] = clampBand(GaiaPeqBand(index, u16(packet.payload, offset),
                     u16(packet.payload, offset + 5).toShort().toInt(), u16(packet.payload, offset + 2),
-                    PeqFilter.entries.single { it.gaiaId == filterId }))
+                    PeqFilter.PEAKING))
             }
             bands = updated
             null
@@ -155,7 +162,7 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
             val band = bands[index]
             put16(result, offset, band.frequencyHz)
             put16(result, offset + 2, band.qRaw)
-            result[offset + 4] = band.filter.gaiaId.toByte()
+            result[offset + 4] = if (band.filter == PeqFilter.PEAKING) 0 else band.filter.gaiaId.toByte()
             put16(result, offset + 5, band.gainRaw)
         }
         return result
@@ -177,13 +184,44 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
     }
 }
 
+/** 测试用经典通道：记录帧与时间戳，可注入打开/写入失败，不模拟 RFCOMM 组帧。 */
+internal class FakeRfcomm(
+    override val address: String = "00:00:00:00:00:02",
+    var failOpen: BtException? = null,
+    var failWrite: BtException? = null,
+    /** 让接下来若干次写入失败；用于验证重连重试次数与上限。 */
+    var failWritesRemaining: Int = 0,
+    var failWriteError: BtException = BtException.Transport("socket closed"),
+) : BtRfcomm {
+    val frames = mutableListOf<ByteArray>()
+    val writtenAt = mutableListOf<Long>()
+    var opened = 0
+    var closed = 0
+    override suspend fun open() {
+        opened++
+        failOpen?.let { throw it }
+    }
+    override suspend fun write(bytes: ByteArray) {
+        if (failWritesRemaining > 0) {
+            failWritesRemaining--
+            throw failWriteError
+        }
+        failWrite?.let { throw it }
+        frames += bytes.copyOf()
+        writtenAt += System.nanoTime()
+    }
+    override suspend fun close() {
+        closed++
+    }
+}
+
 internal suspend fun CoroutineScope.readyBinding(
     device: GaiaGattDeviceFixture,
     current: () -> Boolean = { true },
     publish: (DropControlBinding) -> Unit = {},
 ): DropControlBinding {
     val binding = DropControlBinding(device, this, DropProfile(DropProfileMatch.NameContains("fixture")),
-        { current() }, publish, { _, _ -> })
+        { current() }, publish, { _, _ -> }, device.rfcomm)
     binding.startInitialization()
     try {
         withTimeout(3_000) { binding.ready.await() }

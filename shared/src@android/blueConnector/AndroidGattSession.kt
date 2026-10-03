@@ -9,6 +9,8 @@ import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothStatusCodes
 import android.os.Build
+import android.os.SystemClock
+import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -40,6 +42,10 @@ internal class AndroidGattSession(
 ) : GattSession {
     private companion object {
         val ids = AtomicLong()
+        // Raw PDUs can be sensitive. Off by default; opt in with:
+        // adb shell setprop log.tag.SunRiseGatt DEBUG
+        const val TRACE_TAG = "SunRiseGatt"
+        const val HEX_DIGITS = "0123456789ABCDEF"
         val cccd: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         val emptyValue = ByteArray(0)
     }
@@ -62,6 +68,7 @@ internal class AndroidGattSession(
     private var nativeGatt: BluetoothGatt? = null
     @Volatile private var closed = false
     private var pending: NativeOperation<*>? = null
+    private val writeIds = AtomicLong()
     internal val isActive: Boolean get() = !closed
 
     /** 原生特征对象与所属会话双重身份；UUID 只用于查询，不能替代句柄归属验证。 */
@@ -85,9 +92,9 @@ internal class AndroidGattSession(
     private sealed class NativeOperation<T : Any> {
         val result = CompletableDeferred<T>()
         class Read(val characteristic: BluetoothGattCharacteristic) : NativeOperation<ByteArray>()
-        class Write(val characteristic: BluetoothGattCharacteristic) : NativeOperation<Unit>()
+        class Write(val characteristic: BluetoothGattCharacteristic, val writeId: Long) : NativeOperation<Unit>()
         class Descriptor(val descriptor: BluetoothGattDescriptor) : NativeOperation<Unit>()
-        class Mtu : NativeOperation<Int>()
+        class Mtu(val requested: Int) : NativeOperation<Int>()
     }
 
     init {
@@ -169,6 +176,8 @@ internal class AndroidGattSession(
                 if (closed || nativeGatt !== gatt) return
                 val operation = pending as? NativeOperation.Write ?: return
                 if (operation.characteristic !== characteristic) return
+                // A matched GATT completion is not acknowledgement by the device's application/DSP.
+                trace { "event=tx-complete wid=${operation.writeId} uuid=${characteristic.uuid} mtu=${mutableMtu.value} status=$status" }
                 completeStatus(operation, status, "GATT write")
             }
         }
@@ -220,6 +229,7 @@ internal class AndroidGattSession(
             synchronized(guard) {
                 if (closed || nativeGatt !== gatt) return
                 val operation = pending as? NativeOperation.Mtu
+                trace { "event=mtu-complete requested=${operation?.requested ?: "unsolicited"} reported=$value status=$status mtu=${if (status == BluetoothGatt.GATT_SUCCESS) value else mutableMtu.value}" }
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     mutableMtu.value = value
                     operation?.result?.complete(value)
@@ -296,16 +306,23 @@ internal class AndroidGattSession(
         if (value.size > mutableMtu.value - 3) throw BtException.PacketTooLarge()
         // 在等待入队前拥有负载副本；调用方可以随后复用其原始缓冲。
         val packet = value.copyOf()
-        nativeOperation(NativeOperation.Write(handle.native), "GATT write", 10_000) { gatt ->
+        val operation = NativeOperation.Write(handle.native, writeIds.incrementAndGet())
+        nativeOperation(operation, "GATT write", 10_000) { gatt ->
             if (packet.size > mutableMtu.value - 3) throw BtException.PacketTooLarge()
             if (Build.VERSION.SDK_INT >= 33) {
-                gatt.writeCharacteristic(handle.native, packet, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothStatusCodes.SUCCESS
+                trace { "event=tx-start wid=${operation.writeId} uuid=${handle.native.uuid} mtu=${mutableMtu.value} api=33+ bytes=${packet.size} pdu=${hex(packet)}" }
+                val status = gatt.writeCharacteristic(handle.native, packet, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                trace { "event=tx-return wid=${operation.writeId} uuid=${handle.native.uuid} mtu=${mutableMtu.value} api=33+ status=$status accepted=${status == BluetoothStatusCodes.SUCCESS}" }
+                status == BluetoothStatusCodes.SUCCESS
             } else {
                 @Suppress("DEPRECATION")
                 handle.native.value = packet
                 handle.native.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                trace { "event=tx-start wid=${operation.writeId} uuid=${handle.native.uuid} mtu=${mutableMtu.value} api=legacy bytes=${packet.size} pdu=${hex(packet)}" }
                 @Suppress("DEPRECATION")
-                gatt.writeCharacteristic(handle.native)
+                val accepted = gatt.writeCharacteristic(handle.native)
+                trace { "event=tx-return wid=${operation.writeId} uuid=${handle.native.uuid} mtu=${mutableMtu.value} api=legacy accepted=$accepted" }
+                accepted
             }
         }
     }
@@ -344,7 +361,12 @@ internal class AndroidGattSession(
     override suspend fun requestMtu(value: Int): Int {
         require(value in 23..517) { "GATT MTU must be in 23..517" }
         ensureActive()
-        return nativeOperation(NativeOperation.Mtu(), "GATT MTU request", 5_000) { it.requestMtu(value) }
+        return nativeOperation(NativeOperation.Mtu(value), "GATT MTU request", 5_000) { gatt ->
+            trace { "event=mtu-start requested=$value mtu=${mutableMtu.value}" }
+            val accepted = gatt.requestMtu(value)
+            trace { "event=mtu-return requested=$value mtu=${mutableMtu.value} accepted=$accepted" }
+            accepted
+        }
     }
 
     /** 先检查有效性，再验证实现类型、所属会话和原生对象映射；旧会话句柄不可换绑。 */
@@ -415,6 +437,8 @@ internal class AndroidGattSession(
         val previous = synchronized(guard) {
             if (closed) return
             closed = true
+            val write = pending as? NativeOperation.Write
+            trace { "event=session-terminate wid=${write?.writeId ?: "none"} uuid=${write?.characteristic?.uuid ?: "none"} mtu=${mutableMtu.value} reason=${cause.javaClass.simpleName}" }
             connected.completeExceptionally(cause)
             discovered.completeExceptionally(cause)
             pending?.result?.completeExceptionally(cause)
@@ -427,6 +451,21 @@ internal class AndroidGattSession(
         scope.cancel()
         closeNative(previous)
         onTerminated(this, cause)
+    }
+
+    /** Inline guard keeps message construction and full payload formatting out of the disabled path. */
+    private inline fun trace(message: () -> String) {
+        if (Log.isLoggable(TRACE_TAG, Log.DEBUG)) {
+            Log.d(TRACE_TAG, "sid=$id tNs=${SystemClock.elapsedRealtimeNanos()} ${message()}")
+        }
+    }
+
+    private fun hex(value: ByteArray): String = buildString(value.size * 2) {
+        for (byte in value) {
+            val unsigned = byte.toInt() and 0xFF
+            append(HEX_DIGITS[unsigned ushr 4])
+            append(HEX_DIGITS[unsigned and 0x0F])
+        }
     }
 
     private fun closeNative(gatt: BluetoothGatt?) {

@@ -94,12 +94,41 @@ interface BtManager {
      */
     fun close()
 }
+/**
+ * 经典蓝牙 RFCOMM 字节通道：Android 按 SPP 服务记录解析通道后连接，JVM 桌面不提供实现。
+ *
+ * 通道只搬运字节，不解释 GAIA 帧、不做请求/响应匹配或流拼帧，帧边界由调用方保证。
+ * 打开时自动完成配对校验与 SDP 查询；取消等待不关闭已开始的平台连接，[close] 才释放 socket。
+ */
+interface BtRfcomm {
+    /** 通道远端的规范大写地址，仅用于诊断，不用于会话身份匹配。 */
+    val address: String
+    /**
+     * 打开通道；已打开时直接返回。
+     * @throws BtException 权限不足、对端未配对、找不到服务记录或连接失败。
+     */
+    suspend fun open()
+    /**
+     * 向已打开的通道写入一段字节并刷新。
+     * @throws BtException 尚未打开、已关闭或平台写入失败。
+     */
+    suspend fun write(bytes: ByteArray)
+    /** 幂等关闭通道并释放平台 socket；未打开或已关闭时不做任何事。 */
+    suspend fun close()
+}
 /** 管理器拥有的稳定设备身份；同一管理器中的不同设备拥有独立的 [gatt] 和会话队列。 */
 interface BtDevice {
     /** 拥有该句柄及其连接资源的管理器；关闭设备会话不会关闭它。 */
     val manager: BtManager
     /** Android 规范大写 MAC 地址；不是名称，也不是应用自行推断的音频关联地址。 */
     val address: String
+    /**
+     * 该地址的经典 RFCOMM 入口；Android 提供句柄，其他平台为 null。
+     *
+     * 句柄只表示可用入口，不表示对端是经典设备、已配对或提供任何服务；能否连接由
+     * [BtRfcomm.open] 判定。LE 地址上的句柄通常找不到 SPP 记录。
+     */
+    val rfcomm: BtRfcomm?
     /** 最近观测的信息状态；获取句柄本身不保证已读取系统名称或配对事实。 */
     val info: StateFlow<BtDeviceInfo>
     /** 该设备唯一的 GATT 生命周期入口，连接和断开均需显式调用。 */

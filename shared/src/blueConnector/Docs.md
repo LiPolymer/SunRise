@@ -113,7 +113,18 @@ Android 宿主负责 Manifest 声明、运行时权限请求、授权结果与�
 | `scanLe(...)` | 挂起，`List<BtDevice>` | 匹配扫描结果 |
 | `close()` | 同步，`Unit` | 幂等关闭整个管理器资源树 |
 
-`BtDevice.manager` 是拥有者；`address` 是 Android 大写 MAC；`info` 是最近观测快照；`gatt` 是唯一设备连接入口；`requestBond()` 返回请求接受与否。`BtDeviceInfo` 字段：`name: String?` 默认 null；`kind: BtDeviceKind` 默认 UNKNOWN（UNKNOWN/CLASSIC/LE/DUAL）；`bondState: BtBondState` 默认 NONE（NONE/BONDING/BONDED）。这些不是品牌、协议或连接判据。
+`BtDevice.manager` 是拥有者；`address` 是 Android 大写 MAC；`info` 是最近观测快照；`gatt` 是唯一 GATT 连接入口；`rfcomm` 是该地址的经典通道句柄（Android 提供，其他平台 null）；`requestBond()` 返回请求接受与否。`BtDeviceInfo` 字段：`name: String?` 默认 null；`kind: BtDeviceKind` 默认 UNKNOWN（UNKNOWN/CLASSIC/LE/DUAL）；`bondState: BtBondState` 默认 NONE（NONE/BONDING/BONDED）。这些不是品牌、协议或连接判据。
+
+### BtRfcomm 经典字节通道
+
+| 成员 | 类型/返回 | 使用含义 |
+| --- | --- | --- |
+| `address` | `String` | 远端规范大写地址，仅诊断 |
+| `open()` | 挂起，`Unit` | 已打开直接返回；否则按 SPP 服务记录解析通道并连接，需 `BLUETOOTH_CONNECT` |
+| `write(bytes)` | 挂起，`Unit` | 向已打开通道写入并刷新；不做组帧、分片或响应匹配 |
+| `close()` | 挂起，`Unit` | 幂等释放 socket，不抛平台异常 |
+
+Android 实现用系统栈完成 SDP 查询、RFCOMM 组帧、流控与校验，本层只搬运字节；打开或写入的取消会关闭已创建的 socket，避免半开连接。写入前丢弃已缓冲的入站字节（尽力而为，读取失败不影响写入判定）；写入失败时清空句柄并关闭可疑 socket，下一次写入重新连接。诊断默认关闭，`adb shell setprop log.tag.SunRiseRfcomm DEBUG` 打开后记录 `connect`、`tx` 与 `tx-fail`；`tx-fail` 含对端地址、字节数与完整原因链（外层映射错误到平台异常），不含完整 payload。LE 地址上的句柄通常找不到 SPP 记录，因此 `open()` 失败是正常结果而不是状态断言。管理器 `close()` 会同步关闭已开通道。持有句柄不代表对端是经典设备、已配对或提供任何服务。
 
 ### BtGatt、GattSession 与句柄
 
@@ -138,6 +149,8 @@ Android 宿主负责 Manifest 声明、运行时权限请求、授权结果与�
 | `close()` | 同步标记失效并尽力释放资源 | 幂等，不关闭管理器，不影响其他设备 |
 
 写入使用 `WRITE_TYPE_DEFAULT`（带响应）。入队前复制调用方负载，入队前和开始执行时均检查 MTU−3。API 33+ 使用显式 byte array 的写入/描述符 API 和状态码判断；API 24–32 使用旧 value/writeType 加 Boolean API。读与通知兼容旧回调和 API 33+ 传值回调，复制平台可能复用的数组。本包不自动把长包切片，也不把 GATT 层写成功解释为某个设备设置已经生效。
+
+Android 调试跟踪可用 `adb shell setprop log.tag.SunRiseGatt DEBUG` 开启，默认关闭；`adb shell setprop log.tag.SunRiseGatt INFO` 关闭。`SunRiseGatt` 的 `tx-start` 记录队列实际启动原生写入的完整 PDU、实际 MTU、特征 UUID，`tx-return` 记录 API 33+ 状态码或旧版 Boolean 接纳结果，`tx-complete` 记录当前会话/特征匹配后的原生回调状态。`sid` 与 `wid` 关联进程内会话和写入，`tNs` 为单调纳秒时间；另有 MTU 请求/返回/回调及会话终止记录。不开启时不构造日志消息/hex；不增加无线命令，也不记录 MAC/设备名。原始 PDU 仍可能敏感，分享前检查。日志是平台调用证据，不是 HCI/空口抓包或应用协议/DSP 确认；EQ 的使用步骤见 [README 发送诊断](../../../README.md#eq-发送诊断)。
 
 ## 状态与事件
 
