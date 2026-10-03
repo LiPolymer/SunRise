@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.compose
+package ink.lipoly.app.sunrise
 
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -6,7 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
-import ink.lipoly.app.sunrise.AppEntry
+import ink.lipoly.app.sunrise.composeLegacy.*
 import ink.lipoly.app.sunrise.headset.HeadsetClient
 
 @Composable

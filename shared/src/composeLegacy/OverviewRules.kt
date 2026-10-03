@@ -1,4 +1,5 @@
-package ink.lipoly.app.sunrise.compose
+package ink.lipoly.app.sunrise.composeLegacy
+
 
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropPhase

@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.compose
+package ink.lipoly.app.sunrise
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
@@ -6,7 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import ink.lipoly.app.sunrise.AppEntry
+import ink.lipoly.app.sunrise.composeLegacy.*
 import java.util.Locale
 
 @Composable

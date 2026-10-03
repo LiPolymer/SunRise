@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.compose
+package ink.lipoly.app.sunrise
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import ink.lipoly.app.sunrise.composeLegacy.*
 
 internal class UiSettingsStore(private val preferences: SharedPreferences) {
     constructor(context: Context) : this(context.applicationContext.getSharedPreferences("sunrise_ui", Context.MODE_PRIVATE))

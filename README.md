@@ -5,7 +5,7 @@
 > 
 > under construction
 
-Kotlin Toolchain 0.12.2 项目，包含 Android 应用、JVM 桌面应用和 Android/JVM 共享库。`shared/src/blueConnector` 是协议无关的蓝牙通讯契约，`shared/src/drop` 是平台无关的 GAIA / 9ECA 控制器，`shared/src/headset` 是本应用的单耳机连接与选择策略；`shared/src/compose` 是两平台共用的概览、设置和诊断界面。平台蓝牙实现位于 `shared/src@android/blueConnector`，JVM actual 明确不可用。Kotlin 包名仍为 `ink.lipoly.app.sunrise`。
+Kotlin Toolchain 0.12.2 项目，包含 Android 应用、JVM 桌面应用和 Android/JVM 共享库。`shared/src/blueConnector` 是协议无关的蓝牙通讯契约，`shared/src/drop` 是平台无关的 GAIA / 9ECA 控制器，`shared/src/headset` 是本应用的单耳机连接与选择策略；`composeLegacy` 是两平台共用的概览、设置和诊断界面。平台蓝牙实现位于 `shared/src@android/blueConnector`，JVM actual 明确不可用。Kotlin 包名仍为 `ink.lipoly.app.sunrise`。
 
 ## 运行
 

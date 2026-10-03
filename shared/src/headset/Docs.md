@@ -39,16 +39,16 @@
 | [HeadsetClient.kt](HeadsetClient.kt) | 选择循环、候选尝试、会话采纳、epoch、轮询和清理的实际实现 |
 | [HeadsetPlatform.android.kt](../../src@android/headset/HeadsetPlatform.android.kt) | Android 工厂及已有 SharedPreferences 数据语义 |
 | [MainActivity.kt](../../../android-app/src/MainActivity.kt) | 完整现行宿主：权限请求、`remember`、释放顺序、`onResume` 复核 |
-| [Android App.kt](../../src@android/compose/App.kt) | Android Compose 容器入口，接收可空客户端与权限状态 |
-| [AppContent.kt](../compose/AppContent.kt) | 授权后启动自动模式、多个音频候选选择、每次控件动作前复核就绪 |
-| [DropDiagnostics.kt](../compose/DropDiagnostics.kt) | 分开显示应用连接/控制状态、实际异常和 ANC 确认失败 |
+| [Android App.kt](../../src@android/App.kt) | Android Compose 容器入口，接收可空客户端与权限状态 |
+| [AppContent.kt](../composeLegacy/AppContent.kt) | 授权后启动自动模式、多个音频候选选择、每次控件动作前复核就绪 |
+| [DropDiagnostics.kt](../composeLegacy/DropDiagnostics.kt) | 分开显示应用连接/控制状态、实际异常和 ANC 确认失败 |
 | [HeadsetClientTest.kt](../../test/headset/HeadsetClientTest.kt) | 纯协程 fixture 的选择、取消、重连、其他设备所有权和旧帧隔离行为证据 |
 
 包名使用 `blueConnector`，但公共 `Bt*`、`Gatt*` 与 `createBtManager` 名称不变。`HeadsetClient` 的 common 构造器是 **internal**；外部 Android 调用方使用 `createHeadsetClient(context, bt, options)`，不能把测试中的直接构造写成公共 common 用法。
 
 ## Android 与 Compose 接入
 
-可以直接参考并复用 [当前 MainActivity](../../../android-app/src/MainActivity.kt) 的完整宿主实现，再通过 [当前 Android App](../../src@android/compose/App.kt) 接入界面。下面给出同一模式的完整 Android Activity 示例：在已有 Android 应用模块中使用，并由宿主 Manifest 注册选用的 Activity、声明相应权限；不要与原 MainActivity 同时创建第二套客户端。本例复用现有 `App`，**自动启动 effect 已由 AppContent 拥有，不再添加第二个启动 effect**。
+可以直接参考并复用 [当前 MainActivity](../../../android-app/src/MainActivity.kt) 的完整宿主实现，再通过 [当前 Android App](../../src@android/App.kt) 接入界面。下面给出同一模式的完整 Android Activity 示例：在已有 Android 应用模块中使用，并由宿主 Manifest 注册选用的 Activity、声明相应权限；不要与原 MainActivity 同时创建第二套客户端。本例复用现有 `App`，**自动启动 effect 已由 AppContent 拥有，不再添加第二个启动 effect**。
 
 ```kotlin
 import android.os.Bundle
@@ -113,7 +113,7 @@ class HeadsetHostActivity : ComponentActivity() {
 2. Compose 中 `remember { createBtManager(applicationContext) }` 创建一个管理器；`remember(bt) { createHeadsetClient(applicationContext, bt) }` 复用它。不要在每次重组或每次点击时重新创建它们。
 3. `registerForActivityResult(RequestMultiplePermissions())` 回调重新运行 `BtPermissions.missing(this)`，不是仅凭某个返回布尔值推断全部权限已具备。请求按钮同样先复核当前集合，再请求缺失项。
 4. `onResume` 再次检查权限，覆盖用户从系统设置回来的授权变化。Compose 将集合传入 `App`。
-5. [AppContent](../compose/AppContent.kt) 的 `LaunchedEffect(client, missingPermissions.isEmpty())` 仅在客户端存在且权限集合为空时调用 `startAutoConnect()`；它另有事件收集与 `SELECTION_REQUIRED` 时刷新候选的 effect。工厂不隐式启动。
+5. [AppContent](../composeLegacy/AppContent.kt) 的 `LaunchedEffect(client, missingPermissions.isEmpty())` 仅在客户端存在且权限集合为空时调用 `startAutoConnect()`；它另有事件收集与 `SELECTION_REQUIRED` 时刷新候选的 effect。工厂不隐式启动。
 6. `DisposableEffect(client, bt)` 在 `onDispose` 中先 `client.close()`，再 `bt.close()`。此处宿主确实拥有管理器；若管理器由更长生命周期的外部对象注入，则只关闭客户端，由外部所有者决定何时关闭管理器。
 
 注意：`startAutoConnect()` 每次调用都会替换当前连接，不是幂等的“确保已启动”。不能在任意重组中直接调用。权限状态也不是永久保证：真实操作仍会检查平台状态并可能失败。当前 effect 在权限不足时不启动新的自动循环，但**没有在权限撤销分支显式调用 `disconnect()`**；若产品要求撤销权限时立即终止应用连接，需要宿主制定该交互策略，不应误读为工厂已代劳。
@@ -282,14 +282,14 @@ suspend fun readSelectedBattery(
 
 此函数应由负责该客户端选择的单一应用流程调用；不要与另一个同时替换选择的流程并用，否则 finally 的 `disconnect()` 会停止客户端当时的当前选择。它不接管客户端/管理器的最终 close。调用方展示电量时继续处理 `null` 为未知；范围和设备原始字节规则见 [drop](../drop/Docs.md)。
 
-需要长期交互时，按 [AppContent 的 `runAction`](../compose/AppContent.kt) 模式：开始动作前和动作协程内再次检查应用与协议 READY，在协程中每次取 `client.gaia`/`client.source`，`CancellationException` 先抛回，再处理具体异常；不是只依赖按钮禁用状态。音源 ID 必须从真实能力页面/状态取得，具体分页和可用项选择例子见 [drop](../drop/Docs.md)，不要硬编码某型号的 ID。
+需要长期交互时，按 [AppContent 的 `runAction`](../composeLegacy/AppContent.kt) 模式：开始动作前和动作协程内再次检查应用与协议 READY，在协程中每次取 `client.gaia`/`client.source`，`CancellationException` 先抛回，再处理具体异常；不是只依赖按钮禁用状态。音源 ID 必须从真实能力页面/状态取得，具体分页和可用项选择例子见 [drop](../drop/Docs.md)，不要硬编码某型号的 ID。
 
 ## 异常与界面恢复
 
 - 地址/枚举/直接连接失败保留 `BtException`，例如 `InvalidDevice`、`MissingPermission`、`Timeout`。工厂和 `verified` 标记不能绕过权限。
 - 控制探测和功能操作遵循 `DropException`。控制层封装底层错误的具体映射见 [drop 异常参考](../drop/Docs.md)；facade 不再统一改写异常。
 - 端点全部失败时，返回最后记录的真实非 UnsupportedDevice 异常；没有这类失败才返回候选的 `UnsupportedDevice`，若没有任何记录则回退 `Disconnected`。因此一次普通连接超时不能被展示成“确定协议不支持”。扫描 MissingPermission 被特意跳过，历史缓存的 InvalidDevice 被忽略，并不成为端点支持证明。
-- `DropException.Unverified` 表示 ANC 已发送但读回无法确认，控制状态 `ancMode` 为未知；`AncModeMismatch` 保留 requested/observed，状态保留实际观察模式。不要显示成成功，也不要丢失专属异常载荷。当前 [诊断页](../compose/DropDiagnostics.kt) 单独展示这两类情况。
+- `DropException.Unverified` 表示 ANC 已发送但读回无法确认，控制状态 `ancMode` 为未知；`AncModeMismatch` 保留 requested/observed，状态保留实际观察模式。不要显示成成功，也不要丢失专属异常载荷。当前 [诊断页](../composeLegacy/DropDiagnostics.kt) 单独展示这两类情况。
 - 普通控件异常直接抛给操作调用方，不保证更新 `state.error` 或发 `HeadsetEvent.Error`。初读/轮询失败不会自动弹出错误通知。UI 应按操作返回/异常给反馈，而非把 ERROR 当作所有失败的唯一入口。
 - 状态流是当前事实而非不可变成功承诺：读 snapshot 后可能立即断连，后续 getter/操作仍可能失败。重连/切换清空协议功能值；UI 必须同时检查应用阶段，不能在 RECONNECTING 时根据旧 READY 控件数据放行。
 

@@ -1,9 +1,7 @@
 package ink.lipoly.app.sunrise
 
 import androidx.compose.runtime.Composable
-import ink.lipoly.app.sunrise.compose.AppContent
-import ink.lipoly.app.sunrise.compose.AppNavigationState
-import ink.lipoly.app.sunrise.compose.UiSettings
+import ink.lipoly.app.sunrise.composeLegacy.*
 import ink.lipoly.app.sunrise.headset.HeadsetClient
 
 @Composable

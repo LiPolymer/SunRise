@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.compose
+package ink.lipoly.app.sunrise.composeLegacy
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border

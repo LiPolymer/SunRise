@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.compose
+package ink.lipoly.app.sunrise.composeLegacy
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme

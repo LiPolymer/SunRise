@@ -10,7 +10,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.tooling.preview.Preview
-import ink.lipoly.app.sunrise.compose.App
 import ink.lipoly.app.sunrise.blueConnector.BtPermissions
 import ink.lipoly.app.sunrise.blueConnector.createBtManager
 import ink.lipoly.app.sunrise.headset.createHeadsetClient
