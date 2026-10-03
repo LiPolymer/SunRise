@@ -17,6 +17,33 @@ enum class GainLevel { LOW, MEDIUM, HIGH }
 enum class HeadTrackingMode { OFF, THIRTY_DEGREES, SURROUND }
 /** 可查询启用开关的 LC3、LDAC、LHDC；开关结果不表示当前音频链路正在使用该编码。 */
 enum class AudioCodec { LC3, LDAC, LHDC }
+
+/** Bluetrum GAIA filter IDs; 9ECA uses a separate format. */
+enum class PeqFilter(val gaiaId: Int) {
+    BYPASS(0), LOW_PASS(7), HIGH_PASS(8), LOW_SHELF(10), HIGH_SHELF(11), PEAKING(13),
+}
+
+/** Device raw units are retained exactly, including unused bypass fields. */
+data class GaiaPeqBand(
+    val index: Int,
+    val frequencyHz: Int,
+    val gainRaw: Int,
+    val qRaw: Int,
+    val filter: PeqFilter,
+) {
+    val gainDb: Double get() = gainRaw / 60.0
+    val q: Double get() = qRaw / 4096.0
+}
+
+/** Complete verified readback, never an editor draft. Header gain semantics are unconfirmed. */
+data class GaiaParamEqState(
+    val availablePresets: List<Int>,
+    val currentPreset: Int,
+    val totalGainRaw: Int,
+    val bands: List<GaiaPeqBand>,
+) {
+    val bandCount: Int get() = bands.size
+}
 /** 序列号查询的耳侧：LEFT 或 RIGHT。 */
 enum class EarbudSide { LEFT, RIGHT }
 
@@ -47,7 +74,7 @@ data class DropCapabilities(
 enum class SourceFeature { AUDIO_SOURCE, VOLUME, PRESET_EQ, PEQ, MIC_GAIN }
 
 /**
- * 控制器当前会话的功能快照；未知值用 null 表示，断连/关闭重置，不包含音频设备选择。
+ * 控制器当前会话的功能快照；未知标量用 null、未知 codec 用缺 key 表示，断连/关闭重置。
  * @property phase 协议初始化阶段。
  * @property protocols 本会话识别的命令/响应特征对。
  * @property capabilities 最近探测的能力及完整性。
@@ -62,6 +89,8 @@ enum class SourceFeature { AUDIO_SOURCE, VOLUME, PRESET_EQ, PEQ, MIC_GAIN }
  * @property presetEq 9ECA 预设 EQ 查询/通知值；设置仅更新已存在快照的 current。
  * @property micGain 9ECA 麦克风增益查询、设置响应或通知值。
  * @property error 初始化失败原因；普通控件调用异常直接抛给调用方，不自动写入此字段。
+ * @property codecStates 已 GET 确认的耳机端编码选项，不表示系统正在使用的音频编码。
+ * @property paramEq 完整 GAIA Bluetrum 设备读回；未加载/读回失败为 null，不存 UI 草稿。
  */
 data class DropState(
     val phase: DropPhase = DropPhase.IDLE,
@@ -78,6 +107,8 @@ data class DropState(
     val presetEq: SourcePresetEq? = null,
     val micGain: SourceMicGain? = null,
     val error: DropException? = null,
+    val codecStates: Map<AudioCodec, Boolean> = emptyMap(),
+    val paramEq: GaiaParamEqState? = null,
 )
 
 /**
@@ -127,7 +158,7 @@ sealed class DropException(message: String, cause: Throwable? = null) : Exceptio
     /** 绑定已关闭、换会话、失去连接或控制器已关闭；旧控件引用也抛此异常。 */
     class Disconnected : DropException("Earbud disconnected")
     /**
-     * ANC 已写入但后续 GET 无法确认；[DropState.ancMode] 清为 null，保留读回失败 cause。
+     * ANC/codec/PEQ 已写入但后续 GET 无法确认；对应快照变未知，PEQ 可能已部分应用。
      * @property operation 未能确认的操作。
      * @param cause GET 读回失败的原异常；取消/断连不在此包装。
      */
@@ -140,6 +171,12 @@ sealed class DropException(message: String, cause: Throwable? = null) : Exceptio
      */
     class AncModeMismatch(val requested: AncMode, val observed: AncMode) :
         DropException("ANC mode readback mismatch: requested $requested, observed $observed")
+    /** Actual device codec option differs from the requested option. */
+    class CodecStateMismatch(val codec: AudioCodec, val requested: Boolean, val observed: Boolean) :
+        DropException("$codec readback mismatch: requested $requested, observed $observed")
+    /** A write may be partially applied; observed is a complete actual device configuration. */
+    class ParamEqMismatch(val observed: GaiaParamEqState) :
+        DropException("Parametric EQ readback mismatch; device may have partially applied the changes")
     /**
      * 负载短缺、未知枚举、编码不合法或数据超过协商 GATT MTU 等协议错误。
      * @param message 实际结构/数值错误说明。
@@ -167,7 +204,7 @@ data class DropOptions(val profileOverrides: List<DropProfile> = emptyList())
 
 /**
  * 当前 READY 绑定的 GAIA 控件；换会话后必须重新从 [DropController.gaia] 获取。
- * 除 ANC SET/关机/sendRaw 外，请求等待匹配回复；大部分 SET 随后独立 GET 读回。
+ * ANC/codec/PEQ 的 SET 不等待 ACK，而以 GET 确认；其他大部分 SET 等回复再独立 GET。
  * 功能存在性不由 getter 保证，缺少 GAIA 时操作抛 [DropException.UnsupportedCapability]。
  */
 interface GaiaControls {
@@ -197,9 +234,9 @@ interface GaiaControls {
     suspend fun getHeadTracking(): HeadTrackingMode
     /** 写入枚举编号、等待 SET 回复后 GET 读回，返回并保存实际追踪模式。 */
     suspend fun setHeadTracking(mode: HeadTrackingMode): HeadTrackingMode
-    /** 查询 [codec] 开关，非零为 true；不更新 DropState，也不证明当前音频编码。 */
+    /** Strict 0/1 GET; updates codecStates. Missing key means unknown, not disabled. */
     suspend fun isCodecEnabled(codec: AudioCodec): Boolean
-    /** 设置 [codec] 开关，等待 SET 回复后 GET 读回；不更新 DropState。 */
+    /** Sends SET then GET in one transaction; mismatch preserves actual, failed readback clears key. */
     suspend fun setCodecEnabled(codec: AudioCodec, enabled: Boolean): Boolean
     /** 查询动态低音开关，非零为 true；不更新 DropState。 */
     suspend fun isDynamicBassOn(): Boolean
@@ -213,6 +250,10 @@ interface GaiaControls {
     suspend fun getEqualizerPreset(): Int
     /** 设置 [index]（0..255），等待 SET 回复后 GET 读回；越界抛 IllegalArgumentException。 */
     suspend fun setEqualizerPreset(index: Int): Int
+    /** Reads complete GAIA Bluetrum USER63 configuration; unsupported/malformed readback clears paramEq. */
+    suspend fun getParamEq(): GaiaParamEqState
+    /** Writes a complete raw snapshot in MTU-sized batches and verifies it; does not save to Flash. */
+    suspend fun setParamEq(bands: List<GaiaPeqBand>): GaiaParamEqState
     /** 查询原始手势配置；[gesture]、[context] 均须为 0..255，返回未进一步解释的包。 */
     suspend fun getGestureConfiguration(gesture: Int, context: Int): GaiaPacket
     /** 请求恢复手势配置并返回匹配响应；不声明设备已持久化或读回验证。 */

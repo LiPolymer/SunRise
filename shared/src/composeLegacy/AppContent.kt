@@ -18,6 +18,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -36,12 +37,13 @@ import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.headset.HeadsetPhase
 import ink.lipoly.app.sunrise.headset.HeadsetState
 import ink.lipoly.app.sunrise.drop.GaiaIds
+import ink.lipoly.app.sunrise.drop.AudioCodec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
-internal enum class MainPage { OVERVIEW, SETTINGS }
+internal enum class MainPage { OVERVIEW, EQUALIZER, SETTINGS }
 
 internal class AppNavigationState {
     var page by mutableStateOf(MainPage.OVERVIEW)
@@ -76,6 +78,33 @@ internal fun AppContent(
         var working by remember(client) { mutableStateOf<String?>(null) }
         var notice by remember { mutableStateOf<String?>(null) }
         var refreshGeneration by remember { mutableIntStateOf(0) }
+        val controls = if (client != null && missingPermissions.isEmpty() &&
+            state.phase == HeadsetPhase.READY && state.controls.hasReadyGaia()) {
+            try { client.gaia } catch (_: DropException) { null }
+        } else null
+        val eqEditor = remember(controls) { controls?.let { ParamEqEditor(scope, it) } }
+        DisposableEffect(eqEditor) { onDispose { eqEditor?.close() } }
+        val eqState = eqEditor?.state?.collectAsState()?.value
+        val eqBusy = eqState?.isEditing == true ||
+            eqState?.phase == ParamEqEditPhase.PENDING || eqState?.phase == ParamEqEditPhase.WRITING
+        LaunchedEffect(eqState?.error) {
+            eqState?.error?.let { notice = errorMessage(it, english) }
+        }
+        LaunchedEffect(controls, refreshGeneration) {
+            val bound = controls ?: return@LaunchedEffect
+            if (GaiaIds.CODEC_TYPE !in state.controls.capabilities.gaiaFeatures &&
+                state.controls.capabilities.complete) return@LaunchedEffect
+            for (codec in AudioCodec.entries) {
+                while (working != null) delay(100.milliseconds)
+                try {
+                    bound.isCodecEnabled(codec)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Each codec is independently supported; absent values remain unknown.
+                }
+            }
+        }
 
         LaunchedEffect(notice) {
             notice?.let {
@@ -183,6 +212,7 @@ internal fun AppContent(
         val title = when {
             diagnostics -> tr(english, "高级诊断", "Advanced diagnostics")
             page == MainPage.OVERVIEW -> "SunRise"
+            page == MainPage.EQUALIZER -> tr(english, "参数均衡器", "Parametric EQ")
             else -> tr(english, "设置", "Settings")
         }
         Scaffold(
@@ -239,6 +269,12 @@ internal fun AppContent(
                         label = { Text(tr(english, "概览", "Overview")) },
                     )
                     NavigationBarItem(
+                        selected = page == MainPage.EQUALIZER,
+                        onClick = { navigation.page = MainPage.EQUALIZER },
+                        icon = { Text("≋", modifier = Modifier.clearAndSetSemantics {}) },
+                        label = { Text(tr(english, "均衡器", "Equalizer")) },
+                    )
+                    NavigationBarItem(
                         selected = page == MainPage.SETTINGS,
                         onClick = { navigation.page = MainPage.SETTINGS },
                         icon = { Text("⚙", modifier = Modifier.clearAndSetSemantics {}) },
@@ -265,6 +301,7 @@ internal fun AppContent(
                     showWind = settings.showWind,
                     confirmedReads = confirmedReads,
                     working = working,
+                    codecBlocked = eqBusy,
                     modifier = Modifier.fillMaxSize().padding(padding),
                     onRequestPermissions = onRequestPermissions,
                     onRetry = ::retryConnection,
@@ -273,6 +310,22 @@ internal fun AppContent(
                     onLed = { enabled -> runAction("LED", control = true) { gaia.setLedOn(enabled) } },
                     onSpatial = { enabled -> runAction(tr(english, "空间音频", "Spatial audio"), control = true) { gaia.setSpatialOn(enabled) } },
                     onTracking = { mode -> runAction(tr(english, "头部追踪", "Head tracking"), control = true) { gaia.setHeadTracking(mode) } },
+                    onCodec = { codec, enabled ->
+                        if (!eqBusy) {
+                            val bound = controls
+                            runAction(tr(english, "设置编码", "Set codec"), control = true) {
+                                bound?.setCodecEnabled(codec, enabled) ?: throw DropException.NotReady()
+                                eqEditor?.refresh()
+                            }
+                        }
+                    },
+                )
+                page == MainPage.EQUALIZER -> ParamEqScreen(
+                    editor = eqEditor,
+                    state = eqState,
+                    english = english,
+                    enabled = working == null && missingPermissions.isEmpty(),
+                    modifier = Modifier.fillMaxSize().padding(padding),
                 )
                 else -> SettingsScreen(
                     settings = settings,
@@ -317,16 +370,26 @@ internal fun AppContent(
         }
 }
 
-private fun errorMessage(error: Exception, english: Boolean): String = when (error) {
+internal fun errorMessage(error: Exception, english: Boolean): String = when (error) {
     is DropException.Unverified -> tr(
         english,
-        "命令已发送，但读回未能验证；当前状态未知，可刷新重试。",
-        "Command sent, but readback could not verify it. Current state is unknown; refresh to retry.",
+        "命令已发送，可能已部分应用，但读回未能验证；当前状态未知，请重新读取。",
+        "Command sent and may be partially applied, but readback failed. Current state is unknown; reload.",
     )
     is DropException.AncModeMismatch -> tr(
         english,
         "读回不一致；设备实际为 ${error.observed.display(false)}。",
         "Readback mismatch; device reports ${error.observed.display(true)}.",
+    )
+    is DropException.CodecStateMismatch -> tr(
+        english,
+        "${error.codec} 读回不一致；设备实际${if (error.observed) "开启" else "关闭"}。",
+        "${error.codec} readback mismatch; the device reports ${if (error.observed) "enabled" else "disabled"}.",
+    )
+    is DropException.ParamEqMismatch -> tr(
+        english,
+        "均衡器读回不一致，可能已部分应用。已显示设备实际值；请重新读取后编辑。",
+        "EQ readback mismatch; changes may be partially applied. Actual values are shown; reload before editing.",
     )
     else -> error.message ?: tr(english, "未知错误", "Unknown error")
 }

@@ -2,6 +2,13 @@ package ink.lipoly.app.sunrise.drop
 
 import kotlinx.coroutines.flow.StateFlow
 
+/** Lock-owned, coroutine-confined transaction; never retain or use outside its block. */
+internal interface GaiaTransaction {
+    val maxWriteSize: Int
+    suspend fun request(command: GaiaCommand, expectedPeqRange: IntRange? = null): GaiaPacket
+    suspend fun send(command: GaiaCommand)
+}
+
 /**
  * 平台无关控件所需的单会话接口，绝不能包装成动态转发到“当前连接”的 facade。
  * profile、ANC 路径、请求与 mutate 都属于同一个 epoch；旧控件调用必须失败而非转到新会话。
@@ -21,6 +28,8 @@ internal interface DropControlSession {
     suspend fun requestGaia(command: GaiaCommand): GaiaPacket
     /** 只完成传输写，不等待 GAIA ACK，不能据此报告已应用。 */
     suspend fun sendGaia(command: GaiaCommand)
+    /** Entire operation shares the existing GAIA/9ECA mutex and binding lifetime. */
+    suspend fun <T> withGaiaTransaction(block: suspend GaiaTransaction.() -> T): T
     /** 单事务请求，同 commandId/sequence RESPONSE 最多等待六秒，返回原始负载。 */
     suspend fun requestSource(commandId: Int, payload: ByteArray): ByteArray
     /** 直接读取 capability 特征，缺失时拒绝；与协议请求同受 epoch/caller cancellation 保护。 */

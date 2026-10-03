@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
@@ -27,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.drop.AncMode
+import ink.lipoly.app.sunrise.drop.AudioCodec
+import ink.lipoly.app.sunrise.drop.GaiaIds
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
 import ink.lipoly.app.sunrise.headset.HeadsetPhase
@@ -43,6 +46,7 @@ internal fun OverviewScreen(
     showWind: Boolean,
     confirmedReads: Set<OverviewControl>,
     working: String?,
+    codecBlocked: Boolean,
     modifier: Modifier = Modifier,
     onRequestPermissions: () -> Unit,
     onRetry: () -> Unit,
@@ -51,6 +55,7 @@ internal fun OverviewScreen(
     onLed: (Boolean) -> Unit,
     onSpatial: (Boolean) -> Unit,
     onTracking: (HeadTrackingMode) -> Unit,
+    onCodec: (AudioCodec, Boolean) -> Unit,
 ) {
     val controlState = state.controls
     val ready = state.phase == HeadsetPhase.READY && controlState.hasReadyGaia()
@@ -160,6 +165,45 @@ internal fun OverviewScreen(
                         }
                     }
                 }
+            }
+        }
+        item {
+            OverviewCard(tr(english, "音频编码", "Audio codecs")) {
+                Text(
+                    tr(english, "这些开关控制耳机端编码选项；实际音频编码由系统协商。",
+                        "These switches control headset codec options; the system negotiates the actual audio codec."),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                val available = ready && (GaiaIds.CODEC_TYPE in controlState.capabilities.gaiaFeatures ||
+                    !controlState.capabilities.complete)
+                if (!available) Text(tr(english, "当前会话不支持音频编码控制", "Codec control unavailable in this session"))
+                AudioCodec.entries.forEach { codec ->
+                    val actual = controlState.codecStates[codec]
+                    Row(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(codec.name, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                actual?.let { if (it) tr(english, "开启", "On") else tr(english, "关闭", "Off") }
+                                    ?: tr(english, "未知", "Unknown"),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        if (actual != null) Switch(
+                            checked = actual,
+                            onCheckedChange = { onCodec(codec, it) },
+                            enabled = available && enabled && !codecBlocked,
+                        )
+                    }
+                }
+                Text(
+                    tr(english, "LHDC 支持取决于耳机型号和固件。", "LHDC support depends on the headset model and firmware."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
         if (controls.isNotEmpty()) {

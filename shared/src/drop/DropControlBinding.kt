@@ -73,9 +73,36 @@ internal class DropControlBinding(
     val source: SourceControls = SourceControlsImpl(this)
     val isOpen: Boolean get() = !closed.value && lifetime.isActive
 
-    private data class PendingGaia(val command: GaiaCommand, val reply: CompletableDeferred<GaiaPacket>)
+    private data class PendingGaia(
+        val command: GaiaCommand,
+        val reply: CompletableDeferred<GaiaPacket>,
+        val expectedPeqRange: IntRange? = null,
+    )
     private data class PendingSource(val commandId: Int, val sequence: Int, val reply: CompletableDeferred<SourceFrame>)
     private class BindingDisconnectedCancellation : CancellationException("Drop binding disconnected")
+    /** One object per binding; its owner is only set while holding transactions. */
+    private val gaiaTransaction = object : GaiaTransaction {
+        var owner: Job? = null
+        private suspend fun checkOwner() {
+            check(owner != null && currentCoroutineContext().job === owner) {
+                "GAIA transaction used outside its owning coroutine"
+            }
+            ensureBound()
+        }
+        override val maxWriteSize: Int get() {
+            check(owner != null) { "GAIA transaction has ended" }
+            ensureBound()
+            return session.mtu.value - 3
+        }
+        override suspend fun request(command: GaiaCommand, expectedPeqRange: IntRange?): GaiaPacket {
+            checkOwner()
+            return requestGaiaLocked(command, expectedPeqRange)
+        }
+        override suspend fun send(command: GaiaCommand) {
+            checkOwner()
+            sendGaiaLocked(command)
+        }
+    }
 
     init {
         lifetime.invokeOnCompletion { close() }
@@ -302,22 +329,49 @@ internal class DropControlBinding(
 
     override suspend fun requestGaia(command: GaiaCommand): GaiaPacket = requestGaia(command, probing = false)
 
-    /**
-     * 安装 pending 后再校验 epoch，写入完成后最多等六秒协议回复。
-     * 只匹配 RESPONSE 的 vendor/feature/command；finally 用身份 compareAndSet 清理槽。
-     */
+    /** Installs pending before writing and clears it by identity even on cancellation. */
     private suspend fun requestGaia(command: GaiaCommand, probing: Boolean): GaiaPacket = inBinding {
         transactions.withLock {
             requireProtocol(DropProtocol.GAIA_BLE, probing)
-            val pending = PendingGaia(command, CompletableDeferred())
-            pendingGaia.value = pending
+            requestGaiaLocked(command)
+        }
+    }
+
+    private suspend fun requestGaiaLocked(
+        command: GaiaCommand,
+        expectedPeqRange: IntRange? = null,
+    ): GaiaPacket {
+        require(expectedPeqRange == null ||
+            (command.feature == GaiaIds.MUSIC_PROCESSING && command.command == GaiaIds.Eq.GET_USER_CONFIG))
+        val pending = PendingGaia(command, CompletableDeferred(), expectedPeqRange)
+        pendingGaia.value = pending
+        return try {
+            sendGaiaLocked(command)
+            withTimeoutOrNull(6_000) { pending.reply.await() }
+                ?: throw DropException.Timeout("GAIA ${command.feature}/${command.command}")
+        } finally {
+            pendingGaia.compareAndSet(pending, null)
+        }
+    }
+
+    private suspend fun sendGaiaLocked(command: GaiaCommand) {
+        ensureBound()
+        try {
+            session.write(gaiaCommand!!, GaiaCodec.encode(command))
+        } catch (e: BtException) {
+            throw normalize(e)
+        }
+        ensureBound()
+    }
+
+    override suspend fun <T> withGaiaTransaction(block: suspend GaiaTransaction.() -> T): T = inBinding {
+        transactions.withLock {
+            requireProtocol(DropProtocol.GAIA_BLE, probing = false)
+            gaiaTransaction.owner = currentCoroutineContext().job
             try {
-                ensureBound()
-                session.write(gaiaCommand!!, GaiaCodec.encode(command))
-                withTimeoutOrNull(6_000) { pending.reply.await() }
-                    ?: throw DropException.Timeout("GAIA ${command.feature}/${command.command}")
+                block(gaiaTransaction)
             } finally {
-                pendingGaia.compareAndSet(pending, null)
+                gaiaTransaction.owner = null
             }
         }
     }
@@ -335,7 +389,7 @@ internal class DropControlBinding(
     override suspend fun sendGaia(command: GaiaCommand) = inBinding {
         transactions.withLock {
             requireProtocol(DropProtocol.GAIA_BLE, probing = false)
-            session.write(gaiaCommand!!, GaiaCodec.encode(command))
+            sendGaiaLocked(command)
         }
     }
 
@@ -389,7 +443,13 @@ internal class DropControlBinding(
             val pending = pendingGaia.value
             if (pending != null && packet.vendor == pending.command.vendor &&
                 packet.feature == pending.command.feature && packet.command == pending.command.command) {
-                pending.reply.complete(packet)
+                val range = pending.expectedPeqRange
+                // Short matching responses must reach strict parsing, not become opaque timeouts.
+                if (range == null || packet.payload.size < 2 ||
+                    ((packet.payload[0].toInt() and 0xff) == range.first &&
+                        (packet.payload[1].toInt() and 0xff) == range.last)) {
+                    pending.reply.complete(packet)
+                }
             }
         } else if (packet.type == GaiaCodec.NOTIFICATION) {
             publishEvent(this, DropEvent.GaiaNotification(packet))

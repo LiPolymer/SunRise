@@ -4,10 +4,13 @@ product:
 
 dependencies:
   - $compose.foundation: exported
-  - $compose.material3: exported
+  - org.jetbrains.compose.material3:material3:1.12.0-alpha03: exported
 
   - $compose.ui
   - org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0
+
+test-dependencies:
+  - org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0
 
 dependencies@android:
   - androidx.activity:activity-compose:1.13.0

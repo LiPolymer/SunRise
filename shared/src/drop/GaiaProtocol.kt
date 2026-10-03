@@ -111,7 +111,7 @@ object GaiaIds {
      * GET_MODE/SET_MODE 供 ANC 控件使用，其余使用 get/setAudioCuration；不推断负载单位或支持性。
      */
     object AudioCuration { /** 音频调节状态原始查询。 */ const val GET_STATE = 0; /** 音频调节状态原始设置。 */ const val SET_STATE = 1; /** 模式数量原始查询。 */ const val GET_MODE_COUNT = 2; /** ANC 模式读回，使用 profile 读映射。 */ const val GET_MODE = 3; /** ANC 模式写入，使用 profile 写映射。 */ const val SET_MODE = 4; /** 音频调节增益原始查询，非 DAC 档位。 */ const val GET_GAIN = 5; /** 音频调节增益原始设置，单位不解码。 */ const val SET_GAIN = 6; /** 切换项数量原始查询。 */ const val GET_TOGGLE_COUNT = 7; /** 切换项原始查询。 */ const val GET_TOGGLE = 8; /** 切换项原始设置。 */ const val SET_TOGGLE = 9; /** 场景原始查询。 */ const val GET_SCENARIO = 10; /** 场景原始设置。 */ const val SET_SCENARIO = 11; /** 演示支持原始查询。 */ const val GET_DEMO_SUPPORT = 12; /** 演示状态原始查询。 */ const val GET_DEMO_STATE = 13; /** 演示状态原始设置。 */ const val SET_DEMO_STATE = 14; /** 自适应原始查询。 */ const val GET_ADAPTATION = 15; /** 自适应原始设置。 */ const val SET_ADAPTATION = 16; /** 透传配置原始查询。 */ const val GET_LEAKTHROUGH_CONFIG = 17; /** 透传步进原始查询。 */ const val GET_LEAKTHROUGH_STEP = 18; /** 透传步进原始设置。 */ const val SET_LEAKTHROUGH_STEP = 19; /** 平衡原始查询。 */ const val GET_BALANCE = 20; /** 平衡原始设置。 */ const val SET_BALANCE = 21; /** 抗风支持原始查询。 */ const val GET_WIND_SUPPORT = 22; /** 抗风状态原始查询。 */ const val GET_WIND_STATE = 23; /** 抗风状态原始设置。 */ const val SET_WIND_STATE = 24; /** 自动通透支持原始查询。 */ const val GET_AUTO_TRANSPARENCY_SUPPORT = 25; /** 自动通透状态原始查询。 */ const val GET_AUTO_TRANSPARENCY_STATE = 26; /** 自动通透状态原始设置。 */ const val SET_AUTO_TRANSPARENCY_STATE = 27; /** 释放时间原始查询，单位不解码。 */ const val GET_RELEASE_TIME = 28; /** 释放时间原始设置，单位不校验。 */ const val SET_RELEASE_TIME = 29; /** 啸叫功能支持原始查询。 */ const val GET_HOWLING_SUPPORT = 30; /** 啸叫功能状态原始查询。 */ const val GET_HOWLING_STATE = 31; /** 啸叫功能状态原始设置。 */ const val SET_HOWLING_STATE = 32; /** 反馈增益原始查询，单位不解码。 */ const val GET_FEEDBACK_GAIN = 33; /** 噪声识别支持原始查询。 */ const val GET_NOISE_ID_SUPPORT = 34; /** 噪声识别状态原始查询。 */ const val GET_NOISE_ID_STATE = 35; /** 噪声识别状态原始设置。 */ const val SET_NOISE_ID_STATE = 36; /** 噪声分类原始查询，不映射类别名称。 */ const val GET_NOISE_CATEGORY = 37; /** 不利条件功能支持原始查询。 */ const val GET_ADVERSE_SUPPORT = 38; /** 不利条件功能状态原始查询。 */ const val GET_ADVERSE_STATE = 39; /** 不利条件功能状态原始设置。 */ const val SET_ADVERSE_STATE = 40; /** 模式切换配置原始查询。 */ const val GET_SWITCH_CONFIG = 41; /** 模式切换配置原始设置。 */ const val SET_SWITCH_CONFIG = 42 }
-    /** 音乐处理命令；结构化控件只使用 GET_PRESET/SET_PRESET，其余编号供原始请求。 */
+    /** Music processing commands; structured Bluetrum controls use 0..6, never assume Flash semantics. */
     object Eq { /** EQ 状态原始查询。 */ const val GET_STATE = 0; /** 预设集合原始查询。 */ const val GET_PRESETS = 1; /** 当前单字节预设查询。 */ const val GET_PRESET = 2; /** 单字节预设设置。 */ const val SET_PRESET = 3; /** 频段数量原始查询。 */ const val GET_BAND_COUNT = 4; /** 用户配置原始查询。 */ const val GET_USER_CONFIG = 5; /** 用户配置原始设置。 */ const val SET_USER_CONFIG = 6; /** 用户配置存储原始编号，不声明持久化已完成。 */ const val STORE_USER_CONFIG = 7; /** NV 编号原始设置。 */ const val SET_NV_ID = 8 }
     /** 手势命令；结构化控件仅使用 GET_CONFIG 与 RESET，其余负载由设备协议定义。 */
     object Gesture { /** 触摸面数量原始查询。 */ const val TOUCHPAD_COUNT = 0; /** 支持手势集合原始查询。 */ const val SUPPORTED_GESTURES = 1; /** 支持上下文集合原始查询。 */ const val SUPPORTED_CONTEXTS = 2; /** 支持动作集合原始查询。 */ const val SUPPORTED_ACTIONS = 3; /** gesture/context 两字节配置查询。 */ const val GET_CONFIG = 4; /** 手势配置原始设置。 */ const val SET_CONFIG = 5; /** 配置恢复请求，仅等待匹配响应。 */ const val RESET = 6 }
@@ -142,8 +142,13 @@ object GaiaCodec {
     fun encode(command: GaiaCommand): ByteArray {
         require(command.vendor in 0..0xFFFF && command.feature in 0..127 && command.command in 0..127)
         val word = (command.feature shl 9) or command.command
-        return byteArrayOf((command.vendor shr 8).toByte(), command.vendor.toByte(),
-            (word shr 8).toByte(), word.toByte()) + command.payload.copyOf()
+        val result = ByteArray(4 + command.payload.size)
+        result[0] = (command.vendor shr 8).toByte()
+        result[1] = command.vendor.toByte()
+        result[2] = (word shr 8).toByte()
+        result[3] = word.toByte()
+        command.payload.copyInto(result, 4)
+        return result
     }
 
     /** 头不足四字节返回 null；否则拆位并复制剩余负载，type=3 也保留，不判断匹配/拒绝。 */

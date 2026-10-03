@@ -37,6 +37,7 @@
 | [DropControlSession.kt](DropControlSession.kt) | 控件所需的单绑定内部接口，不是动态转发到当前连接的 facade |
 | [DropGattIds.kt](DropGattIds.kt) | 完整小写协议 UUID；不属于通用通讯包 |
 | [GaiaProtocol.kt](GaiaProtocol.kt) | `GaiaCommand` / `GaiaPacket`、`GaiaIds`、`GaiaCodec` |
+| [GaiaBluetrumPeqCodec.kt](GaiaBluetrumPeqCodec.kt) | 严格 Bluetrum PEQ 负载、原始量纲转换、MTU 批量上限 |
 | [SourceProtocol.kt](SourceProtocol.kt) | 9ECA 全部值模型、`SourceIds`、`SourceCodec` |
 | [GaiaControlsImpl.kt](GaiaControlsImpl.kt) | GAIA 参数检查、读回、功能快照更新 |
 | [SourceControlsImpl.kt](SourceControlsImpl.kt) | 9ECA 状态检查、音源稳定等待、SET 响应与固件 fallback |
@@ -77,10 +78,10 @@ DropController(device, options = DropOptions(), profileDevice = device)
 
 ### 控件引用与并发
 
-控件对象属于 **某个绑定**，而不是永久“当前设备”代理。不要跨连接缓存 `val gaia = controller.gaia`；每次操作重新取 getter。旧引用失效后抛 `Disconnected`，不能把请求发送到新会话或把旧读值写入新状态。
+控件对象属于 **某个绑定**，而不是永久“当前设备”代理。普通动作重新取 getter；实时编辑器可在一个连接 epoch 内固定持有该对象，换绑时必须关闭并丢弃旧草稿，不能在旧 worker 内获取新 getter。旧引用失效后抛 `Disconnected`，不能把请求或旧读值发送到新会话。
 
 - 一个 binding 内 GAIA 和 9ECA 共用事务 Mutex，每次请求只有对应 pending 槽；不同设备的控制器各自独立，可以同时等待回复。
-- 部分高级操作由多次事务组成，例如 SET+GET、ANC 读回、音源轮询；并发的多步骤操作不会自动变成一个不可交错的大事务。宿主若需要顺序，应在业务层串行调用。
+- Codec SET+GET、完整 PEQ 读取/批量写入/验证和预设 SET+GET 在一次 `withGaiaTransaction` 内持有同一个 Mutex；不与 GAIA 或 9ECA 请求交错。其他多步骤动作（例如 ANC 读回、音源轮询）仍由多次事务组成，不自动成为大事务。
 - 隔离保证针对 **不同设备**。同一设备创建多个控制器并行操作同一协议不在保证范围；响应可能被各自订阅者观察，不应据此建立同设备共享控制方案。
 - `close()` 不发送关闭通知命令、不撤销其他使用者的 CCCD，也不等待已开始原生操作的 callback。若调用方拥有连接，需另外断开；借用连接时则不能顺手断开。
 
@@ -125,6 +126,8 @@ DropController(device, options = DropOptions(), profileDevice = device)
 | `gain/ledOn/spatialOn/headTracking` | 对应 GET 或 SET 后 GET 的实际读值，初值 null |
 | `sourceStatus/volume/presetEq/micGain` | 9ECA 查询、部分 SET 响应和指定通知；初值 null。预设 SET 只修改已有快照的 current |
 | `error` | 初始化失败的 `DropException?`；普通控件调用失败直接抛出，不自动写 error |
+| `codecStates` | `Map<AudioCodec,Boolean>` 仅保存独立 GET 实际值；缺 key=未知，false=已确认关闭。失败只移除相关 codec |
+| `paramEq` | 完整 `GaiaParamEqState?` 设备读回；读不全/无法确认时 null，失配保留完整 actual；不存草稿 |
 
 断连/关闭恢复默认快照，包括未知电量与控制值；错误初始化可保留该 epoch 的 ERROR 快照直到后续断连/替换。通知只可更新当前 binding，旧会话帧不得覆盖新会话。
 
@@ -165,7 +168,7 @@ DropController(device, options = DropOptions(), profileDevice = device)
 
 ## GAIA 控件方法参考
 
-每个调用需要当前 READY 绑定及 `GAIA_BLE`。getter 不检查协议，具体传输入口会检查。多数 SET 是“匹配 SET 回复 → 独立 GET”，返回读回实际值；不是把请求参数原样当成功。基本取值函数要求至少一个负载字节，布尔值非零即 true。
+每个调用需要当前 READY 绑定及 `GAIA_BLE`。getter 不检查协议，具体传输入口会检查。多数既有 SET 是“匹配 SET 回复 → 独立 GET”；ANC、codec 和 PEQ 不依赖 SET ACK。基本取值至少一个负载字节；既有布尔控件非零即 true，但 codec/EQ STATE 严格只接受 0/1。
 
 ### 电量、ANC 与增益
 
@@ -184,10 +187,20 @@ DropController(device, options = DropOptions(), profileDevice = device)
 | `isLedOn()` / `setLedOn(on)` | GET 更新 ledOn；SET 写 0/1 后 GET 更新并返回 |
 | `isSpatialOn()` / `setSpatialOn(on)` | GET 更新 spatialOn；SET 写 0/1 后 GET 更新并返回 |
 | `getHeadTracking()` / `setHeadTracking(mode)` | GET 编号须为 0..2，更新 headTracking；SET 枚举 ordinal 后 GET |
-| `isCodecEnabled(codec)` / `setCodecEnabled(codec,enabled)` | 对 LC3/LDAC/LHDC 查询或写 0/1 后 GET；不缓存 DropState，不说明当前实际编码 |
+| `isCodecEnabled(codec)` / `setCodecEnabled(codec,enabled)` | LC3/LDAC/LHDC GET 严格 0/1 并缓存 `codecStates`。SET 单事务发送后 GET；失配抛 `CodecStateMismatch` 且保留 actual，读回失败移除 key 并抛 `Unverified`。不说明系统实际音频编码 |
 | `isDynamicBassOn()` / `setDynamicBassOn(on)` | 查询或写 0/1 后 GET；不缓存 DropState |
 | `isLeftRightReversed()` / `setLeftRightReversed(reversed)` | 查询或写 0/1 后 GET；不缓存 DropState |
-| `getEqualizerPreset()` / `setEqualizerPreset(index)` | GET 原始 u8；SET index=0..255 后 GET；不缓存 DropState，不推断预设数量/名称 |
+| `getEqualizerPreset()` / `setEqualizerPreset(index)` | GET 原始 u8；SET index=0..255 后 GET，动作先使 paramEq 失效；不推断预设数量/名称 |
+
+### GAIA Bluetrum 参数 EQ
+
+- `getParamEq(): GaiaParamEqState` 在单事务读取 STATE、PRESETS、PRESET、BAND_COUNT 和全部连续范围，完成后才发布。STATE 必须为 1，预设列表严格 `count + count个ID` 且含 USER=63，段数 1..255。STATE=0、无 USER63、未知 filter/不符合 Bluetrum 布局时不可编辑；不能靠设备名或 feature5 宣称支持。9ECA USER=7 和其 PEQ API 不变，普通 EQ 页面不使用该后端。
+- `GaiaPeqBand(index,frequencyHz,gainRaw,qRaw,filter)` 按设备固定索引排列，不按频率重排。`gainDb=gainRaw/60.0`、`q=qRaw/4096.0`；频率 u16、Q u16、gain s16BE。启用段频率20..20000Hz、qRaw1..65535；Bypass 的频率/Q 原始 u16 可为0，未修改字段原样透传。数值输入先拒绝非有限和溢出，再以最近整数 Hz、gain×60/Q×4096 向零截断转换，不能从显示舍入值重建未改 raw。
+- `PeqFilter` IDs：BYPASS=0、LOW_PASS=7、HIGH_PASS=8、LOW_SHELF=10、HIGH_SHELF=11、PEAKING=13。配置负载为 `start:u8,end:u8,totalGain:s16BE,N×(frequency:u16BE,q:u16BE,filter:u8,gain:s16BE)`，严格 `4+7N` 字节。[INFERENCE] offset2..3 与写入 totalGain 对应；只保留原始 s16，不提供总增益控制，也不声明该 header 是已确认的 dB 读值。
+- 每个范围最多 `min(7,floor((MTU−3−8)/7))` 段，GET 和 SET 都使用此上限以容纳完整同尺寸回复。MTU23 每包1段、MTU247 最多7段；PDU完整写入，无通用分片/截断，也不拼猜通知聚合。
+- `setParamEq(bands): GaiaParamEqState` 接受全部频段快照，写前整体检查所有 raw/连续索引并重新确认 BAND_COUNT。按已确认 header 批量发送 command6，每批立即 GET 同范围精确比较 raw；首个失配停止后续写，读取完整 actual 并抛 `ParamEqMismatch(observed)`。读不全则清 paramEq 并抛 `Unverified`，不能说全量已应用。
+- 配置逐批确认后才需要时发送 command3 USER63，再 GET 确认激活并完整重读。页面加载零写入；编辑才切用户 EQ。Codec 选项不添加互斥规则、不自动重置 EQ，应用在 codec 修改后重新读取 EQ 以设备响应判断可用性；LHDC 限制不适用于所有型号。
+- 没有自动重试、回滚或 Flash 保存；command7/8 不由结构化 PEQ 调用。写后失败可能已部分应用，取消/断连仍原样传播并尽力清本绑定快照。读回确认不等于断电持久化、设备设置不等于系统协商结果。
 
 ### 手势、基础信息与原始命令
 
@@ -312,7 +325,7 @@ V1 固定 OFF/NC=0/1，不用 AC/V2 map。`capabilities.ancModes` 从所选路�
 
 `GaiaCodec.decode(bytes)` 不足四字节返回 null，其余拆字段并复制 payload，不验证 type 是否已知（可能返回 3）、成功状态或设备能力。`GaiaCodec.features(payload)` 接受 continuation+ID/version 对或大端位图；只返回 feature 集合，不独立判断分页完整性。
 
-绑定只以 `type=RESPONSE(2)` 且 **vendor + feature + command 全相等** 完成 GAIA pending。GAIA 没有本实现可用的事务序号；同一会话同一三元组的迟到响应无法凭线协议区分前后请求。事务锁与 epoch 隔离不等于新增了线上相关 ID；不要把它宣称为任意同会话迟到回复的完全隔离。
+绑定以 `type=RESPONSE(2)` 且 **vendor + feature + command 全相等** 完成 GAIA pending。结构化 feature5/command5 GET 还匹配前两字节 start/end；错范围迟到帧被忽略，短于两字节的同三元组回复交严格解析失败，不变成不透明超时。command6 ACK 不会完成 command5 GET。GAIA 没有事务序号；同三元组且同范围的迟到响应仍无法凭线协议区分前后请求，不宣称任意同会话迟到回复的完全隔离。
 
 ### 9ECA codec 与匹配
 
@@ -358,8 +371,10 @@ V1 固定 OFF/NC=0/1，不用 AC/V2 map。`capabilities.ancModes` 从所选路�
 | `NotReady` | 没有当前可用 READY 控件/已连接会话 |
 | `Timeout(operation)` | 协议回复、音源稳定等待或映射后的原生操作超时；须按来源区分会话是否失效 |
 | `Disconnected` | controller/binding 关闭、断连、换会话或旧控件使用 |
-| `Unverified(operation,cause)` | ANC 已写但 GET 无法确认；清 ancMode，保留读回 cause |
+| `Unverified(operation,cause)` | ANC/codec/PEQ 写后 GET 无法确认；对应快照未知，PEQ可能部分应用，保留 cause；不包装取消/断连 |
 | `AncModeMismatch(requested,observed)` | ANC 读回持续失配；保留实际读回状态 |
+| `CodecStateMismatch(codec,requested,observed)` | 编码选项失配，codecStates 保留 observed（false 不等于未知） |
+| `ParamEqMismatch(observed)` | PEQ 配置/USER63激活失配；observed 是完整 actual，paramEq 保留它，可能已部分应用 |
 | `Protocol(message)` | 包短缺/结构错误/未知枚举/过 MTU 等 |
 | `Rejected(status,operation)` | 9ECA 原始状态拒绝，status 保留 u8 数值 |
 | `Transport(message,cause)` | 其他底层或初始化异常，保留原 cause |
@@ -383,7 +398,7 @@ V1 固定 OFF/NC=0/1，不用 AC/V2 map。`capabilities.ancModes` 从所选路�
 
 - 协议等待为 **原生写完成后六秒**，不包含事务锁等待与原生写时间。单纯协议超时清 pending，不主动关闭 GATT。
 - 当前 Android 通讯实现原生 read/write/descriptor 期限 10 秒、MTU 5 秒；原生超时会失败化队列与会话，拒绝晚 callback。连接/服务发现属于通讯层，详见 [blueConnector](../blueConnector/Docs.md)。
-- 请求在安装 pending 后再核对 epoch；解绑同时失败化 pending。所有六个挂起传输入口，包括 capability/info 直接读取，都用绑定 lifetime 监听取消调用方的 **子 Job**，解绑转换成 Disconnected。
+- 请求安装 pending 后再核对 epoch；解绑同时失败化 pending。挂起传输入口和完整 GAIA transaction 都用绑定 lifetime 监听取消调用方的 **子 Job**，解绑转换成 Disconnected。内部 transaction 只能由锁所属协程在 block 内使用，不能逃逸或再次获取同一 Mutex。
 - 调用方本来的 `CancellationException` 原样传播；不要 catch Exception 后返回假成功。取消共享初始化等待不取消资源初始化。
 - 会话原生队列拥有实际操作：调用方取消时，尚未开始项可跳过；已开始项继续排空 callback/自身期限后才轮到下一项。关闭控制器不顺带断开连接，不保证原生写还没发生，也不回滚设备已应用命令。
 

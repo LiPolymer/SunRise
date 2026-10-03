@@ -6,6 +6,11 @@ out/
 
 # Local configuration
 local.properties
+android-app/keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
 
 # IDE user-specific (project-level .idea settings are tracked)
 *.iml
