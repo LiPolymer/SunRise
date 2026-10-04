@@ -141,7 +141,7 @@ internal fun ParamEqScreen(
                         else -> when (state?.phase) {
                             ParamEqEditPhase.LOADING -> tr(english, "正在读取", "Loading")
                             ParamEqEditPhase.READY -> tr(english, "已读取设备配置", "Device configuration read")
-                            ParamEqEditPhase.SENT -> tr(english, "已发送，未验证", "Sent, unverified")
+                            ParamEqEditPhase.SENT -> tr(english, "已发送", "Sent")
                             ParamEqEditPhase.PENDING -> if (manual) tr(english, "草稿，尚未发送", "Draft, not sent") else tr(english, "待下发", "Pending")
                             ParamEqEditPhase.WRITING -> tr(english, "正在发送", "Sending")
                             ParamEqEditPhase.FAILED -> tr(english, "操作失败：需要重新读取", "Operation failed: reload required")
@@ -173,14 +173,11 @@ internal fun ParamEqScreen(
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                         ) { Text(tr(english, "提交一次", "Submit once")) }
                     }
-                    if (state?.phase == ParamEqEditPhase.SENT) {
-                        Text(tr(english, "当前曲线是已发送草稿，不是设备读回。可手动重新读取实际配置。", "The curve is the sent draft, not device readback. Reload manually to read the actual configuration."), style = MaterialTheme.typography.bodyMedium)
-                    }
                     if (!filterSelectionEnabled && bands.isNotEmpty()) {
                         if (preGainRaw != null) {
                             val db = (preGainRaw / 60.0 * 100).roundToInt() / 100.0
                             val label = if (state?.phase == ParamEqEditPhase.SENT)
-                                tr(english, "已发送前置增益（未验证）", "Sent pregain (unverified)")
+                                tr(english, "已发送前置增益", "Sent pregain")
                             else tr(english, "自动前置增益（下次发送）", "Automatic pregain (next send)")
                             Text("$label：$db dB", style = MaterialTheme.typography.bodyMedium)
                         } else {
@@ -278,7 +275,7 @@ internal fun ParamEqScreen(
                 }
             }
             item {
-                Text(tr(english, "曲线为 48 kHz 参数响应估算，不含自动前置衰减，非耳机实测。发送成功不等于设备已应用或断电保存。", "The curve is a 48 kHz parameter-response estimate without automatic pregain, not a headphone measurement. A successful send does not prove device application or power-off persistence."), style = MaterialTheme.typography.bodySmall)
+                Text(tr(english, "曲线为 48 kHz 参数响应估算，不含自动前置衰减，非耳机实测。", "The curve is a 48 kHz parameter-response estimate without automatic pregain, not a headphone measurement."), style = MaterialTheme.typography.bodySmall)
                 if (!filterSelectionEnabled) Text(tr(english, "Bluetrum 验证模式：固定峰值，写入类型码 0。", "Bluetrum verification mode: peaking only, wire type 0."), style = MaterialTheme.typography.bodySmall)
                 if (!compact) Text(tr(english, "鼠标：拖节点；Shift 锁轴；Q 手柄 / 滚轮；双击重置。方向键细调，Shift 大步、Ctrl 精细。", "Mouse: drag nodes; Shift locks an axis; Q handles / wheel; double-click resets. Arrow keys adjust; Shift is coarse, Ctrl fine."), style = MaterialTheme.typography.bodySmall)
             }
@@ -288,7 +285,7 @@ internal fun ParamEqScreen(
         AlertDialog(onDismissRequest = { flattenDialog = false }, title = { Text(tr(english, "平直所有频段？", "Flatten all bands?")) },
             text = { Text(if (manual)
                 tr(english, "将所有频段草稿设为平直，不发送到耳机；需要点击“提交一次”。这不是恢复出厂或保存到 Flash。", "Set the draft bands flat without sending to the headphones; use Submit once to send. This is not a factory reset or a Flash save.")
-                else tr(english, "将所有频段设为平直并发送到耳机，不自动读回验证。这不是恢复出厂或保存到 Flash。", "Set all bands flat and send them to the headphones without automatic readback verification. This is not a factory reset or a Flash save.")) },
+                else tr(english, "将所有频段设为平直并发送到耳机。这不是恢复出厂或保存到 Flash。", "Set all bands flat and send them to the headphones. This is not a factory reset or a Flash save.")) },
             confirmButton = { TextButton(enabled = maySelect, onClick = {
                 flattenDialog = false
                 if (maySelect) {
