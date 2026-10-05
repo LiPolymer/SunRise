@@ -27,7 +27,7 @@
 | `HeadsetClient` | 单音频身份选择、端点尝试、显式 GATT connect/disconnect、自己的 `DropController`、重试与初读/电量轮询 | 清理自己的尝试端点与观察任务；不清理其他设备 |
 | `DropController` | 当前 GATT 会话中的协议初始化、请求匹配和功能状态 | 客户端关闭其控制器；控制器本身不拥有 GATT 连接 |
 
-本包不做：品牌名单过滤、协议候选预筛选、系统音频 profile 强制连接、自动配对、RFCOMM、通用多耳机 UI、伪桌面蓝牙。自动模式依赖设备已经被系统当作音频设备连接；手动连接地址不替用户建立这个系统音频连接。
+本包不做：内置品牌名单或目录依赖、协议候选预筛选、系统音频 profile 强制连接、自动配对、RFCOMM、通用多耳机 UI、伪桌面蓝牙。宿主可提供通用自动候选 predicate；默认接受全部。自动模式依赖设备已经被系统当作音频设备连接；手动连接地址不替用户建立这个系统音频连接。
 
 隔离保证针对**不同设备**。不要让另一个客户端/控制器同时拥有本客户端正在尝试的同一 GATT 端点；通用 `connect()` 可能复用该设备已有会话，本客户端随后 `disconnect()` 会影响共享该端点的使用者。注入同一管理器、操作不同设备则不表示所有资源都归本客户端。
 
@@ -40,9 +40,9 @@
 | [HeadsetPlatform.android.kt](../../src@android/headset/HeadsetPlatform.android.kt) | Android 工厂及已有 SharedPreferences 数据语义 |
 | [MainActivity.kt](../../../android-app/src/MainActivity.kt) | 完整现行宿主：权限请求、`remember`、释放顺序、`onResume` 复核 |
 | [Android App.kt](../../src@android/App.kt) | Android Compose 容器入口，接收可空客户端与权限状态 |
-| [AppContent.kt](../composeLegacy/AppContent.kt) | 授权后启动自动模式、多个音频候选选择、每次控件动作前复核就绪 |
+| [AppContent.kt](../composeLegacy/AppContent.kt) | 本地目录装载后安装自动策略再启动、原始音频候选的列表筛选与手动选择、每次控件动作前复核就绪 |
 | [DropDiagnostics.kt](../composeLegacy/DropDiagnostics.kt) | 分开显示应用连接/控制状态、实际异常和 ANC 确认失败 |
-| [HeadsetClientTest.kt](../../test/headset/HeadsetClientTest.kt) | 纯协程 fixture 的选择、取消、重连、其他设备所有权和旧帧隔离行为证据 |
+| [HeadsetAutoFilterTest.kt](../../test/headset/HeadsetAutoFilterTest.kt) | 生产自动循环的筛选、手动选择与 READY epoch 保留；计数 GATT 包装复用真实字节 GAIA fixture |
 
 包名使用 `blueConnector`，但公共 `Bt*`、`Gatt*` 与 `createBtManager` 名称不变。`HeadsetClient` 的 common 构造器是 **internal**；外部 Android 调用方使用 `createHeadsetClient(context, bt, options)`，不能把测试中的直接构造写成公共 common 用法。
 
@@ -113,7 +113,7 @@ class HeadsetHostActivity : ComponentActivity() {
 2. Compose 中 `remember { createBtManager(applicationContext) }` 创建一个管理器；`remember(bt) { createHeadsetClient(applicationContext, bt) }` 复用它。不要在每次重组或每次点击时重新创建它们。
 3. `registerForActivityResult(RequestMultiplePermissions())` 回调重新运行 `BtPermissions.missing(this)`，不是仅凭某个返回布尔值推断全部权限已具备。请求按钮同样先复核当前集合，再请求缺失项。
 4. `onResume` 再次检查权限，覆盖用户从系统设置回来的授权变化。Compose 将集合传入 `App`。
-5. [AppContent](../composeLegacy/AppContent.kt) 的 `LaunchedEffect(client, missingPermissions.isEmpty())` 仅在客户端存在且权限集合为空时调用 `startAutoConnect()`；它另有事件收集与 `SELECTION_REQUIRED` 时刷新候选的 effect。工厂不隐式启动。
+5. [AppContent](../composeLegacy/AppContent.kt) 的启动 effect 以 client、权限是否具备及本地目录 `loading` 为键：首次装载完成（成功或失败）且权限具备时，在同一 effect 中先安装最新 predicate，再调用 `startAutoConnect()`。装载中不启动，目录不可用且默认「仅目录设备」时接受零台；明确显示故障并允许「显示全部」。切换筛选/成功更新目录只调用 `setAutoDeviceFilter` 并刷新可见列表，不再次启动、不打断已经选中的 CONNECTING/READY/RECONNECTING 目标。另有事件收集与手动枚举/列表 effect；工厂不隐式启动。
 6. `DisposableEffect(client, bt)` 在 `onDispose` 中先 `client.close()`，再 `bt.close()`。此处宿主确实拥有管理器；若管理器由更长生命周期的外部对象注入，则只关闭客户端，由外部所有者决定何时关闭管理器。
 
 注意：`startAutoConnect()` 每次调用都会替换当前连接，不是幂等的“确保已启动”。不能在任意重组中直接调用。权限状态也不是永久保证：真实操作仍会检查平台状态并可能失败。当前 effect 在权限不足时不启动新的自动循环，但**没有在权限撤销分支显式调用 `disconnect()`**；若产品要求撤销权限时立即终止应用连接，需要宿主制定该交互策略，不应误读为工厂已代劳。
@@ -129,6 +129,7 @@ Compose effect 的取消和客户端生命周期不同：`startAutoConnect()` �
 | `gaia: GaiaControls` | 当前已采纳且会话仍有效的 READY 控件；getter 不保证 GAIA 或具体能力存在 |
 | `source: SourceControls` | 同上，实际方法检查 9ECA 特征/协议支持 |
 | `discoverConnectedDevices()` | 挂起刷新系统原始已连接音频列表并创建快照；不 LE 扫描、不改变当前选择、不建立 GATT |
+| `setAutoDeviceFilter(acceptDevice: (HeadsetDevice) -> Boolean)` | 保存纯 predicate 并发送既有 wake；只过滤下一轮自动选择的音频候选，不替换 epoch，不改变当前目标、原始发现或手动连接 |
 | `startAutoConnect()` | 同步接受启动，异步替换旧选择并执行自动循环；不等待 READY，错误看状态/事件 |
 | `connect(address: String)` | `bt.device(address)` 取得句柄与快照，再执行设备重载；地址校验在管理器，不要求已出现在音频候选中 |
 | `connect(device: HeadsetDevice)` | 替换当前连接，等待首次有效 READY；返回后客户端继续拥有连接与丢失后的重试 |
@@ -136,7 +137,7 @@ Compose effect 的取消和客户端生命周期不同：`startAutoConnect()` �
 | `close()` | 幂等终结；同步失效/重置，不挂起等待 GATT 断开，资源在任务 finally 中继续清理；不可再次启动/连接/发现 |
 | Android `createHeadsetClient(context, bt, options = DropOptions())` | 用 applicationContext 创建客户端与平台关联存储；不创建管理器、不扫描/配对/连接 |
 
-`gaia`/`source` getter 同时要求：当前连接 epoch 未关闭、当前 attempt 已采纳、端点仍为 CONNECTED 且 session 对象匹配、应用状态 READY、转发控制状态 READY、控制器自身 READY。条件不成立抛 `DropException.NotReady`，**客户端 close 后 getter 也抛 NotReady**。与之不同：`startAutoConnect`、`connect`、`discoverConnectedDevices` 在客户端关闭后抛 `DropException.Disconnected`；先前已取得的旧控件在其控制器绑定失效后也抛 `Disconnected`。不要据此缓存旧控件“等它恢复”。
+`gaia`/`source` getter 同时要求：当前连接 epoch 未关闭、当前 attempt 已采纳、端点仍为 CONNECTED 且 session 对象匹配、应用状态 READY、转发控制状态 READY、控制器自身 READY。条件不成立抛 `DropException.NotReady`，**客户端 close 后 getter 也抛 NotReady**。与之不同：`startAutoConnect`、`setAutoDeviceFilter`、`connect`、`discoverConnectedDevices` 在客户端关闭后抛 `DropException.Disconnected`；先前已取得的旧控件在其控制器绑定失效后也抛 `Disconnected`。不要据此缓存旧控件“等它恢复”。
 
 ## 状态、模型与事件参考
 
@@ -150,7 +151,7 @@ Compose effect 的取消和客户端生命周期不同：`startAutoConnect()` �
 | `PROBING` | 控制器初始化，或其 READY 尚未被应用层验证/采纳 |
 | `READY` | 端点已被采纳，功能仍可能未知、缺失或部分探测不完整 |
 | `RECONNECTING` | 曾就绪目标丢失会话，清理或重试中，不允许功能按钮继续使用残留状态 |
-| `SELECTION_REQUIRED` | 自动发现多台原始音频设备，不擅自选择，即使仅一台有已记关联 |
+| `SELECTION_REQUIRED` | 自动发现多台被当前 predicate 接受的音频设备，不擅自选择，即使仅一台有已记关联 |
 | `ERROR` | 实际连接/探测失败的当前展示；是否重试取决于本轮策略，不是必然终态 |
 
 ### 字段与快照
@@ -177,15 +178,17 @@ Compose effect 的取消和客户端生命周期不同：`startAutoConnect()` �
 
 ## 音频选择与 BLE 端点尝试
 
-### 自动选择只数原始音频候选
+### 自动选择先应用宿主策略再数候选
 
-`discoverConnectedDevices()` 调用 `bt.refreshConnectedAudioDevices()`。它不根据品牌、名称、记住的关联或协议能力删掉候选：
+`discoverConnectedDevices()` 调用 `bt.refreshConnectedAudioDevices()`，始终返回原始音频快照，不按品牌、目录名称、记住的关联或协议能力删掉候选。`autoLoop` 在本次原始枚举后读取 `MutableStateFlow` 保存的当前 predicate，筛选后才分支：
 
-- **0 台**：发布默认 IDLE，循环之后再次发现。
-- **1 台**：尝试这台音频身份对应的控制端点。
-- **多台**：发布 SELECTION_REQUIRED，不自动连接其中某台；UI 再调用发现方法得到列表，将用户选中的 `HeadsetDevice` 传给 `connect`。
+- **0 台接受**：发布默认 IDLE，循环之后再次发现；原始列表仍可手动枚举。
+- **1 台接受**：尝试这台音频身份对应的控制端点。
+- **多台接受**：发布 SELECTION_REQUIRED，不自动连接其中某台；UI 发现原始列表后按同一宿主策略展示，再将用户选中的完整 `HeadsetDevice` 传给 `connect`。
 
-候选并不保证支持 GAIA/9ECA。“显示在候选里”和“可以控制”是两个不同事实。
+`setAutoDeviceFilter` 初始接受全部，不依赖 catalog 包或硬编码品牌。predicate 应为无副作用、非挂起的不可变快照判断。替换只保存策略并发送合并 wake，不替换 connection epoch；已选目标不会因新策略被拒绝而断开，重连仍以原始音频连接事实为准，下一次自动选择才应用新策略。它不筛选 BLE 端点、profile 或协议；高级诊断和显式手动 `connect` 仍可选择被自动策略排除的设备。
+
+应用默认策略来自离线目录的规范化 **name 精确匹配**，不比较 model、不做品牌前缀剥离/包含匹配。数据库首次加载前接受零台；加载失败也不偷偷放宽。列表「显示全部」与设置共享同一开关，可显示 null、改名及未收录音频身份。有效手动参考 UUID 绑定只影响参考资料，**不放宽设备过滤、不推测协议支持**。候选并不保证支持 GAIA/9ECA；目录匹配、「显示在候选里」和「可以控制」是不同事实。
 
 ### 一次所选身份的尝试顺序
 

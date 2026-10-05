@@ -13,6 +13,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.key.*
@@ -26,6 +27,9 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import ink.lipoly.app.sunrise.catalog.AcousticOverlay
+import ink.lipoly.app.sunrise.catalog.AcousticScale
+import ink.lipoly.app.sunrise.catalog.acousticAxisTicks
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqFilter
 import ink.lipoly.app.sunrise.drop.PeqBiquad
@@ -66,11 +70,32 @@ private class PeqCurveGeometry(private val plot: PeqPlot, coefficients: List<Peq
     val fills = Array(responses.size) { path(responses[it], true) }
 }
 
+/** Acoustic paths use their own dB axis, never the editable gain coordinates. */
+private class AcousticCurveGeometry(private val overlay: AcousticOverlay, private val plot: PeqPlot, private val scale: AcousticScale) {
+    private fun path(values: DoubleArray): Path = Path().apply {
+        var started = false
+        for (i in 0 until min(overlay.frequencyHz.size, values.size)) {
+            val hz = overlay.frequencyHz[i]
+            val db = values[i]
+            if (!hz.isFinite() || hz !in 20.0..20000.0 || !db.isFinite()) {
+                started = false
+                continue
+            }
+            val x = plot.x(hz)
+            val y = plot.top + ((scale.maxDb - db) / (scale.maxDb - scale.minDb) * plot.height).toFloat()
+            if (started) lineTo(x, y) else { moveTo(x, y); started = true }
+        }
+    }
+    val reference = path(overlay.referenceDb)
+    val prediction = overlay.predictedDb?.let { path(it) }
+}
+
 /** Canvas is supplementary: the real sliders, selector and numeric fields expose the same edits. */
 @Composable
 internal fun ParamEqCurve(
     bands: List<GaiaPeqBand>, selectedIndex: Int, editor: ParamEqEditor?, enabled: Boolean,
     english: Boolean, compact: Boolean, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,
+    overlay: AcousticOverlay?,
 ) {
     val density = LocalDensity.current
     val viewConfiguration = LocalViewConfiguration.current
@@ -82,12 +107,15 @@ internal fun ParamEqCurve(
     val focusRequester = remember { FocusRequester() }
     var measuredSize by remember { mutableStateOf(IntSize.Zero) }
     var mouse by remember { mutableStateOf(false) }
-    val margin = with(density) { 32.dp.toPx() }
+    val responseScale = overlay?.scale
+    val hasOverlay = responseScale != null
+    val leftMargin = with(density) { 32.dp.toPx() }
+    val rightMargin = with(density) { (if (hasOverlay) 56.dp else 32.dp).toPx() }
     val bottom = with(density) { 30.dp.toPx() }
     val top = with(density) { 20.dp.toPx() }
     val axis = remember(bands) { peqAxisDb(bands) }
-    val plot = remember(measuredSize, margin, top, bottom, axis) {
-        PeqPlot(margin, top, (measuredSize.width - 2 * margin).coerceAtLeast(0f), (measuredSize.height - top - bottom).coerceAtLeast(0f), axis)
+    val plot = remember(measuredSize, leftMargin, rightMargin, top, bottom, axis) {
+        PeqPlot(leftMargin, top, (measuredSize.width - leftMargin - rightMargin).coerceAtLeast(0f), (measuredSize.height - top - bottom).coerceAtLeast(0f), axis)
     }
     val latestSelected by rememberUpdatedState(selectedIndex)
     val latestEnabled by rememberUpdatedState(enabled)
@@ -96,6 +124,10 @@ internal fun ParamEqCurve(
     val coefficients = remember(bands) { bands.map { PeqBiquad.of(it) } }
     val geometry = remember(coefficients, plot) {
         if (coefficients.isNotEmpty() && plot.width > 0 && plot.height > 0) PeqCurveGeometry(plot, coefficients) else null
+    }
+    val acousticGeometry = remember(overlay, plot, responseScale) {
+        if (overlay != null && responseScale != null && plot.width > 0 && plot.height > 0)
+            AcousticCurveGeometry(overlay, plot, responseScale) else null
     }
     fun oneEdit(changed: GaiaPeqBand) {
         if (!latestEnabled || editor == null || editor.state.value.isEditing) return
@@ -107,7 +139,14 @@ internal fun ParamEqCurve(
     }
     Box(modifier
         .onSizeChanged { measuredSize = it }
-        .semantics { contentDescription = tr(english, "参数响应估算；双指横向开合调整所选频段 Q，或使用下方滑杆编辑", "Estimated parameter response; spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below") }
+        .semantics {
+            contentDescription = if (hasOverlay && editor == null)
+                tr(english, "离线型号参考；右轴为参考 dB，当前不能编辑 EQ，也没有预测。", "Offline model reference; right axis shows reference dB. EQ is not editable and there is no prediction.")
+            else if (hasOverlay)
+                tr(english, "左轴 EQ dB 用于编辑；右轴型号参考及非实测预测。双指横向开合调整所选频段 Q，或使用下方滑杆编辑",
+                    "Left EQ dB axis is editable; right axis shows model reference and non-measured prediction. Spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below")
+            else tr(english, "参数响应估算；双指横向开合调整所选频段 Q，或使用下方滑杆编辑", "Estimated parameter response; spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below")
+        }
         .focusRequester(focusRequester)
         .onKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown || !latestEnabled || editor == null || editor.state.value.isEditing) return@onKeyEvent false
@@ -288,7 +327,7 @@ internal fun ParamEqCurve(
             }
         }
         .drawWithCache {
-            val p = PeqPlot(margin, top, (size.width - 2 * margin).coerceAtLeast(0f), (size.height - top - bottom).coerceAtLeast(0f), axis)
+            val p = PeqPlot(leftMargin, top, (size.width - leftMargin - rightMargin).coerceAtLeast(0f), (size.height - top - bottom).coerceAtLeast(0f), axis)
             val cached = geometry
             if (p.width <= 0 || p.height <= 0) return@drawWithCache onDrawBehind {}
             val totalPath = cached?.composite
@@ -312,6 +351,28 @@ internal fun ParamEqCurve(
             val dbLabels = (-axis.toInt()..axis.toInt() step 3).map { db ->
                 db to textMeasurer.measure(db.toString(), labelStyle.copy(color = textColor))
             }
+            val eqCaption = textMeasurer.measure("EQ dB", labelStyle.copy(color = textColor))
+            val acousticCaption = if (hasOverlay) textMeasurer.measure(
+                if (overlay?.normalizationHz != null) tr(english, "参考 dB · 500 Hz=0", "Reference dB · 500 Hz=0")
+                else tr(english, "原始 SPL dB", "Raw SPL dB"), labelStyle.copy(color = textColor)
+            ) else null
+            val rightLabels = responseScale?.let { scale ->
+                val maxLabels = (p.height / (eqCaption.size.height + 2.dp.toPx())).toInt().coerceAtLeast(2)
+                val candidates = acousticAxisTicks(scale, maxLabels).map { db ->
+                    val layout = textMeasurer.measure(acousticAxisLabel(db), labelStyle.copy(color = textColor))
+                    val y = p.top + ((scale.maxDb - db) / (scale.maxDb - scale.minDb) * p.height).toFloat()
+                    layout to (y - layout.size.height / 2).coerceIn(p.top, (p.top + p.height - layout.size.height).coerceAtLeast(p.top))
+                }
+                val result = mutableListOf(candidates.first())
+                val lastLabel = candidates.last()
+                for (entry in candidates.drop(1).dropLast(1)) {
+                    val prior = result.last()
+                    if (entry.second >= prior.second + prior.first.size.height + 2.dp.toPx() &&
+                        entry.second + entry.first.size.height + 2.dp.toPx() <= lastLabel.second) result += entry
+                }
+                result += lastLabel
+                result
+            }.orEmpty()
             val nodes = bands.mapNotNull { band -> p.point(band)?.let { Triple(band, it, textMeasurer.measure((band.index + 1).toString(), labelStyle.copy(color = Color.White))) } }
             val selectedBand = bands.firstOrNull { it.index == selectedIndex }
             val handles = if (mouse && selectedBand != null && selectedBand.qRaw > 0 && selectedBand.filter != PeqFilter.BYPASS) {
@@ -321,7 +382,11 @@ internal fun ParamEqCurve(
             } else emptyList()
             val selectedStroke = Stroke(1.5.dp.toPx())
             val compositeStroke = Stroke(2.5.dp.toPx())
+            val nativeStroke = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())))
+            val predictionStroke = Stroke(2.dp.toPx())
             onDrawBehind {
+                drawText(eqCaption, topLeft = Offset(p.left, 0f))
+                acousticCaption?.let { drawText(it, topLeft = Offset((p.left + p.width - it.size.width).coerceAtLeast(p.left + eqCaption.size.width + 8.dp.toPx()), 0f)) }
                 frequencyGridX.forEach { x -> drawLine(gridColor, Offset(x, p.top), Offset(x, p.top + p.height)) }
                 dbLabels.forEach { (db, layout) ->
                     drawLine(gridColor, Offset(p.left, p.y(db.toDouble())), Offset(p.left + p.width, p.y(db.toDouble())), if (db == 0) 2f else 1f)
@@ -329,12 +394,17 @@ internal fun ParamEqCurve(
                     if (db == 0 || abs(db) == axis.toInt() || p.height / (2 * axis) * 3 >= layout.size.height + 2) drawText(layout, topLeft = Offset(0f, p.y(db.toDouble()) - layout.size.height / 2))
                 }
                 visible.forEach { (_, layout, x) -> drawText(layout, topLeft = Offset(x, p.top + p.height + 6.dp.toPx())) }
+                rightLabels.forEach { (layout, y) -> drawText(layout, topLeft = Offset(p.left + p.width + 6.dp.toPx(), y)) }
                 clipRect(p.left, p.top, p.left + p.width, p.top + p.height) {
                     if (selectedFill != null && selectedPath != null) {
-                        drawPath(selectedFill, bandColor(selectedIndex).copy(alpha = 0.14f))
-                        drawPath(selectedPath, bandColor(selectedIndex), style = selectedStroke)
+                        drawPath(selectedFill, bandColor(selectedIndex).copy(alpha = 0.14f * if (hasOverlay) 0.55f else 1f))
+                        drawPath(selectedPath, bandColor(selectedIndex).copy(alpha = if (hasOverlay) 0.55f else 1f), style = selectedStroke)
                     }
-                    if (totalPath != null) drawPath(totalPath, compositeColor, style = compositeStroke)
+                    if (totalPath != null) drawPath(totalPath, compositeColor.copy(alpha = if (hasOverlay) 0.30f else 1f), style = compositeStroke)
+                    acousticGeometry?.let {
+                        drawPath(it.reference, compositeColor.copy(alpha = 0.65f), style = nativeStroke)
+                        it.prediction?.let { prediction -> drawPath(prediction, compositeColor, style = predictionStroke) }
+                    }
                 }
                 handles.forEach { point -> drawLine(bandColor(selectedIndex), Offset(point.x, point.y - 10.dp.toPx()), Offset(point.x, point.y + 10.dp.toPx()), 4.dp.toPx()) }
                 nodes.forEach { (band, point, label) ->

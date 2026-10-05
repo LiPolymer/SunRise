@@ -25,6 +25,10 @@ internal class UiSettingsStore(private val preferences: SharedPreferences) {
             seedIndex = preferences.getInt("seed", 0).coerceIn(0, 4),
             language = enumAt(preferences.getInt("language", 0), UiLanguage.entries),
             showWind = preferences.getBoolean("show_wind", true),
+            catalogOnlyDevices = preferences.getBoolean("catalog_only_devices", true),
+            showReferenceResponse = preferences.getBoolean("show_reference_response", true),
+            includeResponsePreGain = preferences.getBoolean("include_response_pregain", true),
+            referenceProductByAddress = decodeReferenceProducts(preferences.getString("reference_products", null)),
         )
     )
         private set
@@ -38,6 +42,10 @@ internal class UiSettingsStore(private val preferences: SharedPreferences) {
             .putInt("seed", next.seedIndex)
             .putInt("language", next.language.ordinal)
             .putBoolean("show_wind", next.showWind)
+            .putBoolean("catalog_only_devices", next.catalogOnlyDevices)
+            .putBoolean("show_reference_response", next.showReferenceResponse)
+            .putBoolean("include_response_pregain", next.includeResponsePreGain)
+            .putString("reference_products", encodeReferenceProducts(next.referenceProductByAddress))
             .apply()
     }
 }

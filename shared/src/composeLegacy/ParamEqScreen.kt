@@ -17,6 +17,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInParent
@@ -29,10 +32,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqFilter
 import ink.lipoly.app.sunrise.drop.PeqHeadroom
+import ink.lipoly.app.sunrise.catalog.*
 import kotlin.math.roundToInt
 
 private sealed interface PeqSheet {
@@ -66,10 +71,33 @@ private fun canEdit(state: ParamEqEditState?): Boolean = when (state?.phase) {
     else -> false
 }
 
+@Composable
+private fun ResponseLegend(label: String, alpha: Float, width: Dp, dashed: Boolean = false) {
+    val color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(Modifier.size(24.dp, 12.dp).drawWithCache {
+            val effect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())) else null
+            onDrawBehind { drawLine(color, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), width.toPx(), pathEffect = effect) }
+        })
+        Text(label, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ParamEqScreen(
     editor: ParamEqEditor?, state: ParamEqEditState?, english: Boolean, enabled: Boolean,
+    referenceProduct: CatalogProduct?,
+    referenceResponse: CatalogResponse?,
+    showReferenceResponse: Boolean,
+    includeResponsePreGain: Boolean,
+    onChooseReference: () -> Unit,
+    onResetReference: () -> Unit,
+    onReferenceResponseChange: (Boolean) -> Unit,
+    onResponsePreGainChange: (Boolean) -> Unit,
+    referenceSource: String?,
+    referenceRetrievedAt: String?,
+    referenceResponseHash: String?,
     modifier: Modifier = Modifier,
     filterSelectionEnabled: Boolean = true,
 ) {
@@ -77,9 +105,19 @@ internal fun ParamEqScreen(
     var sheet by remember(editor) { mutableStateOf<PeqSheet?>(null) }
     var flattenDialog by remember(editor) { mutableStateOf(false) }
     var returnFocus by remember(editor) { mutableStateOf<FocusRequester?>(null) }
+    var showReferenceDetails by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    val bands = state?.draft.orEmpty()
+    val bands = if (editor != null) state?.draft.orEmpty() else emptyList()
+    val readyReference = (referenceResponse as? CatalogResponse.Ready)?.response
+    // Hash is stable across selection/status/callback changes; FrequencyResponse has identity equality.
+    val responseKey = referenceResponseHash ?: readyReference
+    val overlay = remember(responseKey, bands, includeResponsePreGain, showReferenceResponse) {
+        if (showReferenceResponse && readyReference != null)
+            buildAcousticOverlay(readyReference, bands.takeIf { it.isNotEmpty() }, includeResponsePreGain)
+        else null
+    }
+    val hasOverlay = overlay?.scale != null
     val preGainRaw = remember(bands, filterSelectionEnabled) {
         if (filterSelectionEnabled || bands.isEmpty()) null
         else try { PeqHeadroom.preGainRaw(bands) } catch (_: IllegalArgumentException) { null }
@@ -135,8 +173,47 @@ internal fun ParamEqScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(tr(english, "型号参考", "Model reference"), style = MaterialTheme.typography.titleMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(referenceProduct?.let { "${it.name} · ${it.languageType ?: tr(english, "语言未提供", "Language unspecified")}" }
+                                ?: tr(english, "未选择参考型号", "No reference model selected"), Modifier.weight(1f))
+                            TextButton(onClick = { showReferenceDetails = !showReferenceDetails }) {
+                                Text(tr(english, "资料", "Details"))
+                            }
+                        }
+                        if (showReferenceDetails) {
+                            referenceProduct?.let { Text("UUID: ${it.uuid}", style = MaterialTheme.typography.bodySmall) }
+                            referenceSource?.let { Text(tr(english, "资料来源：$it", "Data source: $it"), style = MaterialTheme.typography.bodySmall) }
+                            referenceRetrievedAt?.let { Text(tr(english, "快照时间：$it", "Snapshot time: $it"), style = MaterialTheme.typography.bodySmall) }
+                        }
+                        if (referenceResponse !is CatalogResponse.Ready) Text(
+                            when (referenceResponse) {
+                                is CatalogResponse.Unavailable -> tr(english, "参考无法解析：${referenceResponse.reason}", "Reference unparseable: ${referenceResponse.reason}")
+                                else -> tr(english, "目录未提供参考频响", "No reference response provided by the catalogue")
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = onChooseReference) { Text(tr(english, "选择参考型号", "Choose model")) }
+                            TextButton(onClick = onResetReference) { Text(tr(english, "恢复自动匹配", "Restore auto")) }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(tr(english, "显示型号频响", "Show model response"), Modifier.weight(1f))
+                            Switch(checked = showReferenceResponse, onCheckedChange = onReferenceResponseChange)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(tr(english, "预测含自动前置增益", "Include automatic pregain"), Modifier.weight(1f))
+                            Switch(checked = includeResponsePreGain, onCheckedChange = onResponsePreGainChange)
+                        }
+                    }
+                }
+            }
+            item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(when {
+                        editor == null || state == null -> tr(english, "离线参考 · 不可编辑", "Offline reference · not editable")
                         state?.isEditing == true -> tr(english, "调整中", "Editing")
                         else -> when (state?.phase) {
                             ParamEqEditPhase.LOADING -> tr(english, "正在读取", "Loading")
@@ -188,22 +265,53 @@ internal fun ParamEqScreen(
                     if (state?.confirmed?.currentPreset != null && state.confirmed.currentPreset != 63) {
                         Text(if (manual) tr(english, "提交将切换至用户 EQ", "Submission will switch to User EQ") else tr(english, "编辑将切换至用户 EQ", "Editing will switch to User EQ"), style = MaterialTheme.typography.bodyMedium)
                     }
-                    if (editor == null || state == null) Text(tr(english, "请连接支持 GAIA Bluetrum 参数均衡器的设备；9ECA 不用于此页面。", "Connect a device supporting GAIA Bluetrum parametric EQ. This page does not use 9ECA."))
+                    if (editor == null || state == null) Text(tr(english, "仅显示型号资料；连接支持 GAIA Bluetrum 参数 EQ 的设备后才能编辑。", "Model data only. Connect a GAIA Bluetrum parametric EQ device to edit."), style = MaterialTheme.typography.bodySmall)
                     else if (state.phase == ParamEqEditPhase.UNAVAILABLE && state.error == null) Text(tr(english, "设备未提供可编辑的 Bluetrum 用户 EQ", "The device does not expose an editable Bluetrum User EQ"))
                 }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (hasOverlay) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            ResponseLegend(tr(english, "原生参考", "Native reference"), 0.65f, 1.5.dp, dashed = true)
+                            if (overlay?.predictedDb != null) ResponseLegend(tr(english, "DSP 预测", "DSP prediction"), 1f, 2.dp)
+                            if (bands.isNotEmpty()) ResponseLegend(tr(english, "EQ 响应", "EQ response"), 0.30f, 2.5.dp)
+                        }
+                    }
                     if (selected != null) Text(
                         "${tr(english, "第 ${selected.index + 1} 段", "Band ${selected.index + 1}")} · ${parameterValue(selected, PeqParameter.Q)}",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     ParamEqCurve(bands, selectedIndex, editor, editable, english, compact,
                         onSelect = { if (maySelect && editor.state.value.isEditing != true) selectedIndex = it },
-                        modifier = Modifier.fillMaxWidth().height(curveHeight))
+                        modifier = Modifier.fillMaxWidth().height(curveHeight), overlay = overlay)
                     if (editable && bands.isNotEmpty()) Text(
                         tr(english, "先选频段；单指拖动调频率/增益，双指横向张开调宽、合拢调窄（Q）。",
                             "Select a band. Drag one finger for frequency/gain; spread two fingers horizontally to widen, pinch to narrow (Q)."),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (overlay != null) {
+                        if (!hasOverlay) Text(
+                            if (overlay.frequencyHz.isEmpty()) tr(english, "参考在 20–20000 Hz 内没有可显示频段。", "Reference has no displayable frequency range within 20–20000 Hz.")
+                            else tr(english, "参考及预测数值超出可显示范围。", "Reference and prediction values exceed the displayable range."),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        else {
+                            Text(
+                                if (overlay.normalizationHz != null)
+                                    tr(english, "SunRise 显示归一化：500 Hz=0 dB；仅绘制资料覆盖范围，左轴用于 EQ 编辑，右轴用于参考。", "SunRise display normalization: 500 Hz=0 dB. Only the data's covered range is drawn; left axis edits EQ, right axis shows reference.")
+                                else tr(english, "资料不覆盖 500 Hz：显示未归一化原始 SPL；仅绘制资料覆盖范围，左轴用于 EQ 编辑，右轴用于参考。", "Data does not cover 500 Hz: unnormalized raw SPL is shown. Only the covered range is drawn; left axis edits EQ, right axis shows reference."),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        overlay.predictionError?.let { Text(tr(english, "预测不可用：$it", "Prediction unavailable: $it"), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                        if (overlay.predictedDb != null) Text(
+                            tr(english, "参考 + 当前 EQ（48 kHz RBJ，默认含自动前置增益）；${if (includeResponsePreGain) "当前前置增益 ${overlay.includedPreGainRaw?.div(60.0)} dB" else "当前已关闭前置增益"}。这是当前草稿的写入模型预测，已发送不等于已应用或实测。", "Reference + current EQ (48 kHz RBJ, automatic pregain included by default); ${if (includeResponsePreGain) "current pregain ${overlay.includedPreGainRaw?.div(60.0)} dB" else "pregain currently excluded"}. This is the current draft's write-model prediction; sent does not mean applied or measured."),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (referenceProduct != null) Text(
+                        tr(english, "型号参考来自官方目录资料，可能已含调音；非耳机实测，不保证不同 ANC、佩戴或音量状态一致，不能作为绝对声压。", "Model reference comes from official catalogue data and may already include tuning. Not a headphone measurement; ANC, fit and volume may differ. This is not absolute sound pressure."),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -230,7 +338,7 @@ internal fun ParamEqScreen(
                     onFilter = { if (filterSelectionEnabled && maySelect && !editor.state.value.isEditing) sheet = PeqSheet.Filter(selected.index) },
                     onNudge = { parameter, direction -> editor.state.value.draft.firstOrNull { it.index == selected.index }?.let { grouped(peqNudge(it, parameter, direction)) } })
             }
-            item {
+            if (editor != null) item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     state?.error?.let { error ->
                         Text(errorMessage(error, english), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -275,9 +383,9 @@ internal fun ParamEqScreen(
                 }
             }
             item {
-                Text(tr(english, "曲线为 48 kHz 参数响应估算，不含自动前置衰减，非耳机实测。", "The curve is a 48 kHz parameter-response estimate without automatic pregain, not a headphone measurement."), style = MaterialTheme.typography.bodySmall)
-                if (!filterSelectionEnabled) Text(tr(english, "Bluetrum 验证模式：固定峰值，写入类型码 0。", "Bluetrum verification mode: peaking only, wire type 0."), style = MaterialTheme.typography.bodySmall)
-                if (!compact) Text(tr(english, "鼠标：拖节点；Shift 锁轴；Q 手柄 / 滚轮；双击重置。方向键细调，Shift 大步、Ctrl 精细。", "Mouse: drag nodes; Shift locks an axis; Q handles / wheel; double-click resets. Arrow keys adjust; Shift is coarse, Ctrl fine."), style = MaterialTheme.typography.bodySmall)
+                if (bands.isNotEmpty()) Text(tr(english, "左轴 EQ 曲线为 48 kHz 参数响应估算，不含自动前置衰减，非耳机实测。", "The left-axis EQ curve is a 48 kHz parameter-response estimate without automatic pregain, not a headphone measurement."), style = MaterialTheme.typography.bodySmall)
+                if (bands.isNotEmpty() && !filterSelectionEnabled) Text(tr(english, "Bluetrum 验证模式：固定峰值，写入类型码 0。", "Bluetrum verification mode: peaking only, wire type 0."), style = MaterialTheme.typography.bodySmall)
+                if (!compact && bands.isNotEmpty()) Text(tr(english, "鼠标：拖节点；Shift 锁轴；Q 手柄 / 滚轮；双击重置。方向键细调，Shift 大步、Ctrl 精细。", "Mouse: drag nodes; Shift locks an axis; Q handles / wheel; double-click resets. Arrow keys adjust; Shift is coarse, Ctrl fine."), style = MaterialTheme.typography.bodySmall)
             }
         }
     }

@@ -68,6 +68,7 @@ class HeadsetClient internal constructor(
     private val lifecycle = Mutex()
     private val closed = MutableStateFlow(false)
     private val connection = MutableStateFlow<Connection?>(null)
+    private val autoDeviceFilter = MutableStateFlow<(HeadsetDevice) -> Boolean>({ true })
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val mutableState = MutableStateFlow(HeadsetState())
     private val mutableEvents = MutableSharedFlow<HeadsetEvent>(extraBufferCapacity = 32)
@@ -153,10 +154,25 @@ class HeadsetClient internal constructor(
     }
 
     /**
+     * 替换自动发现的候选策略并唤醒发现循环；默认接受全部音频设备。
+     *
+     * predicate 应为无副作用、非挂起的快照判断，仅在下一次自动选择前使用。
+     * 不替换连接 epoch、不打断已选目标的连接/重连；原始发现、手动连接、
+     * BLE 端点尝试、profile 和协议探测均不受它过滤。
+     * @throws DropException.Disconnected 本客户端已关闭。
+     */
+    fun setAutoDeviceFilter(acceptDevice: (HeadsetDevice) -> Boolean) {
+        ensureOpen()
+        autoDeviceFilter.value = acceptDevice
+        wake.trySend(Unit)
+    }
+
+    /**
      * 启动新的自动选择循环并替换既有连接；不是幂等的“若尚未启动”检查，也不挂起等待 READY。
      *
-     * 音频候选数为 0 时 IDLE、1 时尝试、多个时 SELECTION_REQUIRED。发现循环以合并的蓝牙事件
-     * 唤醒或最多 5 秒等待再次刷新；目标循环失败后最多等待 4 秒再试，自动目标消失则回到发现。
+     * 经当前自动 predicate 接受的音频候选数为 0 时 IDLE、1 时尝试、多个时 SELECTION_REQUIRED。
+     * 发现循环以合并的蓝牙事件唤醒或最多 5 秒等待再次刷新；目标失败后最多等待 4 秒再试，
+     * 自动目标消失则回到发现；更改 predicate 不取消当前目标。
      * 失败通过 [state]/[events] 报告；[disconnect] 停止自动模式，需要显式调用本方法重启。
      * @throws DropException.Disconnected 本客户端已关闭。
      */
@@ -313,7 +329,8 @@ class HeadsetClient internal constructor(
         while (currentCoroutineContext().isActive && isCurrent(current)) {
             try {
                 publish(current) { HeadsetState(phase = HeadsetPhase.DISCOVERING) }
-                val candidates = discoverConnectedDevices()
+                val rawCandidates = discoverConnectedDevices()
+                val candidates = rawCandidates.filter(autoDeviceFilter.value)
                 ensureCurrent(current)
                 when (candidates.size) {
                     0 -> publish(current) { HeadsetState() }

@@ -33,12 +33,21 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import ink.lipoly.app.sunrise.catalog.CatalogCdn
+import ink.lipoly.app.sunrise.catalog.CatalogState
 
 @Composable
 internal fun SettingsScreen(
     settings: UiSettings,
     english: Boolean,
     dynamicAvailable: Boolean,
+    catalogState: CatalogState,
+    canCancelPull: Boolean,
+    onPull: (CatalogCdn) -> Unit,
+    onCancelPull: () -> Unit,
+    onImport: () -> Unit,
+    onExport: () -> Unit,
+    onOpenCatalog: () -> Unit,
     missingPermissions: Set<String>,
     clientAvailable: Boolean,
     modifier: Modifier = Modifier,
@@ -51,6 +60,9 @@ internal fun SettingsScreen(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        item {
+            CatalogDatabaseCard(catalogState, english, canCancelPull, onPull, onCancelPull, onImport, onExport, onOpenCatalog)
+        }
         item { SettingsSectionHeading(tr(english, "外观", "Appearance")) }
         item {
             SettingsCard {
@@ -157,6 +169,26 @@ internal fun SettingsScreen(
                     enabled = true,
                     onChange = { onChange(settings.copy(showWind = it)) },
                 )
+            }
+        }
+        item {
+            SettingsCard {
+                SettingSwitchRow(
+                    tr(english, "仅显示目录设备", "Show catalogue devices only"),
+                    tr(english, "仅按完整产品名称过滤；目录匹配不代表协议支持。显示全部可选择改名或未收录设备。",
+                        "Filters by the complete product name only; a catalogue match does not imply protocol support. Show all to choose renamed or unlisted devices."),
+                    settings.catalogOnlyDevices, true,
+                ) { onChange(settings.copy(catalogOnlyDevices = it)) }
+                SettingSwitchRow(
+                    tr(english, "显示型号参考频响", "Show model reference response"),
+                    tr(english, "官方目录资料，非当前耳机实测", "Official catalogue data, not a measurement of the connected headset"),
+                    settings.showReferenceResponse, true,
+                ) { onChange(settings.copy(showReferenceResponse = it)) }
+                SettingSwitchRow(
+                    tr(english, "预测包含自动前置增益", "Include automatic pregain in prediction"),
+                    tr(english, "只改变图形预测，不改变耳机参数或发送方式", "Changes only the plotted prediction, not headset parameters or submission"),
+                    settings.includeResponsePreGain, true,
+                ) { onChange(settings.copy(includeResponsePreGain = it)) }
             }
         }
 

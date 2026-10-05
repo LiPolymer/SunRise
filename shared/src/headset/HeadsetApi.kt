@@ -13,7 +13,7 @@ import ink.lipoly.app.sunrise.drop.DropState
  * - [PROBING]：控制器探测协议/能力，或已经探测完成但端点尚未被应用采纳。
  * - [READY]：端点已采纳且控制器就绪；不保证每项能力存在或所有功能已有读值。
  * - [RECONNECTING]：曾就绪的目标丢失会话，正在清理或重试；此时不可操作功能控件。
- * - [SELECTION_REQUIRED]：自动发现多个原始音频候选，等待调用方选择，不按品牌筛选。
+ * - [SELECTION_REQUIRED]：自动发现多个被当前自动策略接受的音频候选，等待调用方选择。
  * - [ERROR]：保留最近的实际异常；自动尝试或曾就绪目标仍可能随后重试。
  */
 enum class HeadsetPhase {

@@ -27,6 +27,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
@@ -38,6 +43,8 @@ import ink.lipoly.app.sunrise.headset.HeadsetPhase
 import ink.lipoly.app.sunrise.headset.HeadsetState
 import ink.lipoly.app.sunrise.drop.GaiaIds
 import ink.lipoly.app.sunrise.drop.AudioCodec
+import ink.lipoly.app.sunrise.catalog.*
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -48,6 +55,7 @@ internal enum class MainPage { OVERVIEW, EQUALIZER, SETTINGS }
 internal class AppNavigationState {
     var page by mutableStateOf(MainPage.OVERVIEW)
     var diagnostics by mutableStateOf(false)
+    var catalogue by mutableStateOf(false)
 }
 
 @Composable
@@ -57,6 +65,8 @@ internal fun rememberAppNavigationState(): AppNavigationState = remember { AppNa
 @Composable
 internal fun AppContent(
     client: HeadsetClient?,
+    catalog: CatalogRepository,
+    documents: CatalogDocuments,
     missingPermissions: Set<String>,
     onRequestPermissions: () -> Unit,
     settings: UiSettings,
@@ -68,9 +78,34 @@ internal fun AppContent(
         val page = navigation.page
         val diagnostics = navigation.diagnostics
         val state = client?.state?.collectAsState()?.value ?: HeadsetState()
+        val catalogState by catalog.state.collectAsState()
+        var pullJob by remember(catalog) { mutableStateOf<Job?>(null) }
+        var documentBusy by remember(catalog) { mutableStateOf(false) }
+        var importPreview by remember(catalog) { mutableStateOf<CatalogSnapshot?>(null) }
+        var documentError by remember(catalog) { mutableStateOf<String?>(null) }
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
         var candidates by remember(client) { mutableStateOf<List<HeadsetDevice>>(emptyList()) }
+        var chooserOpen by remember(client) { mutableStateOf(false) }
+        var selectionPrompted by remember(client) { mutableStateOf(false) }
+        var referenceChooserOpen by remember { mutableStateOf(false) }
+        var previewReferenceUuid by remember { mutableStateOf<String?>(null) }
+        val snapshot = catalogState.snapshot
+        val audioAddress = state.device?.address?.uppercase()
+        val manualReferenceUuid = if (audioAddress == null) previewReferenceUuid else settings.referenceProductByAddress[audioAddress]
+        val reference = remember(snapshot, state.device?.name, manualReferenceUuid, english) {
+            resolveCatalogReference(snapshot, state.device?.name, manualReferenceUuid, english)
+        }
+        val visibleCandidates = remember(candidates, snapshot, settings.catalogOnlyDevices) {
+            if (settings.catalogOnlyDevices) candidates.filter { matchesCatalogDevice(snapshot, it.name) } else candidates
+        }
+        val autoFilter = remember(snapshot, settings.catalogOnlyDevices, catalogState.loading) {
+            val loaded = !catalogState.loading
+            val onlyCatalog = settings.catalogOnlyDevices
+            val accept: (HeadsetDevice) -> Boolean = { device -> loaded && (!onlyCatalog || matchesCatalogDevice(snapshot, device.name)) }
+            accept
+        }
+        val latestAutoFilter by rememberUpdatedState(autoFilter)
         var recentEvents by remember(client) { mutableStateOf<List<HeadsetEvent>>(emptyList()) }
         var confirmedReads by remember(client, state.device?.device, state.phase, state.controls.phase) {
             mutableStateOf<Set<OverviewControl>>(emptySet())
@@ -112,25 +147,36 @@ internal fun AppContent(
                 notice = null
             }
         }
+        LaunchedEffect(catalogState.error) {
+            catalogState.error?.let { notice = it }
+        }
         LaunchedEffect(client) {
             client?.events?.collect { event ->
                 recentEvents = (recentEvents + event).takeLast(10)
             }
         }
-        LaunchedEffect(client, missingPermissions.isEmpty()) {
-            if (client != null && missingPermissions.isEmpty()) client.startAutoConnect()
+        LaunchedEffect(client, missingPermissions.isEmpty(), catalogState.loading) {
+            client?.setAutoDeviceFilter(latestAutoFilter)
+            if (client != null && missingPermissions.isEmpty() && !catalogState.loading) client.startAutoConnect()
+        }
+        LaunchedEffect(client, autoFilter) {
+            client?.setAutoDeviceFilter(autoFilter)
         }
         LaunchedEffect(client, state.phase, missingPermissions.isEmpty()) {
             if (client != null && missingPermissions.isEmpty() && state.phase == HeadsetPhase.SELECTION_REQUIRED) {
                 try {
                     candidates = client.discoverConnectedDevices()
+                    if (!selectionPrompted) {
+                        chooserOpen = true
+                        selectionPrompted = true
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     notice = tr(english, "发现设备失败：", "Device discovery failed: ") + errorMessage(e, english)
                 }
-            } else if (state.phase != HeadsetPhase.SELECTION_REQUIRED) {
-                candidates = emptyList()
+            } else if (state.phase == HeadsetPhase.IDLE || state.phase == HeadsetPhase.READY) {
+                selectionPrompted = false
             }
         }
         LaunchedEffect(client, state.phase, state.controls.phase, state.device?.device, missingPermissions.isEmpty(), refreshGeneration) {
@@ -189,28 +235,81 @@ internal fun AppContent(
             }
         }
 
-        fun retryConnection() {
-            if (client == null || missingPermissions.isNotEmpty()) return
-            if (state.phase == HeadsetPhase.SELECTION_REQUIRED) {
-                scope.launch {
-                    try {
-                        candidates = client.discoverConnectedDevices()
-                        if (candidates.isEmpty()) {
-                            notice = tr(english, "未找到已连接的音频设备", "No connected audio devices found")
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        notice = tr(english, "发现设备失败：", "Device discovery failed: ") + errorMessage(e, english)
-                    }
+        fun chooseHeadset() {
+            if (client == null || missingPermissions.isNotEmpty() || working != null) return
+            scope.launch {
+                try {
+                    candidates = client.discoverConnectedDevices()
+                    chooserOpen = true
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    notice = tr(english, "发现设备失败：", "Device discovery failed: ") + errorMessage(error, english)
                 }
-            } else {
+            }
+        }
+
+        fun retryConnection() {
+            if (client == null || missingPermissions.isNotEmpty() || catalogState.loading) return
+            if (state.phase == HeadsetPhase.SELECTION_REQUIRED) chooseHeadset()
+            else {
+                client.setAutoDeviceFilter(latestAutoFilter)
                 client.startAutoConnect()
             }
         }
 
+        fun chooseReference(product: CatalogProduct) {
+            val address = client?.state?.value?.device?.address?.uppercase()
+            if (address == null) previewReferenceUuid = product.uuid
+            else onSettingsChange(settings.copy(referenceProductByAddress = settings.referenceProductByAddress + (address to product.uuid)))
+            referenceChooserOpen = false
+        }
+
+        fun resetReference() {
+            if (audioAddress == null) previewReferenceUuid = null
+            else onSettingsChange(settings.copy(referenceProductByAddress = settings.referenceProductByAddress - audioAddress))
+        }
+
+        fun importCatalog() {
+            if (catalogState.busy || catalogState.loading || documentBusy || importPreview != null) return
+            documentBusy = true
+            scope.launch {
+                try {
+                    documents.openImport()?.let { importPreview = catalog.prepareImport(it) }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    documentError = errorMessage(error, english)
+                    notice = documentError
+                } finally {
+                    documentBusy = false
+                }
+            }
+        }
+
+        fun exportCatalog() {
+            if (catalogState.busy || documentBusy || importPreview != null || catalogState.snapshot == null) return
+            val bytes = catalog.exportBytes()
+            documentBusy = true
+            scope.launch {
+                try {
+                    if (documents.saveExport(bytes, CATALOG_EXPORT_NAME)) {
+                        documentError = null
+                        notice = tr(english, "已导出完整数据库", "Complete database exported")
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    documentError = errorMessage(error, english)
+                    notice = documentError
+                } finally {
+                    documentBusy = false
+                }
+            }
+        }
         val title = when {
             diagnostics -> tr(english, "高级诊断", "Advanced diagnostics")
+            navigation.catalogue -> tr(english, "离线型号库", "Offline model catalogue")
             page == MainPage.OVERVIEW -> "SunRise"
             page == MainPage.EQUALIZER -> tr(english, "参数均衡器", "Parametric EQ")
             else -> tr(english, "设置", "Settings")
@@ -220,12 +319,15 @@ internal fun AppContent(
                 TopAppBar(
                     title = { Text(title) },
                     navigationIcon = {
-                        if (diagnostics) TextButton(onClick = { navigation.diagnostics = false }) {
+                        if (diagnostics || navigation.catalogue) TextButton(onClick = {
+                            navigation.diagnostics = false
+                            navigation.catalogue = false
+                        }) {
                             Text(tr(english, "返回", "Back"))
                         }
                     },
                     actions = {
-                        if (!diagnostics && page == MainPage.OVERVIEW) {
+                        if (!diagnostics && !navigation.catalogue && page == MainPage.OVERVIEW) {
                             TextButton(onClick = {
                                 refreshGeneration++
                                 if (state.phase == HeadsetPhase.READY && state.controls.hasReadyGaia()) {
@@ -264,19 +366,19 @@ internal fun AppContent(
                 if (!diagnostics) NavigationBar {
                     NavigationBarItem(
                         selected = page == MainPage.OVERVIEW,
-                        onClick = { navigation.page = MainPage.OVERVIEW },
+                        onClick = { navigation.catalogue = false; navigation.page = MainPage.OVERVIEW },
                         icon = { Text("◉", modifier = Modifier.clearAndSetSemantics {}) },
                         label = { Text(tr(english, "概览", "Overview")) },
                     )
                     NavigationBarItem(
                         selected = page == MainPage.EQUALIZER,
-                        onClick = { navigation.page = MainPage.EQUALIZER },
+                        onClick = { navigation.catalogue = false; navigation.page = MainPage.EQUALIZER },
                         icon = { Text("≋", modifier = Modifier.clearAndSetSemantics {}) },
                         label = { Text(tr(english, "均衡器", "Equalizer")) },
                     )
                     NavigationBarItem(
                         selected = page == MainPage.SETTINGS,
-                        onClick = { navigation.page = MainPage.SETTINGS },
+                        onClick = { navigation.catalogue = false; navigation.page = MainPage.SETTINGS },
                         icon = { Text("⚙", modifier = Modifier.clearAndSetSemantics {}) },
                         label = { Text(tr(english, "设置", "Settings")) },
                     )
@@ -285,6 +387,18 @@ internal fun AppContent(
             snackbarHost = { SnackbarHost(snackbar) },
         ) { padding ->
             when {
+                navigation.catalogue -> ProductCatalogScreen(
+                    snapshot = snapshot,
+                    english = english,
+                    deviceName = state.device?.name,
+                    deviceEqBands = eqState?.confirmed?.bands?.size,
+                    onUseReference = {
+                        chooseReference(it)
+                        navigation.catalogue = false
+                        navigation.page = MainPage.EQUALIZER
+                    },
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                )
                 diagnostics -> DropDiagnosticsScreen(
                     client = client,
                     missingPermissions = missingPermissions,
@@ -299,6 +413,15 @@ internal fun AppContent(
                     missingPermissions = missingPermissions,
                     english = english,
                     showWind = settings.showWind,
+                    catalogOnlyDevices = settings.catalogOnlyDevices,
+                    catalogLoading = catalogState.loading,
+                    catalogAvailable = snapshot != null,
+                    catalogError = catalogState.error,
+                    catalogMatched = matchesCatalogDevice(snapshot, state.device?.name),
+                    referenceName = reference.product?.name,
+                    onCatalogFilterChange = { onSettingsChange(settings.copy(catalogOnlyDevices = it)) },
+                    onChooseHeadset = ::chooseHeadset,
+                    onOpenCatalog = { navigation.catalogue = true },
                     confirmedReads = confirmedReads,
                     working = working,
                     codecBlocked = eqBusy,
@@ -325,6 +448,20 @@ internal fun AppContent(
                     state = eqState,
                     english = english,
                     enabled = working == null && missingPermissions.isEmpty(),
+                    referenceProduct = reference.product,
+                    referenceResponse = reference.response,
+                    referenceSource = snapshot?.catalogueUrl,
+                    referenceRetrievedAt = snapshot?.retrievedAt,
+                    referenceResponseHash = reference.product?.freqResponse?.let { snapshot?.responseHashesByPath?.get(it) },
+                    showReferenceResponse = settings.showReferenceResponse,
+                    includeResponsePreGain = settings.includeResponsePreGain,
+                    onChooseReference = {
+                        if (snapshot != null) referenceChooserOpen = true
+                        else notice = tr(english, "没有可用数据库，请先在设置中导入或拉取", "No usable database; import or pull in Settings first")
+                    },
+                    onResetReference = ::resetReference,
+                    onReferenceResponseChange = { onSettingsChange(settings.copy(showReferenceResponse = it)) },
+                    onResponsePreGainChange = { onSettingsChange(settings.copy(includeResponsePreGain = it)) },
                     modifier = Modifier.fillMaxSize().padding(padding),
                     filterSelectionEnabled = false,
                 )
@@ -332,6 +469,30 @@ internal fun AppContent(
                     settings = settings,
                     english = english,
                     dynamicAvailable = dynamicColorAvailable,
+                    catalogState = catalogState.copy(
+                        busy = catalogState.busy || documentBusy || importPreview != null,
+                        error = documentError ?: catalogState.error,
+                    ),
+                    canCancelPull = pullJob?.isActive == true,
+                    onPull = { cdn ->
+                        if (pullJob?.isActive != true && !catalog.state.value.busy && !catalogState.loading && !documentBusy && importPreview == null) {
+                            documentError = null
+                            pullJob = scope.launch {
+                                try {
+                                    catalog.pull(cdn)
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    documentError = errorMessage(error, english)
+                                    notice = documentError
+                                } finally { pullJob = null }
+                            }
+                        }
+                    },
+                    onCancelPull = { pullJob?.cancel() },
+                    onImport = ::importCatalog,
+                    onExport = ::exportCatalog,
+                    onOpenCatalog = { navigation.catalogue = true },
                     missingPermissions = missingPermissions,
                     clientAvailable = client != null,
                     modifier = Modifier.fillMaxSize().padding(padding),
@@ -342,30 +503,96 @@ internal fun AppContent(
             }
         }
 
-        if (state.phase == HeadsetPhase.SELECTION_REQUIRED && candidates.isNotEmpty()) {
+        if (reference.invalidManualBinding) {
+            LaunchedEffect(snapshot, manualReferenceUuid) {
+                notice = tr(english, "绑定的产品 UUID 已不在当前数据库中，已恢复自动匹配；绑定未迁移到其他型号。",
+                    "The bound product UUID is absent from this database. Automatic matching is used; the binding was not migrated to another model.")
+            }
+        }
+        if (referenceChooserOpen && snapshot != null) CatalogProductSelector(
+            snapshot = snapshot,
+            deviceName = state.device?.name,
+            english = english,
+            onSelect = ::chooseReference,
+            onDismiss = { referenceChooserOpen = false },
+        )
+
+        importPreview?.let { preview ->
             AlertDialog(
-                onDismissRequest = { candidates = emptyList() },
+                onDismissRequest = { importPreview = null },
+                title = { Text(tr(english, "替换当前数据库？", "Replace the current database?")) },
+                text = {
+                    Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                        CatalogSnapshotDetails(preview, english)
+                        Text(tr(english, "来源信息由导入文件提供。哈希仅验证文件一致性，不代表官方认证；替换而非合并，允许较旧快照。",
+                            "Source information is supplied by the imported file. Hashes verify consistency, not official authenticity. This replaces, not merges; older snapshots are allowed."))
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        importPreview = null
+                        documentBusy = true
+                        scope.launch {
+                            try {
+                                catalog.importSnapshot(preview)
+                                documentError = null
+                                if (catalog.state.value.error == null) notice = tr(english, "数据库已替换", "Database replaced")
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                documentError = errorMessage(error, english)
+                                notice = documentError
+                            } finally { documentBusy = false }
+                        }
+                    }) { Text(tr(english, "替换当前数据库", "Replace current database")) }
+                },
+                dismissButton = { TextButton(onClick = { importPreview = null }) { Text(tr(english, "取消", "Cancel")) } },
+            )
+        }
+
+        if (chooserOpen) {
+            AlertDialog(
+                onDismissRequest = { chooserOpen = false },
                 title = { Text(tr(english, "选择耳机", "Choose a headset")) },
                 text = {
                     Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                        Text(tr(english, "选择已连接的耳机：", "Select a connected headset:"))
-                        candidates.forEach { candidate ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(tr(english, "显示全部", "Show all"))
+                            Switch(checked = !settings.catalogOnlyDevices,
+                                onCheckedChange = { onSettingsChange(settings.copy(catalogOnlyDevices = !it)) })
+                        }
+                        Text(tr(english, "已隐藏 ${candidates.size - visibleCandidates.size} 台；目录匹配不代表协议支持。",
+                            "${candidates.size - visibleCandidates.size} hidden; a catalogue match does not imply protocol support."))
+                        if (visibleCandidates.isEmpty()) Text(
+                            if (candidates.isEmpty()) tr(english, "未找到已连接的音频设备", "No connected audio devices found")
+                            else tr(english, "没有匹配目录的设备，可切换“显示全部”", "No catalogue matches. Switch on Show all."),
+                        )
+                        visibleCandidates.forEach { candidate ->
+                            val match = matchesCatalogDevice(snapshot, candidate.name)
+                            val response = resolveCatalogReference(snapshot, candidate.name, null, english).response
                             TextButton(
                                 onClick = {
-                                    candidates = emptyList()
+                                    chooserOpen = false
                                     runAction(tr(english, "连接", "Connect")) { connect(candidate) }
                                 },
+                                enabled = working == null && missingPermissions.isEmpty(),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text("${candidate.name ?: tr(english, "未知设备", "Unknown device")} · ${candidate.address}")
+                                Column {
+                                    Text("${candidate.name ?: tr(english, "未知设备", "Unknown device")} · ${candidate.address}")
+                                    Text((if (match) tr(english, "目录匹配", "Catalogue match") else tr(english, "未收录名称", "Unlisted name")) + " · " + when (response) {
+                                        is CatalogResponse.Ready -> tr(english, "有参考频响", "Reference available")
+                                        is CatalogResponse.Unavailable -> tr(english, "参考无法解析", "Reference unparseable")
+                                        null -> tr(english, "无参考频响", "No reference response")
+                                    })
+                                }
                             }
                         }
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { candidates = emptyList() }) {
-                        Text(tr(english, "稍后", "Later"))
-                    }
+                    TextButton(onClick = { chooserOpen = false }) { Text(tr(english, "稍后", "Later")) }
                 },
             )
         }

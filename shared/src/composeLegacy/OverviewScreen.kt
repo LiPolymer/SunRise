@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.drop.AncMode
@@ -44,6 +45,15 @@ internal fun OverviewScreen(
     clientAvailable: Boolean,
     english: Boolean,
     showWind: Boolean,
+    catalogOnlyDevices: Boolean,
+    catalogLoading: Boolean,
+    catalogAvailable: Boolean,
+    catalogError: String?,
+    catalogMatched: Boolean,
+    referenceName: String?,
+    onCatalogFilterChange: (Boolean) -> Unit,
+    onChooseHeadset: () -> Unit,
+    onOpenCatalog: () -> Unit,
     confirmedReads: Set<OverviewControl>,
     working: String?,
     codecBlocked: Boolean,
@@ -67,6 +77,35 @@ internal fun OverviewScreen(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        item {
+            OverviewCard(tr(english, "设备目录", "Device catalogue")) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr(english, "仅显示目录设备", "Only catalogue devices"), Modifier.weight(1f))
+                    Switch(checked = catalogOnlyDevices, onCheckedChange = onCatalogFilterChange)
+                }
+                Text(
+                    when {
+                        catalogLoading -> tr(english, "正在加载本地目录，暂不自动选择设备。", "Loading local catalogue; automatic selection is paused.")
+                        !catalogAvailable -> tr(english, "数据库不可用，可关闭筛选显示全部设备，或在设置中导入／拉取。", "Database unavailable. Disable filtering to show all devices, or import/pull in Settings.")
+                        state.device == null -> tr(english, "名称匹配不代表协议支持；控制能力仍由设备探测决定。", "Name matching does not imply protocol support; controls still depend on device probing.")
+                        catalogMatched -> tr(english, "当前设备：目录匹配", "Current device: catalogue match")
+                        else -> tr(english, "当前设备：未收录名称", "Current device: unlisted name")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (!catalogAvailable) catalogError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                referenceName?.let { Text(tr(english, "参考型号：$it", "Reference model: $it")) }
+                OutlinedButton(onClick = onChooseHeadset,
+                    enabled = clientAvailable && missingPermissions.isEmpty() && working == null && !catalogLoading) {
+                    Text(tr(english, "选择耳机", "Choose a headset"))
+                }
+                OutlinedButton(onClick = onOpenCatalog, enabled = catalogAvailable) {
+                    Text(tr(english, "浏览离线型号", "Browse offline models"))
+                }
+                Text(tr(english, "筛选只影响下一次自动选择，不会断开当前连接。", "Filtering affects the next automatic selection; it does not disconnect the current headset."),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -113,15 +152,9 @@ internal fun OverviewScreen(
                             },
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        if (state.phase == HeadsetPhase.SELECTION_REQUIRED ||
-                            state.phase == HeadsetPhase.IDLE || state.phase == HeadsetPhase.ERROR
-                        ) {
+                        if (state.phase == HeadsetPhase.IDLE || state.phase == HeadsetPhase.ERROR) {
                             OutlinedButton(onClick = onRetry, enabled = working == null) {
-                                Text(
-                                    if (state.phase == HeadsetPhase.SELECTION_REQUIRED)
-                                        tr(english, "选择耳机", "Choose headset")
-                                    else tr(english, "重新连接", "Reconnect")
-                                )
+                                Text(tr(english, "重新连接", "Reconnect"))
                             }
                         }
                     }

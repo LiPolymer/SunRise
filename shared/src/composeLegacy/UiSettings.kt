@@ -6,6 +6,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 internal enum class ThemeMode { SYSTEM, LIGHT, DARK }
 internal enum class UiLanguage { SYSTEM, CHINESE, ENGLISH }
@@ -17,7 +20,29 @@ internal data class UiSettings(
     val seedIndex: Int = 0,
     val language: UiLanguage = UiLanguage.SYSTEM,
     val showWind: Boolean = true,
+    val catalogOnlyDevices: Boolean = true,
+    val showReferenceResponse: Boolean = true,
+    val includeResponsePreGain: Boolean = true,
+    val referenceProductByAddress: Map<String, String> = emptyMap(),
 )
+
+internal fun encodeReferenceProducts(bindings: Map<String, String>): String =
+    JsonObject(bindings.mapKeys { it.key.uppercase() }.mapValues { JsonPrimitive(it.value) }).toString()
+
+internal fun decodeReferenceProducts(value: String?): Map<String, String> {
+    if (value.isNullOrBlank()) return emptyMap()
+    return try {
+        val root = Json.parseToJsonElement(value) as? JsonObject ?: return emptyMap()
+        buildMap {
+            for ((address, element) in root) {
+                if (element !is JsonPrimitive || !element.isString) return emptyMap()
+                put(address.uppercase(), element.content)
+            }
+        }
+    } catch (_: IllegalArgumentException) {
+        emptyMap()
+    }
+}
 
 internal fun tr(english: Boolean, chinese: String, englishText: String): String =
     if (english) englishText else chinese

@@ -8,6 +8,9 @@ dependencies:
 
   - $compose.ui
   - org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0
+  - org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0
+  - io.ktor:ktor-client-core:3.3.0
+  - io.ktor:ktor-client-cio:3.3.0
 
 test-dependencies:
   - org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0
@@ -23,6 +26,8 @@ settings:
   compose:
     enabled: true
     version: 1.12.1
+    resources:
+      packageName: ink.lipoly.app.sunrise.resources
   junit: junit-4
   android:
     namespace: ink.lipoly.app.sunrise.shared
