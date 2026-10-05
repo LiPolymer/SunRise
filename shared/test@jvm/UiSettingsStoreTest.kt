@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.catalog
+package ink.lipoly.app.sunrise
 
 import ink.lipoly.app.sunrise.composeLegacy.ThemeMode
 import ink.lipoly.app.sunrise.composeLegacy.UiLanguage
@@ -10,9 +10,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class JvmCatalogSettingsTest {
+class UiSettingsStoreTest {
     @Test fun catalogChoicesPersistButAppearanceRemainsProcessLocal() = withPreferences { preferences ->
-        val store = JvmCatalogSettingsStore(preferences)
+        val store = UiSettingsStore(preferences)
         val bindings = mapOf("AA:BB:CC:DD:EE:FF" to "12345678-1234-1234-1234-123456789abc")
         val next = store.current.copy(
             themeMode = ThemeMode.DARK,
@@ -33,7 +33,7 @@ class JvmCatalogSettingsTest {
             setOf("catalog_only_devices", "show_reference_response", "include_response_pregain", "reference_products"),
             preferences.keys().toSet(),
         )
-        val restored = JvmCatalogSettingsStore(preferences).current
+        val restored = UiSettingsStore(preferences).current
         assertEquals(
             UiSettings(
                 catalogOnlyDevices = false,
@@ -46,18 +46,18 @@ class JvmCatalogSettingsTest {
     }
 
     @Test fun appearanceOnlyChangesDoNotCreatePersistentSettings() = withPreferences { preferences ->
-        val store = JvmCatalogSettingsStore(preferences)
+        val store = UiSettingsStore(preferences)
         store.update(store.current.copy(themeMode = ThemeMode.LIGHT, seedIndex = 2))
         assertTrue(preferences.keys().isEmpty())
         assertEquals(ThemeMode.LIGHT, store.current.themeMode)
-        assertEquals(UiSettings(), JvmCatalogSettingsStore(preferences).current)
+        assertEquals(UiSettings(), UiSettingsStore(preferences).current)
     }
 
     @Test fun brokenBindingJsonDoesNotResetOtherCatalogPreferences() = withPreferences { preferences ->
         preferences.putBoolean("catalog_only_devices", false)
         preferences.putBoolean("show_reference_response", false)
         preferences.put("reference_products", "not valid JSON")
-        val restored = JvmCatalogSettingsStore(preferences).current
+        val restored = UiSettingsStore(preferences).current
         assertFalse(restored.catalogOnlyDevices)
         assertFalse(restored.showReferenceResponse)
         assertTrue(restored.includeResponsePreGain)

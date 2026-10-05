@@ -17,6 +17,12 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 
+/** writeActive must replace the entire file atomically, preserving the old file on failure. */
+internal interface CatalogStorage {
+    suspend fun readActive(): ByteArray?
+    suspend fun writeActive(bytes: ByteArray)
+}
+
 internal interface CatalogByteFetcher {
     suspend fun fetch(url: String, maxBytes: Int): ByteArray
     fun close()
@@ -29,7 +35,7 @@ internal class KtorCatalogFetcher : CatalogByteFetcher {
     private var client: HttpClient? = null
     private var closed = false
 
-    private fun clientForRequest(): HttpClient = catalogFetcherSynchronized(lifecycleLock) {
+    private fun clientForRequest(): HttpClient = catalogSynchronized(lifecycleLock) {
         check(!closed) { "Catalog fetcher is closed" }
         client ?: HttpClient(CIO) {
             followRedirects = false
@@ -86,7 +92,7 @@ internal class KtorCatalogFetcher : CatalogByteFetcher {
     }
 
     override fun close() {
-        val toClose = catalogFetcherSynchronized(lifecycleLock) {
+        val toClose = catalogSynchronized(lifecycleLock) {
             closed = true
             client.also { client = null }
         }
@@ -107,4 +113,4 @@ internal fun catalogResponseUrl(cdn: CatalogCdn, path: String): String {
 }
 
 // Both supported platforms have JVM monitors; keep platform APIs out of common code.
-internal expect fun <T> catalogFetcherSynchronized(lock: Any, block: () -> T): T
+internal expect fun <T> catalogSynchronized(lock: Any, block: () -> T): T

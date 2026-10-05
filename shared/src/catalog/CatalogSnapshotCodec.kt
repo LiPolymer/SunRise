@@ -10,9 +10,10 @@ import kotlinx.serialization.json.put
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-internal const val CATALOG_FORMAT = "sunrise-moondrop-bt"
-internal const val CATALOG_SCHEMA_VERSION = 2
-internal const val CATALOGUE_URL = "https://cdn-service.moondroplab.tech/api/v1/products/all?ProductType=BT"
+internal const val CATALOG_FORMAT = "sunrise-moondrop-catalog"
+internal const val CATALOG_SCHEMA_VERSION = 3
+internal const val CATALOGUE_URL = "https://cdn-service.moondroplab.tech/api/v1/products/all"
+internal const val CATALOG_RESPONSE_LIBRARY_URL = "https://cdn-service.moondroplab.tech/api/v1/responselib/allwithtag"
 internal const val CATALOG_CHINA_CDN_URL = "https://cdn.moondroplab.tech/"
 internal const val CATALOG_OVERSEAS_CDN_URL = "https://kaigai.cdn.moondroplab.tech/"
 internal const val MAX_CATALOG_SNAPSHOT_BYTES = 64 * 1024 * 1024
@@ -100,10 +101,50 @@ private fun parseCatalogProducts(root: JsonObject): List<CatalogProduct> {
         require(uuidPattern.matches(uuid)) { "Catalogue record $index has an invalid UUID" }
         require(uuids.add(uuid.lowercase())) { "Catalogue contains duplicate UUID: $uuid" }
         val name = product.nonblankString("name")
-        require(product.string("type") == "BT") { "Catalogue record $uuid must have type BT" }
+        val type = product.nonblankString("type")
         val path = product.optionalString("freqResponse")?.also(::validateCatalogResponsePath)
-        CatalogProduct(uuid, name, product.optionalString("model"), product.optionalString("languageType"), path, product)
+        CatalogProduct(uuid, name, type, product.optionalString("model"), product.optionalString("languageType"), path, product)
     }
+}
+
+internal fun parseCatalogResponseLibrary(bytes: ByteArray): List<CatalogResponseLibraryEntry> {
+    require(bytes.size <= MAX_CATALOGUE_BYTES) { "Response library exceeds 2 MiB" }
+    return parseCatalogResponseLibrary(parseObject(bytes, "Response library"))
+}
+
+private fun parseCatalogResponseLibrary(root: JsonObject): List<CatalogResponseLibraryEntry> {
+    require(root.integer("code") == 0) { "Response library API code must be 0" }
+    val records = root["data"] as? JsonArray ?: throw IllegalArgumentException("Response library data must be an array")
+    val uuids = HashSet<String>()
+    return records.mapIndexed { index, record ->
+        val entry = record as? JsonObject ?: throw IllegalArgumentException("Response library record $index must be an object")
+        val uuid = entry.string("uuid")
+        require(uuidPattern.matches(uuid)) { "Response library record $index has an invalid UUID" }
+        require(uuids.add(uuid.lowercase())) { "Response library contains duplicate UUID: $uuid" }
+        val name = entry.nonblankString("name")
+        val file = entry.nonblankString("file").also(::validateCatalogResponsePath)
+        val tags = entry["tags"] as? JsonArray ?: throw IllegalArgumentException("Response library tags must be an array")
+        val tagValues = tags.map { tag ->
+            require(tag is JsonPrimitive && tag.isString) { "Response library tags must be strings" }
+            tag.content
+        }
+        CatalogResponseLibraryEntry(uuid, name, file, tagValues, entry)
+    }
+}
+
+internal fun mergeCatalogProducts(
+    products: List<CatalogProduct>,
+    library: List<CatalogResponseLibraryEntry>,
+): List<CatalogProduct> {
+    val uuids = HashSet<String>(products.size + library.size)
+    for (product in products) uuids.add(product.uuid.lowercase())
+    val merged = ArrayList<CatalogProduct>(products.size + library.size)
+    merged.addAll(products)
+    for (entry in library) {
+        require(uuids.add(entry.uuid.lowercase())) { "Catalogue and response library contain duplicate UUID: ${entry.uuid}" }
+        merged.add(entry.toCatalogProduct())
+    }
+    return merged
 }
 
 private fun validateRetrievedAt(value: String) {
@@ -156,16 +197,21 @@ internal fun decodeCatalogSnapshot(bytes: ByteArray): CatalogSnapshot {
     require(version == CATALOG_SCHEMA_VERSION) { "Unsupported catalogue schemaVersion $version; a compatible application version is required" }
     val retrievedAt = root.string("retrievedAt").also(::validateRetrievedAt)
     val catalogueUrl = root.nonblankString("catalogueUrl")
+    val responseLibraryUrl = root.nonblankString("responseLibraryUrl")
     val cdnBaseUrl = root.nonblankString("cdnBaseUrl")
     val catalogue = root["catalogue"] as? JsonObject ?: throw IllegalArgumentException("catalogue must be an object")
     val catalogueBytes = catalogue.toString().encodeToByteArray()
     require(catalogueBytes.size <= MAX_CATALOGUE_BYTES) { "Catalogue exceeds 2 MiB" }
-    val products = parseCatalogProducts(catalogue)
+    val responseLibrary = root["responseLibrary"] as? JsonObject ?: throw IllegalArgumentException("responseLibrary must be an object")
+    val responseLibraryBytes = responseLibrary.toString().encodeToByteArray()
+    require(responseLibraryBytes.size <= MAX_CATALOGUE_BYTES) { "Response library exceeds 2 MiB" }
+    val library = parseCatalogResponseLibrary(responseLibrary)
+    val products = mergeCatalogProducts(parseCatalogProducts(catalogue), library)
     val expectedPaths = products.mapNotNullTo(LinkedHashSet()) { it.freqResponse }
     val files = root["responseFiles"] as? JsonArray ?: throw IllegalArgumentException("responseFiles must be an array")
     val responses = LinkedHashMap<String, CatalogResponse>()
     val hashes = LinkedHashMap<String, String>()
-    var assetBytes = catalogueBytes.size
+    var assetBytes = catalogueBytes.size + responseLibraryBytes.size
     for ((index, element) in files.withIndex()) {
         val file = element as? JsonObject ?: throw IllegalArgumentException("responseFiles[$index] must be an object")
         val path = file.string("path").also(::validateCatalogResponsePath)
@@ -181,7 +227,10 @@ internal fun decodeCatalogSnapshot(bytes: ByteArray): CatalogSnapshot {
         }
     }
     require(responses.keys == expectedPaths) { "Snapshot is missing frequency response assets: ${expectedPaths - responses.keys}" }
-    return CatalogSnapshot(bytes, retrievedAt, catalogueUrl, cdnBaseUrl, products, responses, hashes)
+    return CatalogSnapshot(
+        bytes, retrievedAt, catalogueUrl, cdnBaseUrl, products, responses, hashes,
+        responseLibraryUrl, buildSet(library.size) { for (entry in library) add(entry.uuid) },
+    )
 }
 
 private fun responseAsset(bytes: ByteArray, path: String): JsonObject {
@@ -201,20 +250,24 @@ private fun responseAsset(bytes: ByteArray, path: String): JsonObject {
     }
 }
 
-/** Nests catalogue metadata and retains response bytes as readable, reversible text lines. */
+/** Nests both raw metadata envelopes and retains response bytes as readable, reversible text lines. */
 internal fun encodeCatalogSnapshot(
     catalogueBytes: ByteArray,
+    responseLibraryBytes: ByteArray,
     responseFiles: Map<String, ByteArray>,
     retrievedAt: String = Clock.System.now().toString(),
     cdnBaseUrl: String = CATALOG_CHINA_CDN_URL,
     catalogueUrl: String = CATALOGUE_URL,
+    responseLibraryUrl: String = CATALOG_RESPONSE_LIBRARY_URL,
 ): ByteArray {
     require(catalogueBytes.size <= MAX_CATALOGUE_BYTES) { "Catalogue exceeds 2 MiB" }
     val catalogue = parseObject(catalogueBytes, "Catalogue")
-    val products = parseCatalogProducts(catalogue)
+    require(responseLibraryBytes.size <= MAX_CATALOGUE_BYTES) { "Response library exceeds 2 MiB" }
+    val responseLibrary = parseObject(responseLibraryBytes, "Response library")
+    val products = mergeCatalogProducts(parseCatalogProducts(catalogue), parseCatalogResponseLibrary(responseLibrary))
     val expectedPaths = products.mapNotNullTo(LinkedHashSet()) { it.freqResponse }
-    require(responseFiles.keys == expectedPaths) { "Frequency response assets must exactly match catalogue paths" }
-    var assetBytes = catalogueBytes.size.toLong()
+    require(responseFiles.keys == expectedPaths) { "Frequency response assets must exactly match merged catalogue paths" }
+    var assetBytes = catalogueBytes.size.toLong() + responseLibraryBytes.size
     for ((path, content) in responseFiles) {
         validateCatalogResponsePath(path)
         require(content.size <= MAX_RESPONSE_FILE_BYTES) { "Frequency response $path exceeds 2 MiB" }
@@ -222,14 +275,18 @@ internal fun encodeCatalogSnapshot(
     }
     require(assetBytes <= MAX_CATALOG_ASSET_BYTES) { "Decoded assets exceed 48 MiB" }
     validateRetrievedAt(retrievedAt)
-    require(catalogueUrl.isNotBlank() && cdnBaseUrl.isNotBlank()) { "Catalogue and CDN provenance URLs must not be blank" }
+    require(catalogueUrl.isNotBlank() && responseLibraryUrl.isNotBlank() && cdnBaseUrl.isNotBlank()) {
+        "Catalogue, response library and CDN provenance URLs must not be blank"
+    }
     val root = buildJsonObject {
         put("format", CATALOG_FORMAT)
         put("schemaVersion", CATALOG_SCHEMA_VERSION)
         put("retrievedAt", retrievedAt)
         put("catalogueUrl", catalogueUrl)
+        put("responseLibraryUrl", responseLibraryUrl)
         put("cdnBaseUrl", cdnBaseUrl)
         put("catalogue", catalogue)
+        put("responseLibrary", responseLibrary)
         put("responseFiles", JsonArray(responseFiles.map { (path, content) ->
             responseAsset(content, path)
         }))

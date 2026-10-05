@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.catalog
+package ink.lipoly.app.sunrise
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -9,7 +9,7 @@ import ink.lipoly.app.sunrise.composeLegacy.encodeReferenceProducts
 import java.util.prefs.Preferences
 
 /** Only catalog choices persist; appearance and language retain their process-local behavior. */
-internal class JvmCatalogSettingsStore(
+internal class UiSettingsStore(
     private val preferences: Preferences = Preferences.userRoot().node("ink/lipoly/app/sunrise/catalog"),
 ) {
     var current by mutableStateOf(

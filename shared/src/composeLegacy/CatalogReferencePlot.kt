@@ -18,8 +18,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.catalog.SampledCatalogResponse
-import ink.lipoly.app.sunrise.catalog.acousticAxisTicks
-import ink.lipoly.app.sunrise.catalog.acousticScaleLimits
+import ink.lipoly.app.sunrise.catalog.Catalog
 import kotlin.math.ln
 import kotlin.math.abs
 import kotlin.math.floor
@@ -46,7 +45,7 @@ internal fun CatalogReferencePlot(
         }
         include(first.referenceDb)
         second?.let { include(it.referenceDb) }
-        acousticScaleLimits(minimum, maximum)
+        Catalog.acousticScaleLimits(minimum, maximum)
     }
     if (range == null) {
         Text(tr(english, "参考数值范围无法显示。", "Reference values exceed the displayable range."), modifier)
@@ -59,15 +58,15 @@ internal fun CatalogReferencePlot(
     val secondColor = MaterialTheme.colorScheme.primary
     Box(modifier.semantics {
         contentDescription = tr(english,
-            "只读型号参考频响，横轴为 20 Hz 至 20 kHz 的对数频率；仅绘制资料覆盖范围",
-            "Read-only model reference response; logarithmic frequency from 20 Hz to 20 kHz; measured coverage only")
+            "只读参考频响，横轴为 20 Hz 至 20 kHz 的对数频率；仅绘制资料覆盖范围",
+            "Read-only reference response; logarithmic frequency from 20 Hz to 20 kHz; source coverage only")
     }.drawWithCache {
         val top = 12.dp.toPx()
         val height = (size.height - top - 30.dp.toPx()).coerceAtLeast(0f)
         if (height <= 0f || size.width <= 0f) return@drawWithCache onDrawBehind {}
         val labelHeight = textMeasurer.measure("0", textStyle).size.height
         val maxLabels = (height / (labelHeight + 2.dp.toPx())).toInt().coerceAtLeast(2)
-        val dbLabels = acousticAxisTicks(range, maxLabels).map { db ->
+        val dbLabels = Catalog.acousticAxisTicks(range, maxLabels).map { db ->
             db to textMeasurer.measure(acousticAxisLabel(db), textStyle)
         }
         val left = maxOf(42.dp.toPx(), dbLabels.maxOf { it.second.size.width }.toFloat() + 4.dp.toPx())

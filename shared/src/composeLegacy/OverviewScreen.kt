@@ -100,7 +100,7 @@ internal fun OverviewScreen(
                     Text(tr(english, "选择耳机", "Choose a headset"))
                 }
                 OutlinedButton(onClick = onOpenCatalog, enabled = catalogAvailable) {
-                    Text(tr(english, "浏览离线型号", "Browse offline models"))
+                    Text(tr(english, "浏览目录", "Browse catalog"))
                 }
                 Text(tr(english, "筛选只影响下一次自动选择，不会断开当前连接。", "Filtering affects the next automatic selection; it does not disconnect the current headset."),
                     style = MaterialTheme.typography.bodySmall)

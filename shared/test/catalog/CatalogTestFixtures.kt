@@ -1,5 +1,11 @@
 package ink.lipoly.app.sunrise.catalog
 
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -9,6 +15,29 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 internal object CatalogTestFixtures {
+    private val catalogMutex = Mutex()
+
+    suspend fun <T> withCatalog(
+        scope: TestScope,
+        storage: CatalogStorage,
+        loadBundled: suspend () -> ByteArray,
+        fetcher: CatalogByteFetcher,
+        block: suspend () -> T,
+    ): T = catalogMutex.withLock {
+        Catalog.close()
+        try {
+            Catalog.init(
+                storage = { storage },
+                loadBundled = loadBundled,
+                fetcher = { fetcher },
+                dispatcher = StandardTestDispatcher(scope.testScheduler),
+            )
+            block()
+        } finally {
+            withContext(NonCancellable) { Catalog.close() }
+        }
+    }
+
     const val UUID = "11111111-1111-4111-8111-111111111111"
     const val SECOND_UUID = "22222222-2222-4222-8222-222222222222"
     const val PATH = "BT/Ultra response.txt"
@@ -20,11 +49,12 @@ internal object CatalogTestFixtures {
         name: String = "SPACE TRAVEL 2 ULTRA",
         path: String? = PATH,
         language: String? = "en-US",
+        type: String = "BT",
     ): JsonObject = buildJsonObject {
         put("uuid", uuid)
         put("name", name)
         put("model", "Ultra")
-        put("type", "BT")
+        put("type", type)
         put("languageType", language)
         put("freqResponse", path)
         put("futureVendorField", buildJsonObject { put("preserve", "raw metadata") })
@@ -37,6 +67,28 @@ internal object CatalogTestFixtures {
         put("code", code)
         put("data", JsonArray(products))
         put("unknownEnvelopeField", "also retained")
+    }.toString().encodeToByteArray()
+
+    fun responseEntry(
+        uuid: String = SECOND_UUID,
+        name: String = "SPACE TRAVEL 2 ULTRA",
+        file: String = PATH,
+        tags: List<String> = listOf("moondrop", "standard", "test"),
+    ): JsonObject = buildJsonObject {
+        put("uuid", uuid)
+        put("name", name)
+        put("file", file)
+        put("tags", JsonArray(tags.map(::JsonPrimitive)))
+        put("futureLibraryField", buildJsonObject { put("preserve", "library metadata") })
+    }
+
+    fun responseLibrary(
+        entries: List<JsonElement> = emptyList(),
+        code: JsonElement = JsonPrimitive(0),
+    ): ByteArray = buildJsonObject {
+        put("code", code)
+        put("data", JsonArray(entries))
+        put("unknownLibraryEnvelopeField", "also retained")
     }.toString().encodeToByteArray()
 
     fun asset(bytes: ByteArray): JsonObject {
@@ -67,13 +119,16 @@ internal object CatalogTestFixtures {
     fun document(
         catalogueBytes: ByteArray = catalogue(),
         responseFiles: Map<String, ByteArray> = mapOf(PATH to responseBytes),
+        responseLibraryBytes: ByteArray = responseLibrary(),
     ): ByteArray = buildJsonObject {
         put("format", CATALOG_FORMAT)
         put("schemaVersion", CATALOG_SCHEMA_VERSION)
         put("retrievedAt", RETRIEVED_AT)
         put("catalogueUrl", CATALOGUE_URL)
+        put("responseLibraryUrl", CATALOG_RESPONSE_LIBRARY_URL)
         put("cdnBaseUrl", CATALOG_CHINA_CDN_URL)
         put("catalogue", root(catalogueBytes))
+        put("responseLibrary", root(responseLibraryBytes))
         put("responseFiles", JsonArray(responseFiles.map { (path, bytes) ->
             JsonObject(asset(bytes) + ("path" to JsonPrimitive(path)))
         }))
@@ -83,7 +138,8 @@ internal object CatalogTestFixtures {
     fun snapshot(
         catalogueBytes: ByteArray = catalogue(),
         responseFiles: Map<String, ByteArray> = mapOf(PATH to responseBytes),
-    ): CatalogSnapshot = decodeCatalogSnapshot(document(catalogueBytes, responseFiles))
+        responseLibraryBytes: ByteArray = responseLibrary(),
+    ): CatalogSnapshot = decodeCatalogSnapshot(document(catalogueBytes, responseFiles, responseLibraryBytes))
 
     fun root(bytes: ByteArray): JsonObject = Json.parseToJsonElement(bytes.decodeToString()) as JsonObject
 

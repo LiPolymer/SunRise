@@ -4,14 +4,14 @@ import kotlinx.serialization.json.JsonObject
 import kotlin.test.*
 
 class CatalogMatchingTest {
-    private fun product(uuid: String, name: String = "SPACE TRAVEL 2 ULTRA", language: String? = "en-US", path: String? = null) =
-        CatalogProduct(uuid, name, "Ultra", language, path, JsonObject(emptyMap()))
+    private fun product(uuid: String, name: String = "SPACE TRAVEL 2 ULTRA", language: String? = "en-US", path: String? = null, type: String = "BT") =
+        CatalogProduct(uuid, name, type, "Ultra", language, path, JsonObject(emptyMap()))
 
     private val ready = CatalogResponse.Ready(FrequencyResponse(doubleArrayOf(100.0, 1000.0), doubleArrayOf(40.0, 60.0)))
     private val unavailable = CatalogResponse.Unavailable("Unsupported data at line 2")
     private fun snapshot(products: List<CatalogProduct>, responses: Map<String, CatalogResponse> = emptyMap()) =
         CatalogSnapshot(byteArrayOf(), "2026-10-04T00:00:00Z", CATALOGUE_URL, CATALOG_CHINA_CDN_URL,
-            products, responses, emptyMap())
+            products, responses, emptyMap(), CATALOG_RESPONSE_LIBRARY_URL, emptySet())
 
     @Test fun exactNameOnlyWithUnicodeWhitespaceAndCaseNormalization() {
         val catalogue = snapshot(listOf(product("a")))
@@ -21,6 +21,48 @@ class CatalogMatchingTest {
             "MOONDROP SPACE TRAVEL 2 ULTRA", "SPACE-TRAVEL 2 ULTRA"))
             assertFalse(matchesCatalogDevice(catalogue, name))
         assertFalse(matchesCatalogDevice(null, "SPACE TRAVEL 2 ULTRA"))
+    }
+
+    @Test fun bluetoothMatchingIgnoresSameNameOtherTypesButManualReferencesAndBrowsingRetainThem() {
+        val fixtures = CatalogTestFixtures
+        val usbUuid = fixtures.UUID
+        val bluetoothUuid = fixtures.SECOND_UUID
+        val responseUuid = "33333333-3333-4333-8333-333333333333"
+        val lowerUuid = "44444444-4444-4444-8444-444444444444"
+        val futureUuid = "55555555-5555-4555-8555-555555555555"
+        val physical = listOf(
+            fixtures.product(uuid = usbUuid, type = "USB"),
+            fixtures.product(uuid = lowerUuid, name = "Lower case type", type = "bt", path = null),
+            fixtures.product(uuid = futureUuid, name = "Future model", type = "FUTURE", path = null),
+        )
+        val library = fixtures.responseLibrary(listOf(fixtures.responseEntry(uuid = responseUuid)))
+        val nonBluetooth = fixtures.snapshot(fixtures.catalogue(physical), responseLibraryBytes = library)
+        for (name in listOf("SPACE TRAVEL 2 ULTRA", "Lower case type", "Future model")) {
+            assertFalse(matchesCatalogDevice(nonBluetooth, name))
+            assertNull(resolveCatalogReference(nonBluetooth, name, null, true).product)
+        }
+        val files = mapOf(
+            fixtures.PATH to fixtures.responseBytes,
+            "broken.txt" to "100 40 0\n1000 60 0\n".encodeToByteArray(),
+        )
+        val all = fixtures.snapshot(
+            fixtures.catalogue(physical + fixtures.product(uuid = bluetoothUuid, language = "zh-CN", path = "broken.txt")),
+            files, library,
+        )
+        assertTrue(matchesCatalogDevice(all, " space   travel 2 ultra "))
+        val automatic = resolveCatalogReference(all, "SPACE TRAVEL 2 ULTRA", null, true)
+        assertEquals(bluetoothUuid, automatic.product?.uuid)
+        assertIs<CatalogResponse.Unavailable>(automatic.response)
+        for (uuid in listOf(usbUuid, responseUuid)) {
+            val manual = resolveCatalogReference(all, "SPACE TRAVEL 2 ULTRA", uuid, true)
+            assertEquals(uuid, manual.product?.uuid)
+            val response = assertIs<CatalogResponse.Ready>(manual.response)
+            assertContentEquals(doubleArrayOf(40.0, 60.0), response.response.splDb)
+            assertFalse(manual.invalidManualBinding)
+        }
+        assertEquals("Response", all.productsByUuid.getValue(responseUuid).type)
+        assertEquals(setOf(usbUuid, bluetoothUuid, responseUuid, lowerUuid, futureUuid),
+            orderedCatalogProducts(all, "SPACE TRAVEL 2 ULTRA", true).map { it.uuid }.toSet())
     }
 
     @Test fun usableCurveOutranksPreferredLanguageAndNeverBorrowsAnotherName() {

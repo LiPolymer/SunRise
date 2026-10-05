@@ -2,7 +2,7 @@ package ink.lipoly.app.sunrise.catalog
 
 internal fun matchesCatalogDevice(snapshot: CatalogSnapshot?, name: String?): Boolean {
     val normalizedName = normalizeCatalogName(name) ?: return false
-    return snapshot?.productsByNormalizedName?.containsKey(normalizedName) == true
+    return snapshot?.productsByNormalizedName?.get(normalizedName)?.any { it.type == "BT" } == true
 }
 
 internal data class CatalogReferenceSelection(
@@ -20,7 +20,7 @@ internal fun resolveCatalogReference(
     val manual = manualUuid?.let { snapshot?.productsByUuid?.get(it) }
     val product = manual ?: snapshot?.let { catalogue ->
         normalizeCatalogName(deviceName)?.let { name ->
-            catalogue.productsByNormalizedName[name]?.minWithOrNull(
+            catalogue.productsByNormalizedName[name]?.asSequence()?.filter { it.type == "BT" }?.minWithOrNull(
                 compareBy<CatalogProduct> { if (catalogue.responseFor(it) is CatalogResponse.Ready) 0 else 1 }
                     .thenBy { catalogLanguagePriority(it.languageType, english) }
                     .thenBy { it.uuid },

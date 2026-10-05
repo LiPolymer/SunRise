@@ -3,7 +3,6 @@ package ink.lipoly.app.sunrise
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
@@ -11,7 +10,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
 import ink.lipoly.app.sunrise.catalog.AndroidCatalogStorage
 import ink.lipoly.app.sunrise.catalog.CatalogByteFetcher
-import ink.lipoly.app.sunrise.catalog.CatalogRepository
+import ink.lipoly.app.sunrise.catalog.Catalog
 import ink.lipoly.app.sunrise.catalog.CatalogStorage
 import ink.lipoly.app.sunrise.catalog.KtorCatalogFetcher
 import ink.lipoly.app.sunrise.catalog.rememberCatalogDocuments
@@ -28,18 +27,14 @@ fun App(
 ) {
     val context = LocalContext.current
     val preview = LocalInspectionMode.current
-    val catalog = remember(context, preview) {
-        CatalogRepository(
-            storage = if (preview) PreviewCatalogStorage else AndroidCatalogStorage(context),
-            loadBundled = { Res.readBytes("files/moondrop-bt.snapshot.json") },
-            fetcher = if (preview) PreviewCatalogFetcher else KtorCatalogFetcher(),
+    LaunchedEffect(context.applicationContext, preview) {
+        Catalog.init(
+            storage = { if (preview) PreviewCatalogStorage else AndroidCatalogStorage(context.applicationContext) },
+            loadBundled = { Res.readBytes("files/moondrop-catalog.snapshot.json") },
+            fetcher = { if (preview) PreviewCatalogFetcher else KtorCatalogFetcher() },
         )
     }
     val documents = rememberCatalogDocuments()
-    LaunchedEffect(catalog) { catalog.loadLocal() }
-    DisposableEffect(catalog) {
-        onDispose { catalog.close() }
-    }
     val settingsStore = remember(context) { UiSettingsStore(context) }
     val settings = settingsStore.current
     val navigation = rememberAppNavigationState()
@@ -50,7 +45,6 @@ fun App(
     AndroidSunRiseTheme(settings) {
         AppEntry(
             client = client,
-            catalog = catalog,
             documents = documents,
             missingPermissions = missingPermissions,
             onRequestPermissions = onRequestPermissions,

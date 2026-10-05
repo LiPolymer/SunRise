@@ -1,7 +1,8 @@
 package ink.lipoly.app.sunrise.headset
 
 import ink.lipoly.app.sunrise.catalog.CatalogTestFixtures
-import ink.lipoly.app.sunrise.catalog.matchesCatalogDevice
+import ink.lipoly.app.sunrise.catalog.Catalog
+import ink.lipoly.app.sunrise.catalog.CatalogResponse
 import ink.lipoly.app.sunrise.drop.DropProtocol
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -10,7 +11,7 @@ import kotlin.test.*
 class HeadsetAutoFilterTest {
     private val catalogue = CatalogTestFixtures.snapshot()
     private fun installCatalogueFilter(fixture: HeadsetAutoLoopFixture) {
-        fixture.client.setAutoDeviceFilter { matchesCatalogDevice(catalogue, it.name) }
+        fixture.client.setAutoDeviceFilter { Catalog.matchesDevice(catalogue, it.name) }
     }
 
     @Test fun strangerNeverConnectsAndDiscoveryStaysRaw() = runBlocking {
@@ -25,7 +26,7 @@ class HeadsetAutoFilterTest {
             assertEquals(0, stranger.connects.value)
             val raw = fixture.client.discoverConnectedDevices()
             assertEquals(listOf(stranger.address), raw.map { it.address })
-            assertFalse(matchesCatalogDevice(catalogue, raw.single().name))
+            assertFalse(Catalog.matchesDevice(catalogue, raw.single().name))
             assertEquals(0, stranger.connects.value)
         } finally { fixture.dispose() }
     }
@@ -45,6 +46,43 @@ class HeadsetAutoFilterTest {
             assertEquals(1, ultra.connects.value)
             assertEquals(ultra.storage!!.bands, fixture.client.gaia.getParamEq().bands)
         } finally { fixture.dispose() }
+    }
+
+    @Test fun nonBluetoothCatalogueNameDoesNotBecomeAnAutomaticConnectionCandidate() = runBlocking {
+        val responseUuid = "33333333-3333-4333-8333-333333333333"
+        for (type in listOf("USB", "WIRED", "FUTURE", "bt")) {
+            val fixture = HeadsetAutoLoopFixture()
+            try {
+                val nonBluetooth = fixture.add("00:00:00:00:00:21", "USB model")
+                val bluetooth = fixture.add("00:00:00:00:00:22", "SPACE TRAVEL 2 ULTRA")
+                val mixed = CatalogTestFixtures.snapshot(
+                    catalogueBytes = CatalogTestFixtures.catalogue(listOf(
+                        CatalogTestFixtures.product(),
+                        CatalogTestFixtures.product(uuid = CatalogTestFixtures.SECOND_UUID, name = "USB model", type = type),
+                    )),
+                    responseLibraryBytes = CatalogTestFixtures.responseLibrary(listOf(
+                        CatalogTestFixtures.responseEntry(uuid = responseUuid, name = "USB model"),
+                    )),
+                )
+                assertFalse(Catalog.matchesDevice(mixed, nonBluetooth.info.value.name))
+                assertNull(Catalog.resolveReference(mixed, nonBluetooth.info.value.name, null, english = true).product)
+                val manual = Catalog.resolveReference(mixed, nonBluetooth.info.value.name, responseUuid, english = true)
+                assertEquals(responseUuid, manual.product?.uuid)
+                assertEquals("Response", manual.product?.type)
+                assertIs<CatalogResponse.Ready>(manual.response)
+                val physical = Catalog.resolveReference(mixed, nonBluetooth.info.value.name, CatalogTestFixtures.SECOND_UUID, english = true)
+                assertEquals(CatalogTestFixtures.SECOND_UUID, physical.product?.uuid)
+                assertIs<CatalogResponse.Ready>(physical.response)
+                fixture.audio(nonBluetooth, bluetooth)
+                fixture.client.setAutoDeviceFilter { Catalog.matchesDevice(mixed, it.name) }
+                fixture.client.startAutoConnect()
+                assertEquals(bluetooth.address, fixture.awaitPhase(HeadsetPhase.READY).device?.address)
+                assertEquals(0, nonBluetooth.connects.value)
+                assertEquals(1, bluetooth.connects.value)
+                assertEquals(setOf(nonBluetooth.address, bluetooth.address),
+                    fixture.client.discoverConnectedDevices().map { it.address }.toSet())
+            } finally { fixture.dispose() }
+        }
     }
 
     @Test fun twoCatalogueMatchesRequireSelectionWithoutGatt() = runBlocking {

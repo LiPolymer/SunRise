@@ -114,7 +114,7 @@ internal fun ParamEqScreen(
     val responseKey = referenceResponseHash ?: readyReference
     val overlay = remember(responseKey, bands, includeResponsePreGain, showReferenceResponse) {
         if (showReferenceResponse && readyReference != null)
-            buildAcousticOverlay(readyReference, bands.takeIf { it.isNotEmpty() }, includeResponsePreGain)
+            Catalog.buildAcousticOverlay(readyReference, bands.takeIf { it.isNotEmpty() }, includeResponsePreGain)
         else null
     }
     val hasOverlay = overlay?.scale != null
@@ -175,10 +175,10 @@ internal fun ParamEqScreen(
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(tr(english, "型号参考", "Model reference"), style = MaterialTheme.typography.titleMedium)
+                        Text(tr(english, "参考频响", "Reference response"), style = MaterialTheme.typography.titleMedium)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(referenceProduct?.let { "${it.name} · ${it.languageType ?: tr(english, "语言未提供", "Language unspecified")}" }
-                                ?: tr(english, "未选择参考型号", "No reference model selected"), Modifier.weight(1f))
+                                ?: tr(english, "未选择参考频响", "No reference response selected"), Modifier.weight(1f))
                             TextButton(onClick = { showReferenceDetails = !showReferenceDetails }) {
                                 Text(tr(english, "资料", "Details"))
                             }
@@ -190,17 +190,17 @@ internal fun ParamEqScreen(
                         }
                         if (referenceResponse !is CatalogResponse.Ready) Text(
                             when (referenceResponse) {
-                                is CatalogResponse.Unavailable -> tr(english, "参考无法解析：${referenceResponse.reason}", "Reference unparseable: ${referenceResponse.reason}")
+                                is CatalogResponse.Unavailable -> tr(english, "参考频响无法解析：${referenceResponse.reason}", "Reference response unparseable: ${referenceResponse.reason}")
                                 else -> tr(english, "目录未提供参考频响", "No reference response provided by the catalogue")
                             },
                             style = MaterialTheme.typography.bodySmall,
                         )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = onChooseReference) { Text(tr(english, "选择参考型号", "Choose model")) }
+                            OutlinedButton(onClick = onChooseReference) { Text(tr(english, "选择参考频响", "Choose reference response")) }
                             TextButton(onClick = onResetReference) { Text(tr(english, "恢复自动匹配", "Restore auto")) }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(tr(english, "显示型号频响", "Show model response"), Modifier.weight(1f))
+                            Text(tr(english, "显示参考频响", "Show reference response"), Modifier.weight(1f))
                             Switch(checked = showReferenceResponse, onCheckedChange = onReferenceResponseChange)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -265,7 +265,7 @@ internal fun ParamEqScreen(
                     if (state?.confirmed?.currentPreset != null && state.confirmed.currentPreset != 63) {
                         Text(if (manual) tr(english, "提交将切换至用户 EQ", "Submission will switch to User EQ") else tr(english, "编辑将切换至用户 EQ", "Editing will switch to User EQ"), style = MaterialTheme.typography.bodyMedium)
                     }
-                    if (editor == null || state == null) Text(tr(english, "仅显示型号资料；连接支持 GAIA Bluetrum 参数 EQ 的设备后才能编辑。", "Model data only. Connect a GAIA Bluetrum parametric EQ device to edit."), style = MaterialTheme.typography.bodySmall)
+                    if (editor == null || state == null) Text(tr(english, "仅显示参考频响资料；连接支持 GAIA Bluetrum 参数 EQ 的设备后才能编辑。", "Reference response data only. Connect a GAIA Bluetrum parametric EQ device to edit."), style = MaterialTheme.typography.bodySmall)
                     else if (state.phase == ParamEqEditPhase.UNAVAILABLE && state.error == null) Text(tr(english, "设备未提供可编辑的 Bluetrum 用户 EQ", "The device does not expose an editable Bluetrum User EQ"))
                 }
             }
@@ -273,7 +273,7 @@ internal fun ParamEqScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (hasOverlay) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            ResponseLegend(tr(english, "原生参考", "Native reference"), 0.65f, 1.5.dp, dashed = true)
+                            ResponseLegend(tr(english, "参考频响", "Reference response"), 0.65f, 1.5.dp, dashed = true)
                             if (overlay?.predictedDb != null) ResponseLegend(tr(english, "DSP 预测", "DSP prediction"), 1f, 2.dp)
                             if (bands.isNotEmpty()) ResponseLegend(tr(english, "EQ 响应", "EQ response"), 0.30f, 2.5.dp)
                         }
@@ -311,7 +311,7 @@ internal fun ParamEqScreen(
                         )
                     }
                     if (referenceProduct != null) Text(
-                        tr(english, "型号参考来自官方目录资料，可能已含调音；非耳机实测，不保证不同 ANC、佩戴或音量状态一致，不能作为绝对声压。", "Model reference comes from official catalogue data and may already include tuning. Not a headphone measurement; ANC, fit and volume may differ. This is not absolute sound pressure."),
+                        tr(english, "参考频响来自产品目录或频响库，测量资料可能已含调音，目标曲线并非设备实测；不代表当前耳机实测，不保证不同 ANC、佩戴或音量状态一致，不能作为绝对声压。", "Reference responses come from the product catalog or response library. Measurement data may already include tuning; target curves are not device measurements. They do not measure the connected headset; ANC, fit and volume may differ. This is not absolute sound pressure."),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }

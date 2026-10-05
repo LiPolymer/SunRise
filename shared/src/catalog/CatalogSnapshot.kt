@@ -2,9 +2,24 @@ package ink.lipoly.app.sunrise.catalog
 
 import kotlinx.serialization.json.JsonObject
 
+internal enum class CatalogCdn { CHINA, OVERSEAS }
+internal enum class CatalogOrigin { BUNDLED, LOCAL, PULL, IMPORT }
+
+internal data class CatalogState(
+    val snapshot: CatalogSnapshot? = null,
+    val loading: Boolean = true,
+    val busy: Boolean = false,
+    val completedFiles: Int = 0,
+    val totalFiles: Int = 0,
+    val error: String? = null,
+    val warning: String? = null,
+    val origin: CatalogOrigin? = null,
+)
+
 internal data class CatalogProduct(
     val uuid: String,
     val name: String,
+    val type: String,
     val model: String?,
     val languageType: String?,
     val freqResponse: String?,
@@ -24,6 +39,8 @@ internal class CatalogSnapshot(
     val products: List<CatalogProduct>,
     val responsesByPath: Map<String, CatalogResponse>,
     val responseHashesByPath: Map<String, String>,
+    val responseLibraryUrl: String,
+    val responseLibraryUuids: Set<String>,
 ) {
     val productsByUuid: Map<String, CatalogProduct> = products.associateBy { it.uuid }
     val productsByNormalizedName: Map<String, List<CatalogProduct>> = products.groupBy {

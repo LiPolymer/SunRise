@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.headset.HeadsetClient
@@ -65,7 +66,6 @@ internal fun rememberAppNavigationState(): AppNavigationState = remember { AppNa
 @Composable
 internal fun AppContent(
     client: HeadsetClient?,
-    catalog: CatalogRepository,
     documents: CatalogDocuments,
     missingPermissions: Set<String>,
     onRequestPermissions: () -> Unit,
@@ -78,11 +78,12 @@ internal fun AppContent(
         val page = navigation.page
         val diagnostics = navigation.diagnostics
         val state = client?.state?.collectAsState()?.value ?: HeadsetState()
-        val catalogState by catalog.state.collectAsState()
-        var pullJob by remember(catalog) { mutableStateOf<Job?>(null) }
-        var documentBusy by remember(catalog) { mutableStateOf(false) }
-        var importPreview by remember(catalog) { mutableStateOf<CatalogSnapshot?>(null) }
-        var documentError by remember(catalog) { mutableStateOf<String?>(null) }
+        val catalogState by Catalog.state.collectAsState()
+        val inspectionMode = LocalInspectionMode.current
+        var pullJob by remember { mutableStateOf<Job?>(null) }
+        var documentBusy by remember { mutableStateOf(false) }
+        var importPreview by remember { mutableStateOf<CatalogSnapshot?>(null) }
+        var documentError by remember { mutableStateOf<String?>(null) }
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
         var candidates by remember(client) { mutableStateOf<List<HeadsetDevice>>(emptyList()) }
@@ -94,15 +95,15 @@ internal fun AppContent(
         val audioAddress = state.device?.address?.uppercase()
         val manualReferenceUuid = if (audioAddress == null) previewReferenceUuid else settings.referenceProductByAddress[audioAddress]
         val reference = remember(snapshot, state.device?.name, manualReferenceUuid, english) {
-            resolveCatalogReference(snapshot, state.device?.name, manualReferenceUuid, english)
+            Catalog.resolveReference(snapshot, state.device?.name, manualReferenceUuid, english)
         }
         val visibleCandidates = remember(candidates, snapshot, settings.catalogOnlyDevices) {
-            if (settings.catalogOnlyDevices) candidates.filter { matchesCatalogDevice(snapshot, it.name) } else candidates
+            if (settings.catalogOnlyDevices) candidates.filter { Catalog.matchesDevice(snapshot, it.name) } else candidates
         }
         val autoFilter = remember(snapshot, settings.catalogOnlyDevices, catalogState.loading) {
             val loaded = !catalogState.loading
             val onlyCatalog = settings.catalogOnlyDevices
-            val accept: (HeadsetDevice) -> Boolean = { device -> loaded && (!onlyCatalog || matchesCatalogDevice(snapshot, device.name)) }
+            val accept: (HeadsetDevice) -> Boolean = { device -> loaded && (!onlyCatalog || Catalog.matchesDevice(snapshot, device.name)) }
             accept
         }
         val latestAutoFilter by rememberUpdatedState(autoFilter)
@@ -271,11 +272,16 @@ internal fun AppContent(
         }
 
         fun importCatalog() {
+            if (inspectionMode) {
+                documentError = "Catalog writes are unavailable in preview"
+                notice = documentError
+                return
+            }
             if (catalogState.busy || catalogState.loading || documentBusy || importPreview != null) return
             documentBusy = true
             scope.launch {
                 try {
-                    documents.openImport()?.let { importPreview = catalog.prepareImport(it) }
+                    documents.openImport()?.let { importPreview = Catalog.prepareImport(it) }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
@@ -288,12 +294,17 @@ internal fun AppContent(
         }
 
         fun exportCatalog() {
+            if (inspectionMode) {
+                documentError = "Catalog writes are unavailable in preview"
+                notice = documentError
+                return
+            }
             if (catalogState.busy || documentBusy || importPreview != null || catalogState.snapshot == null) return
-            val bytes = catalog.exportBytes()
+            val bytes = Catalog.exportBytes()
             documentBusy = true
             scope.launch {
                 try {
-                    if (documents.saveExport(bytes, CATALOG_EXPORT_NAME)) {
+                    if (documents.saveExport(bytes, Catalog.EXPORT_NAME)) {
                         documentError = null
                         notice = tr(english, "已导出完整数据库", "Complete database exported")
                     }
@@ -309,7 +320,7 @@ internal fun AppContent(
         }
         val title = when {
             diagnostics -> tr(english, "高级诊断", "Advanced diagnostics")
-            navigation.catalogue -> tr(english, "离线型号库", "Offline model catalogue")
+            navigation.catalogue -> tr(english, "产品与频响目录", "Product and response catalog")
             page == MainPage.OVERVIEW -> "SunRise"
             page == MainPage.EQUALIZER -> tr(english, "参数均衡器", "Parametric EQ")
             else -> tr(english, "设置", "Settings")
@@ -417,7 +428,7 @@ internal fun AppContent(
                     catalogLoading = catalogState.loading,
                     catalogAvailable = snapshot != null,
                     catalogError = catalogState.error,
-                    catalogMatched = matchesCatalogDevice(snapshot, state.device?.name),
+                    catalogMatched = Catalog.matchesDevice(snapshot, state.device?.name),
                     referenceName = reference.product?.name,
                     onCatalogFilterChange = { onSettingsChange(settings.copy(catalogOnlyDevices = it)) },
                     onChooseHeadset = ::chooseHeadset,
@@ -450,7 +461,7 @@ internal fun AppContent(
                     enabled = working == null && missingPermissions.isEmpty(),
                     referenceProduct = reference.product,
                     referenceResponse = reference.response,
-                    referenceSource = snapshot?.catalogueUrl,
+                    referenceSource = snapshot?.let { current -> reference.product?.let { Catalog.sourceUrl(current, it) } },
                     referenceRetrievedAt = snapshot?.retrievedAt,
                     referenceResponseHash = reference.product?.freqResponse?.let { snapshot?.responseHashesByPath?.get(it) },
                     showReferenceResponse = settings.showReferenceResponse,
@@ -475,11 +486,14 @@ internal fun AppContent(
                     ),
                     canCancelPull = pullJob?.isActive == true,
                     onPull = { cdn ->
-                        if (pullJob?.isActive != true && !catalog.state.value.busy && !catalogState.loading && !documentBusy && importPreview == null) {
+                        if (inspectionMode) {
+                            documentError = "Catalog pulls are unavailable in preview"
+                            notice = documentError
+                        } else if (pullJob?.isActive != true && !Catalog.state.value.busy && !catalogState.loading && !documentBusy && importPreview == null) {
                             documentError = null
                             pullJob = scope.launch {
                                 try {
-                                    catalog.pull(cdn)
+                                    Catalog.pull(cdn)
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
                                 } catch (error: Exception) {
@@ -505,8 +519,8 @@ internal fun AppContent(
 
         if (reference.invalidManualBinding) {
             LaunchedEffect(snapshot, manualReferenceUuid) {
-                notice = tr(english, "绑定的产品 UUID 已不在当前数据库中，已恢复自动匹配；绑定未迁移到其他型号。",
-                    "The bound product UUID is absent from this database. Automatic matching is used; the binding was not migrated to another model.")
+                notice = tr(english, "绑定的目录 UUID 已不在当前数据库中，已恢复自动匹配；绑定未迁移到其他记录。",
+                    "The bound catalog UUID is absent from this database. Automatic matching is used; the binding was not migrated to another record.")
             }
         }
         if (referenceChooserOpen && snapshot != null) CatalogProductSelector(
@@ -530,19 +544,24 @@ internal fun AppContent(
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        importPreview = null
-                        documentBusy = true
-                        scope.launch {
-                            try {
-                                catalog.importSnapshot(preview)
-                                documentError = null
-                                if (catalog.state.value.error == null) notice = tr(english, "数据库已替换", "Database replaced")
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                documentError = errorMessage(error, english)
-                                notice = documentError
-                            } finally { documentBusy = false }
+                        if (inspectionMode) {
+                            documentError = "Catalog writes are unavailable in preview"
+                            notice = documentError
+                        } else {
+                            importPreview = null
+                            documentBusy = true
+                            scope.launch {
+                                try {
+                                    Catalog.importSnapshot(preview)
+                                    documentError = null
+                                    if (Catalog.state.value.error == null) notice = tr(english, "数据库已替换", "Database replaced")
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    documentError = errorMessage(error, english)
+                                    notice = documentError
+                                } finally { documentBusy = false }
+                            }
                         }
                     }) { Text(tr(english, "替换当前数据库", "Replace current database")) }
                 },
@@ -569,8 +588,8 @@ internal fun AppContent(
                             else tr(english, "没有匹配目录的设备，可切换“显示全部”", "No catalogue matches. Switch on Show all."),
                         )
                         visibleCandidates.forEach { candidate ->
-                            val match = matchesCatalogDevice(snapshot, candidate.name)
-                            val response = resolveCatalogReference(snapshot, candidate.name, null, english).response
+                            val match = Catalog.matchesDevice(snapshot, candidate.name)
+                            val response = Catalog.resolveReference(snapshot, candidate.name, null, english).response
                             TextButton(
                                 onClick = {
                                     chooserOpen = false

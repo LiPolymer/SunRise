@@ -46,7 +46,7 @@ private fun searchCatalogProducts(products: List<CatalogProduct>, query: String)
 private fun CatalogProductRow(snapshot: CatalogSnapshot, product: CatalogProduct, english: Boolean, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(product.name, style = MaterialTheme.typography.titleMedium)
-        Text("${tr(english, "型号", "Model")}: ${catalogMetadata(product, "model", english)}")
+        Text("${tr(english, "型号", "Model")}: ${catalogMetadata(product, "model", english)} · ${tr(english, "类型", "Type")}: ${product.type}")
         Text("${tr(english, "语言", "Language")}: ${catalogMetadata(product, "languageType", english)} · ${tr(english, "芯片（目录）", "Chip (directory)")}: ${catalogMetadata(product, "chipType", english)}", style = MaterialTheme.typography.bodySmall)
         Text("${tr(english, "目录标称 EQ 段数", "Directory EQ bands")}: ${catalogMetadata(product, "eqBands", english)}", style = MaterialTheme.typography.bodySmall)
         Text("UUID: ${product.uuid}", style = MaterialTheme.typography.bodySmall)
@@ -62,10 +62,10 @@ internal fun CatalogProductSelector(
     english: Boolean,
     onSelect: (CatalogProduct) -> Unit,
     onDismiss: () -> Unit,
-    title: String = tr(english, "选择参考型号", "Choose a reference model"),
+    title: String = tr(english, "选择参考频响", "Choose a reference response"),
 ) {
     var query by remember { mutableStateOf("") }
-    val ordered = remember(snapshot, deviceName, english) { snapshot?.let { orderedCatalogProducts(it, deviceName, english) }.orEmpty() }
+    val ordered = remember(snapshot, deviceName, english) { snapshot?.let { Catalog.orderedProducts(it, deviceName, english) }.orEmpty() }
     val products = remember(ordered, query) { searchCatalogProducts(ordered, query) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.padding(16.dp).widthIn(max = 720.dp).fillMaxWidth().fillMaxHeight(0.9f), shape = MaterialTheme.shapes.large) {
@@ -100,7 +100,7 @@ internal fun ProductCatalogScreen(
 ) {
     var query by remember { mutableStateOf("") }
     var selectedUuid by remember { mutableStateOf<String?>(null) }
-    val ordered = remember(snapshot, deviceName, english) { snapshot?.let { orderedCatalogProducts(it, deviceName, english) }.orEmpty() }
+    val ordered = remember(snapshot, deviceName, english) { snapshot?.let { Catalog.orderedProducts(it, deviceName, english) }.orEmpty() }
     val products = remember(ordered, query) { searchCatalogProducts(ordered, query) }
     val selected = selectedUuid?.let { snapshot?.productsByUuid?.get(it) }
     if (snapshot != null && selected != null) {
@@ -109,8 +109,8 @@ internal fun ProductCatalogScreen(
     }
     LazyColumn(modifier, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text(tr(english, "离线型号资料库", "Offline model catalogue"), style = MaterialTheme.typography.titleLarge)
-            Text(tr(english, "按完整产品记录浏览。搜索仅查询 name / model，不改变精确名称设备筛选。目录资料不代表已验证的设备控制能力。", "Browse complete product records. Search uses name / model only and does not change exact-name device filtering. Directory metadata is not proof of device-control capabilities."), style = MaterialTheme.typography.bodySmall)
+            Text(tr(english, "产品与频响目录", "Product and response catalog"), style = MaterialTheme.typography.titleLarge)
+            Text(tr(english, "按完整产品与频响记录浏览。搜索仅查询 name / model，不改变精确名称设备筛选。目录资料不代表已验证的设备控制能力。", "Browse complete product and response records. Search uses name / model only and does not change exact-name device filtering. Directory metadata is not proof of device-control capabilities."), style = MaterialTheme.typography.bodySmall)
         }
         if (snapshot == null) item { Text(tr(english, "没有可用的离线数据库；可在设置导入或显式拉取。", "No usable offline database. Import or explicitly pull in Settings.")) }
         else {
@@ -145,20 +145,20 @@ private fun CatalogProductDetail(
     var comparisonUuid by remember(product.uuid) { mutableStateOf<String?>(null) }
     var chooseComparison by remember(product.uuid) { mutableStateOf(false) }
     val response = product.freqResponse?.let { snapshot.responsesByPath[it] } as? CatalogResponse.Ready
-    val sampled = remember(response) { response?.let { sampleCatalogResponse(it.response) } }
+    val sampled = remember(response) { response?.let { Catalog.sampleResponse(it.response) } }
     val comparison = comparisonUuid?.let { snapshot.productsByUuid[it] }
     val comparisonResponse = comparison?.freqResponse?.let { snapshot.responsesByPath[it] } as? CatalogResponse.Ready
-    val otherSampled = remember(comparisonResponse) { comparisonResponse?.let { sampleCatalogResponse(it.response) } }
+    val otherSampled = remember(comparisonResponse) { comparisonResponse?.let { Catalog.sampleResponse(it.response) } }
     val firstReason = comparisonUnavailableReason(snapshot, product, english)
     val secondReason = comparison?.let {
-        if (it.uuid == product.uuid) tr(english, "请选择另一个 UUID 进行双型号对比", "Choose a different UUID for a two-model comparison")
+        if (it.uuid == product.uuid) tr(english, "请选择另一个 UUID 进行双曲线对比", "Choose a different UUID for a two-curve comparison")
         else comparisonUnavailableReason(snapshot, it, english)
     }
     val comparisonEnabled = comparison != null && firstReason == null && secondReason == null
     val directoryBands = (product.raw["eqBands"] as? JsonPrimitive)?.intOrNull
     LazyColumn(modifier, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            TextButton(onClick = onBack) { Text(tr(english, "返回型号列表", "Back to model list")) }
+            TextButton(onClick = onBack) { Text(tr(english, "返回目录列表", "Back to catalog list")) }
             Text(product.name, style = MaterialTheme.typography.headlineSmall)
             Text("UUID: ${product.uuid}", style = MaterialTheme.typography.bodySmall)
         }
@@ -167,6 +167,7 @@ private fun CatalogProductDetail(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     for ((key, label) in listOf(
                         "model" to tr(english, "型号", "Model"),
+                        "type" to tr(english, "类型", "Type"),
                         "languageType" to tr(english, "语言", "Language"),
                         "chipType" to tr(english, "芯片（目录）", "Chip (directory)"),
                         "eqBands" to tr(english, "目录标称 EQ 段数", "Directory EQ bands"),
@@ -174,7 +175,11 @@ private fun CatalogProductDetail(
                         "qRange" to tr(english, "目录 Q 范围", "Directory Q range"),
                         "supportedFilterTypes" to tr(english, "目录滤波器类型", "Directory filter types"),
                     )) Text("$label: ${catalogMetadata(product, key, english)}")
-                    Text(tr(english, "以上为目录原始元数据，不用于推断协议、参数限制或开放控制能力。", "These are original directory values, not inferred protocols, parameter limits, or enabled control capabilities."), style = MaterialTheme.typography.bodySmall)
+                    if (product.uuid in snapshot.responseLibraryUuids) {
+                        Text("${tr(english, "原始标签", "Original tags")}: ${product.raw["tags"]}", style = MaterialTheme.typography.bodySmall)
+                        Text(tr(english, "此记录来自频响库，是频响或目标记录，而非设备型号。", "This library entry is a response or target record, not a device model."), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(tr(english, "Response 为本地频响库分类，其他资料保留源值；不表示设备或协议能力，也不用于推断参数限制或开放控制能力。", "Response is a local response-library classification; other metadata retains source values. It does not indicate device or protocol capabilities, parameter limits, or enabled controls."), style = MaterialTheme.typography.bodySmall)
                     if (deviceEqBands != null) {
                         Text(tr(english, "当前设备读回 EQ 段数：$deviceEqBands（${deviceName ?: "未提供名称"}）", "Connected device EQ bands read back: $deviceEqBands (${deviceName ?: "name not provided"})"))
                         if (directoryBands != null && directoryBands != deviceEqBands) Text(tr(english,
@@ -184,18 +189,18 @@ private fun CatalogProductDetail(
                     Text(catalogResponseStatus(snapshot, product, english))
                     Text("${tr(english, "参考资产路径", "Reference asset path")}: ${catalogMetadata(product, "freqResponse", english)}", style = MaterialTheme.typography.bodySmall)
                     Text("${tr(english, "来源 UTC", "Source UTC")}: ${snapshot.retrievedAt}", style = MaterialTheme.typography.bodySmall)
-                    Text("${tr(english, "目录来源", "Catalogue source")}: ${snapshot.catalogueUrl}", style = MaterialTheme.typography.bodySmall)
+                    Text("${tr(english, "资料来源", "Data source")}: ${Catalog.sourceUrl(snapshot, product)}", style = MaterialTheme.typography.bodySmall)
                     Text("CDN: ${snapshot.cdnBaseUrl}", style = MaterialTheme.typography.bodySmall)
-                    Text(tr(english, "来源信息来自快照文件；型号资料并非当前设备的实测频响。", "Provenance is supplied by the snapshot file; model data is not a measurement of the connected device."), style = MaterialTheme.typography.bodySmall)
+                    Text(tr(english, "来源信息来自快照文件；参考频响或目标资料并非当前设备的实测频响。", "Provenance is supplied by the snapshot file; reference responses or targets are not measurements of the connected device."), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         item {
-            Button(onClick = { onUseReference(product) }) { Text(tr(english, "用作参考型号", "Use as reference model")) }
+            Button(onClick = { onUseReference(product) }) { Text(tr(english, "用作参考频响", "Use as reference response")) }
             Text(tr(english, "只选择参考 UUID，不联网、不发送蓝牙命令，也不加载 EQ 预设。", "Selects a reference UUID only: no network, Bluetooth commands, or EQ preset loading."), style = MaterialTheme.typography.bodySmall)
         }
         item {
-            Text(tr(english, "原生型号参考", "Native model reference"), style = MaterialTheme.typography.titleMedium)
+            Text(tr(english, "参考频响", "Reference response"), style = MaterialTheme.typography.titleMedium)
             if (sampled == null) Text(catalogResponseStatus(snapshot, product, english))
             else if (sampled.frequencyHz.isEmpty()) Text(tr(english, "没有可显示频段：原始资料与 20 Hz–20 kHz 无交集。", "No displayable frequency range: the source does not intersect 20 Hz–20 kHz."))
             else {
@@ -204,20 +209,20 @@ private fun CatalogProductDetail(
                 ReferenceLegend(product, english, MaterialTheme.colorScheme.onSurface, false)
                 if (comparisonEnabled) ReferenceLegend(comparison, english, MaterialTheme.colorScheme.primary, true)
                 CatalogReferencePlot(sampled, if (comparisonEnabled) otherSampled else null, english, Modifier.fillMaxWidth().height(260.dp))
-                Text(tr(english, "只画各曲线自身覆盖范围，不外推；型号测量条件未知，不代表佩戴、ANC 或音量状态一致。", "Each curve uses only its own coverage, without extrapolation. Measurement conditions are unknown; fit, ANC and volume states may differ."), style = MaterialTheme.typography.bodySmall)
+                Text(tr(english, "只画各曲线自身覆盖范围，不外推；测量曲线的条件未知，不代表佩戴、ANC 或音量状态一致，目标曲线并非设备实测。", "Each curve uses only its own coverage, without extrapolation. Measurement conditions are unknown; fit, ANC and volume states may differ. Target curves are not device measurements."), style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
             OutlinedButton(onClick = { chooseComparison = true }, enabled = firstReason == null) {
-                Text(tr(english, "选择第二个型号作形状对比", "Choose a second model for shape comparison"))
+                Text(tr(english, "选择第二条参考频响作双曲线对比", "Choose a second reference response for two-curve comparison"))
             }
-            firstReason?.let { Text(tr(english, "形状对比不可用：$it", "Shape comparison unavailable: $it"), style = MaterialTheme.typography.bodySmall) }
+            firstReason?.let { Text(tr(english, "双曲线对比不可用：$it", "Two-curve comparison unavailable: $it"), style = MaterialTheme.typography.bodySmall) }
             comparison?.let { other ->
-                Text("${tr(english, "第二个型号", "Second model")}: ${other.name}")
+                Text("${tr(english, "第二条参考频响", "Second reference response")}: ${other.name}")
                 Text("${tr(english, "语言", "Language")}: ${catalogMetadata(other, "languageType", english)} · UUID: ${other.uuid}", style = MaterialTheme.typography.bodySmall)
                 Text(catalogResponseStatus(snapshot, other, english), style = MaterialTheme.typography.bodySmall)
-                secondReason?.let { Text(tr(english, "形状对比不可用：$it", "Shape comparison unavailable: $it"), style = MaterialTheme.typography.bodySmall) }
-                if (comparisonEnabled) Text(tr(english, "双型号共用 dB 轴；各自以 500 Hz 归一化，仅对比形状。", "Both models share the dB axis, each normalized at 500 Hz; shape comparison only."), style = MaterialTheme.typography.bodySmall)
+                secondReason?.let { Text(tr(english, "双曲线对比不可用：$it", "Two-curve comparison unavailable: $it"), style = MaterialTheme.typography.bodySmall) }
+                if (comparisonEnabled) Text(tr(english, "双曲线共用 dB 轴；各自以 500 Hz 归一化，仅对比形状。", "Two curves share the dB axis, each normalized at 500 Hz; shape comparison only."), style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = { comparisonUuid = null }) { Text(tr(english, "清除对比", "Clear comparison")) }
             }
         }

@@ -180,8 +180,8 @@ internal fun SettingsScreen(
                     settings.catalogOnlyDevices, true,
                 ) { onChange(settings.copy(catalogOnlyDevices = it)) }
                 SettingSwitchRow(
-                    tr(english, "显示型号参考频响", "Show model reference response"),
-                    tr(english, "官方目录资料，非当前耳机实测", "Official catalogue data, not a measurement of the connected headset"),
+                    tr(english, "显示参考频响", "Show reference response"),
+                    tr(english, "产品目录与频响库资料，非当前耳机实测", "Product catalog and response-library data, not a measurement of the connected headset"),
                     settings.showReferenceResponse, true,
                 ) { onChange(settings.copy(showReferenceResponse = it)) }
                 SettingSwitchRow(

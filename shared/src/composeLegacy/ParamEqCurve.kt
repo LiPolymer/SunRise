@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.catalog.AcousticOverlay
 import ink.lipoly.app.sunrise.catalog.AcousticScale
-import ink.lipoly.app.sunrise.catalog.acousticAxisTicks
+import ink.lipoly.app.sunrise.catalog.Catalog
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqFilter
 import ink.lipoly.app.sunrise.drop.PeqBiquad
@@ -141,10 +141,10 @@ internal fun ParamEqCurve(
         .onSizeChanged { measuredSize = it }
         .semantics {
             contentDescription = if (hasOverlay && editor == null)
-                tr(english, "离线型号参考；右轴为参考 dB，当前不能编辑 EQ，也没有预测。", "Offline model reference; right axis shows reference dB. EQ is not editable and there is no prediction.")
+                tr(english, "离线参考频响；右轴为参考 dB，当前不能编辑 EQ，也没有预测。", "Offline reference response; right axis shows reference dB. EQ is not editable and there is no prediction.")
             else if (hasOverlay)
-                tr(english, "左轴 EQ dB 用于编辑；右轴型号参考及非实测预测。双指横向开合调整所选频段 Q，或使用下方滑杆编辑",
-                    "Left EQ dB axis is editable; right axis shows model reference and non-measured prediction. Spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below")
+                tr(english, "左轴 EQ dB 用于编辑；右轴参考频响及非实测预测。双指横向开合调整所选频段 Q，或使用下方滑杆编辑",
+                    "Left EQ dB axis is editable; right axis shows reference response and non-measured prediction. Spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below")
             else tr(english, "参数响应估算；双指横向开合调整所选频段 Q，或使用下方滑杆编辑", "Estimated parameter response; spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below")
         }
         .focusRequester(focusRequester)
@@ -358,7 +358,7 @@ internal fun ParamEqCurve(
             ) else null
             val rightLabels = responseScale?.let { scale ->
                 val maxLabels = (p.height / (eqCaption.size.height + 2.dp.toPx())).toInt().coerceAtLeast(2)
-                val candidates = acousticAxisTicks(scale, maxLabels).map { db ->
+                val candidates = Catalog.acousticAxisTicks(scale, maxLabels).map { db ->
                     val layout = textMeasurer.measure(acousticAxisLabel(db), labelStyle.copy(color = textColor))
                     val y = p.top + ((scale.maxDb - db) / (scale.maxDb - scale.minDb) * p.height).toFloat()
                     layout to (y - layout.size.height / 2).coerceIn(p.top, (p.top + p.height - layout.size.height).coerceAtLeast(p.top))
