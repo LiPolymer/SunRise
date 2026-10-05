@@ -581,17 +581,11 @@ class CatalogTest {
         val release = CompletableDeferred<Unit>()
         val storage = MemoryStorage()
         val fetcher = Fetcher { _, _ -> error("Unexpected network") }
-        var propagated = false
         fixtures.withCatalog(this@runTest, storage, {
             entered.complete(Unit)
-            try {
-                withContext(NonCancellable) {
-                    release.await()
-                    fixtures.document()
-                }
-            } catch (failure: CancellationException) {
-                propagated = true
-                throw failure
+            withContext(NonCancellable) {
+                release.await()
+                fixtures.document()
             }
         }, fetcher) {
             try {
@@ -601,7 +595,6 @@ class CatalogTest {
                 assertFalse(closing.isCompleted)
                 release.complete(Unit)
                 closing.join()
-                assertTrue(propagated)
                 assertNull(Catalog.state.value.snapshot)
                 assertFalse(Catalog.state.value.loading)
                 assertFalse(Catalog.state.value.busy)

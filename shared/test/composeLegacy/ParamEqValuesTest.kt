@@ -5,7 +5,7 @@ import ink.lipoly.app.sunrise.drop.PeqFilter
 import ink.lipoly.app.sunrise.drop.PeqBiquad
 import kotlin.math.abs
 import kotlin.test.*
-import org.junit.Test
+import kotlin.test.Test
 
 class ParamEqValuesTest {
     private fun band(gain: Int = 0, q: Int = 4096, filter: PeqFilter = PeqFilter.PEAKING, frequency: Int = 1000, index: Int = 0) =

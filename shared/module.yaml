@@ -14,6 +14,7 @@ dependencies:
 
 test-dependencies:
   - org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0
+  - org.jetbrains.kotlin:kotlin-test:2.4.20:all: compile-only
 
 dependencies@android:
   - androidx.activity:activity-compose:1.13.0

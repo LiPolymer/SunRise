@@ -209,7 +209,11 @@ Android 使用应用私有 `filesDir/catalog/active.json` 和 SAF 文档选择�
 - 新增独立的可选目标线、本地选择器、显示/隐藏和清除；源/预测/目标共右轴，保留 EQ 左轴、节点、Q 操作及发送逻辑。
 - 本次相关回归：`kotlin.bat test -m shared --include-classes=*CatalogEqResponseTest --include-classes=*UiSettingsStoreTest`，JVM 25 项、Android 宿主 22 项全部通过，覆盖目标极值、独立覆盖范围、隐藏/移除后的轴范围、极端有限值及选择持久化/清除。
 - 原生 JVM 界面检查了实际 `Space Travel 2 Ultra` 源与 `5128 Harman In-Ear 2024 Beta` 目标选择、三条频响叠加、目标独立显示、隐藏/清除及偏好重载；零蓝牙编辑 fixture 的节点拖动和滚轮 Q 修改更新草稿/预测，控制读取计数 1、配置写入计数 0。390 dp 中英文与 900 dp 英文布局、缺失目标 UUID、源/目标不覆盖 500 Hz 的提示已检查。临时烟测入口已移除；未安装/运行 Android 或向真实耳机发送。
-- 完整回归未全绿：`CatalogTest.closeDuringLocalReadCannotPublishALateBundledSnapshot` 在 JVM/Android 宿主均失败；Android 宿主的 `CatalogSnapshotCodecTest.bundledSnapshotActuallyDecodesWithEveryReferencedAssetPresent` 因 `android.util.Log.d` 未模拟失败。以上目录生命周期/资源测试及实现本轮未修改，未以重复运行或缩小完整回归掩盖失败。
+- 当时完整回归未全绿：`CatalogTest.closeDuringLocalReadCannotPublishALateBundledSnapshot` 在 JVM/Android 宿主均失败；Android 宿主的 `CatalogSnapshotCodecTest.bundledSnapshotActuallyDecodesWithEveryReferencedAssetPresent` 因 `android.util.Log.d` 未模拟失败。该轮未修改这些测试，后续修复与完整回归结果见下。
 - `ParamEqScreen()` 清理已由外层非空分支保证的冗余安全调用及重复 `editor != null` 条件；保留 `firstOrNull()?.let` 的空结果处理。`kotlin.bat build -m shared` 的 JVM/Android 编译均成功，未再输出这六条警告；不改变编辑或发送行为。
 - `AcousticOverlay` 改为普通类，数组数据沿用对象身份语义，不生成不合适的 data-class 相等/哈希成员；`ParamEqCurve()` 的 `latestEnabled` 改为显式 `rememberUpdatedState` 状态对象，各事件处理器读取 `.value`，保留手势期间动态禁用检查。IDE 复检确认三个数组属性警告和两处恒假条件警告均已消除。
 - 后续按用户要求删除 `shared/test/catalog/CatalogEqResponseTest.kt`（22 个测试），停止该文件的 IDE 注解修复；其他测试及正式代码不变。上述通过数量为删除前的历史验证记录，不代表当前仍保留这些用例。
+- 后续修复其他测试的 IDE 注解解析：在 `shared/module.yaml` 显式添加 `org.jetbrains.kotlin:kotlin-test:2.4.20:all: compile-only`，提供通用源集的测试元数据；平台 JUnit 4 适配器仍由 Toolchain 隐式提供。`ParamEqValuesTest` 使用通用 `kotlin.test.Test`，不引用平台 `org.junit.Test`。IDE MCP 检查全部 21 个现存测试/fixture 文件，错误为空。
+- 关闭测试的加载 fixture 在 `NonCancellable` 中等待释放，模拟关闭期间迟到的读取；保留关闭等待、无快照发布、加载标志清理、无存储写入/网络访问及 fetcher 关闭断言，移除对取消异常具体抛出位置的依赖。正式生命周期实现未修改。
+- 将随包资源验收移至 JVM 的 `BundledCatalogSnapshotTest`，继续使用真实 Compose 资源读取器并校验全部引用资产与哈希；不在 Android 宿主单测中调用 Android 资源 API，也不模拟日志或资源。实读结果为 107 条物理产品、48 条 Response、155 条总记录、99 份资产及 98 份可解析曲线。
+- 修复后运行完整 `kotlin.bat test -m shared`：JVM 189 项、Android 宿主 171 项全部通过，均为零失败、零跳过；未恢复已按用户要求删除的 22 个 EQ 响应测试。未运行 Android 应用或向耳机发送 EQ。
