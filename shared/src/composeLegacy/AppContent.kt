@@ -90,6 +90,7 @@ internal fun AppContent(
         var chooserOpen by remember(client) { mutableStateOf(false) }
         var selectionPrompted by remember(client) { mutableStateOf(false) }
         var referenceChooserOpen by remember { mutableStateOf(false) }
+        var targetChooserOpen by remember { mutableStateOf(false) }
         var previewReferenceUuid by remember { mutableStateOf<String?>(null) }
         val snapshot = catalogState.snapshot
         val audioAddress = state.device?.address?.uppercase()
@@ -97,6 +98,8 @@ internal fun AppContent(
         val reference = remember(snapshot, state.device?.name, manualReferenceUuid, english) {
             Catalog.resolveReference(snapshot, state.device?.name, manualReferenceUuid, english)
         }
+        val targetProduct = settings.targetProductUuid?.let { snapshot?.productsByUuid?.get(it) }
+        val targetResponse = targetProduct?.freqResponse?.let { snapshot?.responsesByPath?.get(it) }
         val visibleCandidates = remember(candidates, snapshot, settings.catalogOnlyDevices) {
             if (settings.catalogOnlyDevices) candidates.filter { Catalog.matchesDevice(snapshot, it.name) } else candidates
         }
@@ -269,6 +272,15 @@ internal fun AppContent(
         fun resetReference() {
             if (audioAddress == null) previewReferenceUuid = null
             else onSettingsChange(settings.copy(referenceProductByAddress = settings.referenceProductByAddress - audioAddress))
+        }
+
+        fun chooseTarget(product: CatalogProduct) {
+            onSettingsChange(settings.copy(targetProductUuid = product.uuid, showTargetResponse = true))
+            targetChooserOpen = false
+        }
+
+        fun clearTarget() {
+            onSettingsChange(settings.copy(targetProductUuid = null))
         }
 
         fun importCatalog() {
@@ -466,6 +478,17 @@ internal fun AppContent(
                     referenceResponseHash = reference.product?.freqResponse?.let { snapshot?.responseHashesByPath?.get(it) },
                     showReferenceResponse = settings.showReferenceResponse,
                     includeResponsePreGain = settings.includeResponsePreGain,
+                    targetProduct = targetProduct,
+                    targetResponse = targetResponse,
+                    targetProductUuid = settings.targetProductUuid,
+                    targetResponseHash = targetProduct?.freqResponse?.let { snapshot?.responseHashesByPath?.get(it) },
+                    showTargetResponse = settings.showTargetResponse,
+                    onChooseTarget = {
+                        if (snapshot != null) targetChooserOpen = true
+                        else notice = tr(english, "没有可用数据库，请先在设置中导入或拉取", "No usable database; import or pull in Settings first")
+                    },
+                    onClearTarget = ::clearTarget,
+                    onTargetResponseChange = { onSettingsChange(settings.copy(showTargetResponse = it)) },
                     onChooseReference = {
                         if (snapshot != null) referenceChooserOpen = true
                         else notice = tr(english, "没有可用数据库，请先在设置中导入或拉取", "No usable database; import or pull in Settings first")
@@ -529,6 +552,14 @@ internal fun AppContent(
             english = english,
             onSelect = ::chooseReference,
             onDismiss = { referenceChooserOpen = false },
+        )
+        if (targetChooserOpen && snapshot != null) CatalogProductSelector(
+            snapshot = snapshot,
+            deviceName = state.device?.name,
+            english = english,
+            onSelect = ::chooseTarget,
+            onDismiss = { targetChooserOpen = false },
+            title = tr(english, "选择目标频响", "Choose a target response"),
         )
 
         importPreview?.let { preview ->

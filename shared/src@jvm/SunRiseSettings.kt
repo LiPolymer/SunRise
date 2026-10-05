@@ -18,6 +18,8 @@ internal class UiSettingsStore(
             showReferenceResponse = preferences.getBoolean("show_reference_response", true),
             includeResponsePreGain = preferences.getBoolean("include_response_pregain", true),
             referenceProductByAddress = decodeReferenceProducts(preferences.get("reference_products", null)),
+            targetProductUuid = preferences.get("target_product_uuid", null),
+            showTargetResponse = preferences.getBoolean("show_target_response", true),
         )
     )
         private set
@@ -35,6 +37,13 @@ internal class UiSettingsStore(
         }
         if (next.referenceProductByAddress != previous.referenceProductByAddress) {
             preferences.put("reference_products", encodeReferenceProducts(next.referenceProductByAddress))
+        }
+        if (next.targetProductUuid != previous.targetProductUuid) {
+            if (next.targetProductUuid == null) preferences.remove("target_product_uuid")
+            else preferences.put("target_product_uuid", next.targetProductUuid)
+        }
+        if (next.showTargetResponse != previous.showTargetResponse) {
+            preferences.putBoolean("show_target_response", next.showTargetResponse)
         }
         current = next
     }

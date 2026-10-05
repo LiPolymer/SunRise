@@ -11,7 +11,7 @@ import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
 
-internal data class AcousticOverlay(
+internal class AcousticOverlay(
     val frequencyHz: DoubleArray,
     val referenceDb: DoubleArray,
     val predictedDb: DoubleArray?,
@@ -99,8 +99,8 @@ internal fun buildAcousticOverlay(
 
 internal data class AcousticScale(val minDb: Double, val maxDb: Double)
 
-/** Independent right-axis limits; never used as editable EQ gain coordinates. */
-internal fun acousticScale(overlay: AcousticOverlay): AcousticScale? {
+/** Independent right-axis limits for visible acoustic curves; never editable EQ gain coordinates. */
+internal fun acousticScale(overlay: AcousticOverlay?, target: SampledCatalogResponse? = null): AcousticScale? {
     var minimum = Double.POSITIVE_INFINITY
     var maximum = Double.NEGATIVE_INFINITY
     fun include(values: DoubleArray) {
@@ -109,8 +109,9 @@ internal fun acousticScale(overlay: AcousticOverlay): AcousticScale? {
             if (value > maximum) maximum = value
         }
     }
-    include(overlay.referenceDb)
-    overlay.predictedDb?.let(::include)
+    overlay?.referenceDb?.let(::include)
+    overlay?.predictedDb?.let(::include)
+    target?.referenceDb?.let(::include)
     return acousticScaleLimits(minimum, maximum)
 }
 

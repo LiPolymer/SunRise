@@ -99,9 +99,13 @@ Windows / PowerShell 单次对照：
 4. **绑定参考**：均衡器可从所有类型中手选完整产品 UUID、恢复自动匹配。连接时按音频地址保存绑定，不使用 BLE 控制端点地址；未连接/JVM 时仅作页面会话预览。自动选择先用有效手动绑定，再仅在 `type == "BT"` 的同名组中按可解析曲线、界面语言、空语言及 UUID 排序。更新后 UUID 消失会提示并退回自动匹配，不按名称迁移到其他记录。绑定不放宽设备筛选，也不加载 EQ 预设或发送命令。
 5. **管理快照**：设置中的“拉取”才会访问不带 `ProductType` 参数的 [官方产品目录](https://cdn-service.moondroplab.tech/api/v1/products/all)、[带标签频响库](https://cdn-service.moondroplab.tech/api/v1/responselib/allwithtag) 与显式选择的中国/海外 CDN；一次下载两来源引用的全部不同频响路径，最多四个并发请求，不重试、不自动切换 CDN。两份元数据和全部原文验证及原子落盘成功后才替换旧快照；第二来源失败、任一资产失败或提交前取消均保留旧数据。导入先预览、确认完整替换，导出原始完整快照字节，不合并、不包含音频地址、绑定、设置或 EQ 草稿。
 
-均衡器在**同一张可交互图**内显示参考频响虚线、主色 DSP 预测实线及淡化的 EQ 响应；左轴仍编辑 EQ 增益，右轴独立显示参考/预测，不把 SPL 当作节点增益。预测使用当前量化草稿和现有 48 kHz RBJ 系数，默认包含写入模型的自动前置增益；关闭该开关只改变预测，不改草稿或设备配置。没有编辑器/草稿时仅显示参考频响，不制造预测线；隐藏或无法解析参考时保留原 EQ 图及操作。
+均衡器在**同一张可交互图**内显示源频响虚线、DSP 预测实线、可选蓝色目标参考虚线及淡化的 EQ 响应；左轴仍编辑 EQ 增益，源/预测/目标共用独立右轴，不把 SPL 当作节点增益。预测使用当前量化草稿和现有 48 kHz RBJ 系数，默认包含写入模型的自动前置增益；关闭该开关只改变预测，不改草稿或设备配置。没有编辑器/草稿时仅显示资料频响，不制造预测线；隐藏或无法解析源频响时保留原 EQ 图及操作。
 
 参考覆盖 500 Hz 时共用 `SPL(f) − SPL(500 Hz)` 显示归一化；未覆盖时明确显示原始 SPL，不外推到未测频段。参考可能已包含调音，预测不是实测、不是绝对声压，“已发送”不证明已应用。坐标轴按绘图区容量生成刻度，数值跨度无法表示时给出显示原因，不用平直替代线。
+
+均衡器的“目标参考频响”可从所有本地产品/频响库记录中独立选择、显示/隐藏和清除。目标 UUID 与显示开关在 Android/JVM 均持久化，跨设备保留；不修改按音频地址保存的源频响绑定，不自动拟合 EQ、不发送配置。隐藏保留选择，清除删除目标 UUID；更新后 UUID 消失会提示重新选择，不按名称或其他 UUID 静默替代。
+
+形状对比要求源频响和目标都可解析且覆盖 500 Hz，各自减去自身 500 Hz SPL；目标仅画自己的资料覆盖范围，不外推。右轴按所有可见频响的共同极值缩放，隐藏的目标不参与范围计算；隐藏源频响后，满足上述条件的目标仍可独立显示。源或目标不覆盖 500 Hz 时不叠加目标，并显示原因，原 EQ 编辑不受影响。比较调音形状时可关闭“预测含自动前置增益”，避免整体电平偏移干扰；预测不另行归一化，不改变发送时的自动前置增益。测量条件、佩戴和音量可能不同，曲线接近不保证实际听感相同。
 
 交换文件为版本 3 的 `sunrise-moondrop-catalog` UTF-8 JSON，内置资源为 `files/moondrop-catalog.snapshot.json`，默认导出名 `sunrise-moondrop-catalog.json`，使用缩进排版，不使用 Base64。`catalogue` 和 `responseLibrary` 直接嵌套两份原始响应对象，保留未知字段、频响库 tags 和数组顺序，但不保留上游 JSON 的空白排版。物理产品的非空字符串类型按原值保留；频响库保留 uuid/name/file/tags 并投影为 Response 产品，不猜测型号、语言、芯片或 EQ 段数。跨来源 UUID 不区分大小写冲突时拒绝整个快照；共享路径只保存一份资产，不合并不同 UUID。`responseFiles[]` 包含 `path`、`sha256`、`encoding` 和逐行可读的 `lines[]`，不丢弃频响注释、相位列或无法解析的原文。
 
@@ -109,7 +113,7 @@ Windows / PowerShell 单次对照：
 
 版本 1/2 和旧 `sunrise-moondrop-bt` 格式不再读取或导入。旧本地快照会提示并回退新的完整内置数据，旧 active.json 不自动覆盖；只有显式拉取或导入有效版本 3 后才替换本地文件。初始化零联网、零写盘，不自动迁移或修复旧数据。
 
-Android 使用应用私有 `filesDir/catalog/active.json` 和 SAF 文档选择器，仅新增网络权限，不要求广泛存储权限。JVM 使用 `${user.home}/.sunrise/catalog/active.json` 和原生文件对话框；仅目录筛选、参考显示、预测前置增益开关及地址绑定持久化，原有外观设置仍保留进程内行为。损坏本地快照回退内置数据并提示，不自动联网修复；两者都不可用时可显示全部设备、导入或显式拉取。
+Android 使用应用私有 `filesDir/catalog/active.json` 和 SAF 文档选择器，仅新增网络权限，不要求广泛存储权限。JVM 使用 `${user.home}/.sunrise/catalog/active.json` 和原生文件对话框；目录筛选、源/目标显示、目标 UUID、预测前置增益开关及地址绑定持久化，原有外观设置仍保留进程内行为。损坏本地快照回退内置数据并提示，不自动联网修复；两者都不可用时可显示全部设备、导入或显式拉取。
 
 目录业务入口为 `internal object Catalog`。启动宿主通过 `Catalog.init(storage = { ... }, loadBundled = { ... })` 建立应用级离线加载；重复 init 不执行依赖工厂、不重载、不覆盖已导入的数据。`Catalog.state` 跨关闭/再初始化保留同一订阅入口。页面只取消自己发起的操作，不关闭全局目录；`Catalog.close()` 用于应用退出/测试隔离，排空初始读取、下载及原子提交后才允许下次初始化，关闭后仍可查询/导出最后完整快照。
 
@@ -199,3 +203,13 @@ Android 使用应用私有 `filesDir/catalog/active.json` 和 SAF 文档选择�
 - 最终封闭旧仓库后，全部原仓库行为测试已迁入 `CatalogTest`，设备过滤集成测试改用 Catalog 入口，偏好测试随 `UiSettingsStore` 归位。`kotlin.bat build -m shared -m jvm-app -p jvm` 成功，包含迁移后的 JVM 测试源码编译；保留原有 EQ 页面的非空判断/安全调用警告。
 - 按用户要求，最终收口只做编译和静态核对，没有重跑测试、烟测或启动窗口；双窗口交互和完整联网烟测未完成最终验收。临时烟测源码已移除，未构建/运行 Android，未向耳机写入。
 
+
+## EQ 目标参考频响
+
+- 新增独立的可选目标线、本地选择器、显示/隐藏和清除；源/预测/目标共右轴，保留 EQ 左轴、节点、Q 操作及发送逻辑。
+- 本次相关回归：`kotlin.bat test -m shared --include-classes=*CatalogEqResponseTest --include-classes=*UiSettingsStoreTest`，JVM 25 项、Android 宿主 22 项全部通过，覆盖目标极值、独立覆盖范围、隐藏/移除后的轴范围、极端有限值及选择持久化/清除。
+- 原生 JVM 界面检查了实际 `Space Travel 2 Ultra` 源与 `5128 Harman In-Ear 2024 Beta` 目标选择、三条频响叠加、目标独立显示、隐藏/清除及偏好重载；零蓝牙编辑 fixture 的节点拖动和滚轮 Q 修改更新草稿/预测，控制读取计数 1、配置写入计数 0。390 dp 中英文与 900 dp 英文布局、缺失目标 UUID、源/目标不覆盖 500 Hz 的提示已检查。临时烟测入口已移除；未安装/运行 Android 或向真实耳机发送。
+- 完整回归未全绿：`CatalogTest.closeDuringLocalReadCannotPublishALateBundledSnapshot` 在 JVM/Android 宿主均失败；Android 宿主的 `CatalogSnapshotCodecTest.bundledSnapshotActuallyDecodesWithEveryReferencedAssetPresent` 因 `android.util.Log.d` 未模拟失败。以上目录生命周期/资源测试及实现本轮未修改，未以重复运行或缩小完整回归掩盖失败。
+- `ParamEqScreen()` 清理已由外层非空分支保证的冗余安全调用及重复 `editor != null` 条件；保留 `firstOrNull()?.let` 的空结果处理。`kotlin.bat build -m shared` 的 JVM/Android 编译均成功，未再输出这六条警告；不改变编辑或发送行为。
+- `AcousticOverlay` 改为普通类，数组数据沿用对象身份语义，不生成不合适的 data-class 相等/哈希成员；`ParamEqCurve()` 的 `latestEnabled` 改为显式 `rememberUpdatedState` 状态对象，各事件处理器读取 `.value`，保留手势期间动态禁用检查。IDE 复检确认三个数组属性警告和两处恒假条件警告均已消除。
+- 后续按用户要求删除 `shared/test/catalog/CatalogEqResponseTest.kt`（22 个测试），停止该文件的 IDE 注解修复；其他测试及正式代码不变。上述通过数量为删除前的历史验证记录，不代表当前仍保留这些用例。

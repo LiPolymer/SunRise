@@ -24,6 +24,8 @@ internal data class UiSettings(
     val showReferenceResponse: Boolean = true,
     val includeResponsePreGain: Boolean = true,
     val referenceProductByAddress: Map<String, String> = emptyMap(),
+    val targetProductUuid: String? = null,
+    val showTargetResponse: Boolean = true,
 )
 
 internal fun encodeReferenceProducts(bindings: Map<String, String>): String =

@@ -29,6 +29,8 @@ internal class UiSettingsStore(private val preferences: SharedPreferences) {
             showReferenceResponse = preferences.getBoolean("show_reference_response", true),
             includeResponsePreGain = preferences.getBoolean("include_response_pregain", true),
             referenceProductByAddress = decodeReferenceProducts(preferences.getString("reference_products", null)),
+            targetProductUuid = preferences.getString("target_product_uuid", null),
+            showTargetResponse = preferences.getBoolean("show_target_response", true),
         )
     )
         private set
@@ -46,6 +48,11 @@ internal class UiSettingsStore(private val preferences: SharedPreferences) {
             .putBoolean("show_reference_response", next.showReferenceResponse)
             .putBoolean("include_response_pregain", next.includeResponsePreGain)
             .putString("reference_products", encodeReferenceProducts(next.referenceProductByAddress))
+            .putBoolean("show_target_response", next.showTargetResponse)
+            .apply {
+                if (next.targetProductUuid == null) remove("target_product_uuid")
+                else putString("target_product_uuid", next.targetProductUuid)
+            }
             .apply()
     }
 }

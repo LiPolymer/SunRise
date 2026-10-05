@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.catalog.AcousticOverlay
 import ink.lipoly.app.sunrise.catalog.AcousticScale
 import ink.lipoly.app.sunrise.catalog.Catalog
+import ink.lipoly.app.sunrise.catalog.SampledCatalogResponse
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqFilter
 import ink.lipoly.app.sunrise.drop.PeqBiquad
@@ -37,6 +38,7 @@ import kotlin.math.*
 
 private val bandColors = listOf(Color(0xffe69f00), Color(0xff56b4e9), Color(0xff009e73), Color(0xffcc79a7), Color(0xffd55e00), Color(0xff0072b2))
 private fun bandColor(index: Int): Color = bandColors[index % bandColors.size]
+internal val targetResponseColor = Color(0xff0072b2)
 
 private data class PeqPlot(val left: Float, val top: Float, val width: Float, val height: Float, val axis: Double) {
     fun point(band: GaiaPeqBand): Offset? {
@@ -71,11 +73,13 @@ private class PeqCurveGeometry(private val plot: PeqPlot, coefficients: List<Peq
 }
 
 /** Acoustic paths use their own dB axis, never the editable gain coordinates. */
-private class AcousticCurveGeometry(private val overlay: AcousticOverlay, private val plot: PeqPlot, private val scale: AcousticScale) {
-    private fun path(values: DoubleArray): Path = Path().apply {
+private class AcousticCurveGeometry(
+    overlay: AcousticOverlay?, target: SampledCatalogResponse?, private val plot: PeqPlot, private val scale: AcousticScale,
+) {
+    private fun path(frequencyHz: DoubleArray, values: DoubleArray): Path = Path().apply {
         var started = false
-        for (i in 0 until min(overlay.frequencyHz.size, values.size)) {
-            val hz = overlay.frequencyHz[i]
+        for (i in 0 until min(frequencyHz.size, values.size)) {
+            val hz = frequencyHz[i]
             val db = values[i]
             if (!hz.isFinite() || hz !in 20.0..20000.0 || !db.isFinite()) {
                 started = false
@@ -86,8 +90,9 @@ private class AcousticCurveGeometry(private val overlay: AcousticOverlay, privat
             if (started) lineTo(x, y) else { moveTo(x, y); started = true }
         }
     }
-    val reference = path(overlay.referenceDb)
-    val prediction = overlay.predictedDb?.let { path(it) }
+    val reference = overlay?.let { path(it.frequencyHz, it.referenceDb) }
+    val prediction = overlay?.let { source -> source.predictedDb?.let { path(source.frequencyHz, it) } }
+    val target = target?.let { path(it.frequencyHz, it.referenceDb) }
 }
 
 /** Canvas is supplementary: the real sliders, selector and numeric fields expose the same edits. */
@@ -96,6 +101,8 @@ internal fun ParamEqCurve(
     bands: List<GaiaPeqBand>, selectedIndex: Int, editor: ParamEqEditor?, enabled: Boolean,
     english: Boolean, compact: Boolean, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,
     overlay: AcousticOverlay?,
+    target: SampledCatalogResponse?,
+    responseScale: AcousticScale?,
 ) {
     val density = LocalDensity.current
     val viewConfiguration = LocalViewConfiguration.current
@@ -107,10 +114,9 @@ internal fun ParamEqCurve(
     val focusRequester = remember { FocusRequester() }
     var measuredSize by remember { mutableStateOf(IntSize.Zero) }
     var mouse by remember { mutableStateOf(false) }
-    val responseScale = overlay?.scale
-    val hasOverlay = responseScale != null
+    val hasResponse = responseScale != null
     val leftMargin = with(density) { 32.dp.toPx() }
-    val rightMargin = with(density) { (if (hasOverlay) 56.dp else 32.dp).toPx() }
+    val rightMargin = with(density) { (if (hasResponse) 56.dp else 32.dp).toPx() }
     val bottom = with(density) { 30.dp.toPx() }
     val top = with(density) { 20.dp.toPx() }
     val axis = remember(bands) { peqAxisDb(bands) }
@@ -118,19 +124,19 @@ internal fun ParamEqCurve(
         PeqPlot(leftMargin, top, (measuredSize.width - leftMargin - rightMargin).coerceAtLeast(0f), (measuredSize.height - top - bottom).coerceAtLeast(0f), axis)
     }
     val latestSelected by rememberUpdatedState(selectedIndex)
-    val latestEnabled by rememberUpdatedState(enabled)
+    val latestEnabled = rememberUpdatedState(enabled)
     val latestSelect by rememberUpdatedState(onSelect)
     val latestPlot by rememberUpdatedState(plot)
     val coefficients = remember(bands) { bands.map { PeqBiquad.of(it) } }
     val geometry = remember(coefficients, plot) {
         if (coefficients.isNotEmpty() && plot.width > 0 && plot.height > 0) PeqCurveGeometry(plot, coefficients) else null
     }
-    val acousticGeometry = remember(overlay, plot, responseScale) {
-        if (overlay != null && responseScale != null && plot.width > 0 && plot.height > 0)
-            AcousticCurveGeometry(overlay, plot, responseScale) else null
+    val acousticGeometry = remember(overlay, target, plot, responseScale) {
+        if ((overlay != null || target != null) && responseScale != null && plot.width > 0 && plot.height > 0)
+            AcousticCurveGeometry(overlay, target, plot, responseScale) else null
     }
     fun oneEdit(changed: GaiaPeqBand) {
-        if (!latestEnabled || editor == null || editor.state.value.isEditing) return
+        if (!latestEnabled.value || editor == null || editor.state.value.isEditing) return
         val current = editor.state.value.draft.firstOrNull { it.index == changed.index } ?: return
         if (current == changed) return
         editor.beginEdit()
@@ -140,16 +146,16 @@ internal fun ParamEqCurve(
     Box(modifier
         .onSizeChanged { measuredSize = it }
         .semantics {
-            contentDescription = if (hasOverlay && editor == null)
-                tr(english, "离线参考频响；右轴为参考 dB，当前不能编辑 EQ，也没有预测。", "Offline reference response; right axis shows reference dB. EQ is not editable and there is no prediction.")
-            else if (hasOverlay)
-                tr(english, "左轴 EQ dB 用于编辑；右轴参考频响及非实测预测。双指横向开合调整所选频段 Q，或使用下方滑杆编辑",
-                    "Left EQ dB axis is editable; right axis shows reference response and non-measured prediction. Spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below")
+            contentDescription = if (hasResponse && editor == null)
+                tr(english, "离线参考/目标频响；右轴为参考 dB，当前不能编辑 EQ，也没有预测。", "Offline reference/target response; right axis shows reference dB. EQ is not editable and there is no prediction.")
+            else if (hasResponse)
+                tr(english, "左轴 EQ dB 用于编辑；右轴参考/目标频响及可用时的非实测预测。双指横向开合调整所选频段 Q，或使用下方滑杆编辑",
+                    "Left EQ dB axis is editable; right axis shows reference/target response and non-measured prediction when available. Spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below")
             else tr(english, "参数响应估算；双指横向开合调整所选频段 Q，或使用下方滑杆编辑", "Estimated parameter response; spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below")
         }
         .focusRequester(focusRequester)
         .onKeyEvent { event ->
-            if (event.type != KeyEventType.KeyDown || !latestEnabled || editor == null || editor.state.value.isEditing) return@onKeyEvent false
+            if (event.type != KeyEventType.KeyDown || !latestEnabled.value || editor == null || editor.state.value.isEditing) return@onKeyEvent false
             val band = editor.state.value.draft.firstOrNull { it.index == latestSelected } ?: return@onKeyEvent false
             if (band.filter == PeqFilter.BYPASS) return@onKeyEvent false
             val frequencyFactor = when { event.isCtrlPressed -> 1.001; event.isShiftPressed -> 1.1; else -> 1.01 }
@@ -170,7 +176,7 @@ internal fun ParamEqCurve(
                 while (true) {
                     val event = awaitPointerEvent()
                     if (event.changes.any { it.type == PointerType.Mouse }) mouse = true
-                    if (event.type != PointerEventType.Scroll || !latestEnabled || editor == null || editor.state.value.isEditing) continue
+                    if (event.type != PointerEventType.Scroll || !latestEnabled.value || editor == null || editor.state.value.isEditing) continue
                     val band = editor.state.value.draft.firstOrNull { it.index == latestSelected } ?: continue
                     if (band.filter == PeqFilter.BYPASS || band.qRaw == 0) continue
                     val scroll = event.changes.firstOrNull()?.scrollDelta?.y ?: continue
@@ -187,7 +193,7 @@ internal fun ParamEqCurve(
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 val p = latestPlot
-                if (p.width <= 0 || p.height <= 0 || !latestEnabled || editor == null || editor.state.value.isEditing) return@awaitEachGesture
+                if (p.width <= 0 || p.height <= 0 || !latestEnabled.value || editor == null || editor.state.value.isEditing) return@awaitEachGesture
                 mouse = down.type == PointerType.Mouse
                 val radius = with(density) { (if (mouse) 24.dp else 28.dp).toPx() }
                 val currentBands = editor.state.value.draft
@@ -236,7 +242,7 @@ internal fun ParamEqCurve(
                         if (secondId != null) {
                             val second = event.changes.firstOrNull { it.id == secondId }
                             val now = editor.state.value.draft.firstOrNull { it.index == pairIndex }
-                            if (pointer?.pressed != true || second?.pressed != true || !latestEnabled ||
+                            if (pointer?.pressed != true || second?.pressed != true || !latestEnabled.value ||
                                 now == null || now.filter == PeqFilter.BYPASS || now.qRaw <= 0 ||
                                 (!groupStarted && editor.state.value.isEditing)) pairEnded = true
                             if (!pairEnded && pointer != null && second != null && now != null) {
@@ -255,7 +261,7 @@ internal fun ParamEqCurve(
                         }
                         if (pointer == null) break
                         if (!pointer.pressed) { released = true; break }
-                        if (!latestEnabled || (!claimed && pointer.isConsumed) ||
+                        if (!latestEnabled.value || (!claimed && pointer.isConsumed) ||
                             (!groupStarted && editor.state.value.isEditing)) break
                         if (down.type == PointerType.Touch) {
                             val second = event.changes.firstOrNull {
@@ -352,8 +358,8 @@ internal fun ParamEqCurve(
                 db to textMeasurer.measure(db.toString(), labelStyle.copy(color = textColor))
             }
             val eqCaption = textMeasurer.measure("EQ dB", labelStyle.copy(color = textColor))
-            val acousticCaption = if (hasOverlay) textMeasurer.measure(
-                if (overlay?.normalizationHz != null) tr(english, "参考 dB · 500 Hz=0", "Reference dB · 500 Hz=0")
+            val acousticCaption = if (hasResponse) textMeasurer.measure(
+                if (overlay?.normalizationHz != null || (overlay == null && target?.normalizationHz != null)) tr(english, "参考 dB · 500 Hz=0", "Reference dB · 500 Hz=0")
                 else tr(english, "原始 SPL dB", "Raw SPL dB"), labelStyle.copy(color = textColor)
             ) else null
             val rightLabels = responseScale?.let { scale ->
@@ -384,6 +390,7 @@ internal fun ParamEqCurve(
             val compositeStroke = Stroke(2.5.dp.toPx())
             val nativeStroke = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())))
             val predictionStroke = Stroke(2.dp.toPx())
+            val targetStroke = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())))
             onDrawBehind {
                 drawText(eqCaption, topLeft = Offset(p.left, 0f))
                 acousticCaption?.let { drawText(it, topLeft = Offset((p.left + p.width - it.size.width).coerceAtLeast(p.left + eqCaption.size.width + 8.dp.toPx()), 0f)) }
@@ -397,13 +404,14 @@ internal fun ParamEqCurve(
                 rightLabels.forEach { (layout, y) -> drawText(layout, topLeft = Offset(p.left + p.width + 6.dp.toPx(), y)) }
                 clipRect(p.left, p.top, p.left + p.width, p.top + p.height) {
                     if (selectedFill != null && selectedPath != null) {
-                        drawPath(selectedFill, bandColor(selectedIndex).copy(alpha = 0.14f * if (hasOverlay) 0.55f else 1f))
-                        drawPath(selectedPath, bandColor(selectedIndex).copy(alpha = if (hasOverlay) 0.55f else 1f), style = selectedStroke)
+                        drawPath(selectedFill, bandColor(selectedIndex).copy(alpha = 0.14f * if (hasResponse) 0.55f else 1f))
+                        drawPath(selectedPath, bandColor(selectedIndex).copy(alpha = if (hasResponse) 0.55f else 1f), style = selectedStroke)
                     }
-                    if (totalPath != null) drawPath(totalPath, compositeColor.copy(alpha = if (hasOverlay) 0.30f else 1f), style = compositeStroke)
+                    if (totalPath != null) drawPath(totalPath, compositeColor.copy(alpha = if (hasResponse) 0.30f else 1f), style = compositeStroke)
                     acousticGeometry?.let {
-                        drawPath(it.reference, compositeColor.copy(alpha = 0.65f), style = nativeStroke)
+                        it.reference?.let { reference -> drawPath(reference, compositeColor.copy(alpha = 0.65f), style = nativeStroke) }
                         it.prediction?.let { prediction -> drawPath(prediction, compositeColor, style = predictionStroke) }
+                        it.target?.let { target -> drawPath(target, targetResponseColor, style = targetStroke) }
                     }
                 }
                 handles.forEach { point -> drawLine(bandColor(selectedIndex), Offset(point.x, point.y - 10.dp.toPx()), Offset(point.x, point.y + 10.dp.toPx()), 4.dp.toPx()) }
