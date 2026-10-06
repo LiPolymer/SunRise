@@ -35,6 +35,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.catalog.CatalogCdn
 import ink.lipoly.app.sunrise.catalog.CatalogState
+import ink.lipoly.app.sunrise.settings.ThemeMode
+import ink.lipoly.app.sunrise.settings.UiLanguage
+import ink.lipoly.app.sunrise.settings.UiSettings
 
 @Composable
 internal fun SettingsScreen(

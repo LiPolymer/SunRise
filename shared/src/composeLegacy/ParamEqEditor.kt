@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise.composeLegacy
 
 import ink.lipoly.app.sunrise.drop.DropException
-import ink.lipoly.app.sunrise.drop.GaiaBluetrumPeqCodec
+import ink.lipoly.app.sunrise.drop.GaiaPeqParameters
 import ink.lipoly.app.sunrise.drop.GaiaControls
 import ink.lipoly.app.sunrise.drop.GaiaParamEqState
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
@@ -83,7 +83,7 @@ internal class ParamEqEditor(
         if (current.draft[band.index] == band) return
         val bands = current.draft.toMutableList()
         bands[band.index] = band
-        GaiaBluetrumPeqCodec.validateBands(bands)
+        GaiaPeqParameters.validateBands(bands)
         publishDraft(current, bands)
     }
 
@@ -92,7 +92,7 @@ internal class ParamEqEditor(
         val current = state.value
         if (closed || !current.allowsEditing()) return
         require(bands.size == current.draft.size) { "Refresh before changing the band count" }
-        GaiaBluetrumPeqCodec.validateBands(bands)
+        GaiaPeqParameters.validateBands(bands)
         if (bands == current.draft) return
         publishDraft(current, bands.toList())
     }
@@ -224,7 +224,7 @@ internal class ParamEqEditor(
                         // Round upward: a sub-millisecond remainder must not start a write early.
                         val wholeMillis = remaining.inWholeMilliseconds
                         val waitMillis = wholeMillis + if (remaining > wholeMillis.milliseconds) 1L else 0L
-                        withTimeoutOrNull(waitMillis) { wake.receive() }
+                        withTimeoutOrNull(waitMillis.milliseconds) { wake.receive() }
                         continue // Re-read the latest draft, flush flag and monotonic clock.
                     }
                 }

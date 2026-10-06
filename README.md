@@ -5,7 +5,7 @@
 > 
 > under construction
 
-Kotlin Toolchain 0.12.2 项目，包含 Android 应用、JVM 桌面应用和 Android/JVM 共享库。`shared/src/blueConnector` 是协议无关的蓝牙通讯契约，`shared/src/drop` 是平台无关的 GAIA / 9ECA 控制器，`shared/src/headset` 是本应用的单耳机连接与选择策略；`composeLegacy` 是两平台共用的概览、设置和诊断界面。平台蓝牙实现位于 `shared/src@android/blueConnector`，JVM actual 明确不可用。Kotlin 包名仍为 `ink.lipoly.app.sunrise`。
+Kotlin Toolchain 0.12.2 项目，包含 Android 应用、JVM 桌面应用、应用共享库 `shared` 和可独立消费的 Android/JVM KMP 库 `drop`。`drop/src/blueConnector` 是协议无关的蓝牙通讯契约，`drop/src/drop` 是平台无关的 GAIA / 9ECA 控制器，`shared/src/headset` 是本应用的单耳机连接与选择策略；`composeLegacy` 是两平台共用的概览、设置和诊断界面。平台蓝牙实现位于 `drop/src@android/blueConnector`，JVM actual 明确不可用。Kotlin 包名仍为 `ink.lipoly.app.sunrise`。
 
 ## 运行
 
@@ -13,6 +13,7 @@ Windows 在项目根目录执行：
 
 ```bat
 kotlin.bat build
+kotlin.bat test -m drop
 kotlin.bat test -m shared
 kotlin.bat run -m jvm-app
 kotlin.bat run -m android-app
@@ -20,15 +21,15 @@ kotlin.bat run -m android-app
 
 Android 构建需要 Android SDK 37；运行需要已连接的设备或模拟器。Android 首次启动请求蓝牙权限；先在系统蓝牙中连接音频耳机，应用会尝试自动连接。多个候选设备时可在选择框中选择耳机；关闭选择框后，概览的“选择耳机”可再次打开设备列表。概览显示连接、电量与降噪，连接地址和协议收在可展开的“连接详情”中，未知值为“—”；ANC 等控制只在能力及读回确认后可用。底部“设置”集中管理主题、语言与界面选项；高级诊断入口在权限与诊断分组中，GAIA、9ECA 和通知测试按需展开。设置存入 `sunrise_ui` 偏好设置，重启后保留。未连接设备时仍可查看界面，设备控制不可用。
 
-JVM 桌面运行同一套界面，但不提供蓝牙客户端：概览和权限区域明确提示当前平台不可用，刷新及连接操作不可用，诊断不提供可执行蓝牙动作。桌面设置只保存在本次进程内，重启恢复默认。
+JVM 桌面运行同一套界面，但不注册蓝牙管理器或客户端：概览和权限区域明确提示当前平台不可用，刷新及连接操作不可用，诊断不提供可执行蓝牙动作。外观/语言仅保存在本次进程内；目录筛选、源/目标显示及绑定仍持久化。
 
-Android Activity 只创建一个 `BtManager`，再通过 `createHeadsetClient(context, bt)` 组合应用 facade；宿主销毁时先 `client.close()` 再 `bt.close()`。Android 12+ 需要 `BLUETOOTH_CONNECT`，扫描还需要 `BLUETOOTH_SCAN`，旧版 Android 的 LE 扫描需要定位权限。只保留 GATT，不支持 RFCOMM，也不增加品牌过滤。原音频→BLE 地址关联和设置偏好数据保留。
+Android `SunRiseApplication` 创建唯一进程级 `SunRiseRuntime`，Activity 只报告权限和附着展示层，销毁/重建不关闭应用耳机资源。`ApplicationBluetoothResources` 是唯一蓝牙 owner，显式关闭时先 `client.close()` 再 `bt.close()`；生产不依赖 `Application.onTerminate`，不增加 Service 或后台保活，系统杀进程不保证优雅清理。Android 12+ 需要 `BLUETOOTH_CONNECT`，扫描还需要 `BLUETOOTH_SCAN`，旧版 LE 扫描需要定位权限；权限由消费者宿主申请。原音频→BLE 关联、经典 RFCOMM EQ 路径与设置键保持不变。
 
 编译说明：共享模块用 `-Xexpect-actual-classes` 确认 Kotlin `BtHost` expect/actual 类仍处于 Beta；Android GATT 为兼容 API 24–32 保留旧版回调及写入分支，弃用抑制局限于旧 API 使用处。Material3 明确固定为与 Compose 1.12.1 对应的 `1.12.0-alpha03`，避免自动推断旧版本导致桌面诊断输入框运行时崩溃。
 
 ## 通讯与控制
 
-通讯包为 `ink.lipoly.app.sunrise.blueConnector`；仅迁移包与目录，`BtManager`、`BtDevice`、`GattSession`、`BtHost`、`BtPermissions` 和 `createBtManager` 等名称不变。调用方应更新 import，旧包不保留别名或转发。
+通讯包仍为 `ink.lipoly.app.sunrise.blueConnector`；源码从 `shared` 整目录迁入独立 `drop`，包名与 `BtManager`、`BtDevice`、`GattSession`、`BtHost`、`BtPermissions`、`createBtManager` 等公开签名不变。直接消费者依赖 `drop`；`shared` 将它导出给应用宿主，不保留旧目录副本或兼容转发。
 
 通用 `BtManager` 以规范地址保存稳定 `BtDevice`，每台设备独立管理 GATT。`OnDiscovered(device, sender)` 只表示系统枚举或扫描观测到了设备，不表示 GATT 已连、品牌匹配或协议可用。
 
@@ -115,13 +116,19 @@ Windows / PowerShell 单次对照：
 
 Android 使用应用私有 `filesDir/catalog/active.json` 和 SAF 文档选择器，仅新增网络权限，不要求广泛存储权限。JVM 使用 `${user.home}/.sunrise/catalog/active.json` 和原生文件对话框；目录筛选、源/目标显示、目标 UUID、预测前置增益开关及地址绑定持久化，原有外观设置仍保留进程内行为。损坏本地快照回退内置数据并提示，不自动联网修复；两者都不可用时可显示全部设备、导入或显式拉取。
 
-目录业务入口为 `internal object Catalog`。启动宿主通过 `Catalog.init(storage = { ... }, loadBundled = { ... })` 建立应用级离线加载；重复 init 不执行依赖工厂、不重载、不覆盖已导入的数据。`Catalog.state` 跨关闭/再初始化保留同一订阅入口。页面只取消自己发起的操作，不关闭全局目录；`Catalog.close()` 用于应用退出/测试隔离，排空初始读取、下载及原子提交后才允许下次初始化，关闭后仍可查询/导出最后完整快照。
+目录业务入口为可注入的 `internal class Catalog`，每个实例独立拥有状态、依赖和事务生命周期。`SunRiseRuntime` 用 `CatalogEnvironment` 工厂执行一次 `catalog.init(...)`；同一实例重复 init 不执行工厂、不重载、不覆盖导入，close/reinit 保留同一个 StateFlow 订阅入口。`catalog.close()` 排空读取、下载及原子提交后才允许重初始化，关闭后仍可查询/导出最后完整快照。每次 init 的 fetcher 由 Catalog 独占关闭，未注册为全局 singleton 或同步 onClose。
 
 同步查询 `getAll()` 返回物理产品后追加 Response 的原序列表，`getHaveResponse()` 返回全部类型中解析为 Ready 的产品，`getBluetooth()` 只返回严格 `type == "BT"` 的记录（不要求有曲线）；它们不是蓝牙发现或能力探测。`getProduct(uuid)` / `getResponse(uuid)` 从同一当前快照按 UUID 查询，未知记录/未声明曲线返回 null，解析失败保留 Unavailable 诊断。查询无 I/O、不采样；更新期间继续服务旧完整版本，成功提交后才切换。UI 渲染和同步设备 predicate 使用显式 snapshot 的匹配/参考/计算方法，避免跨版本混用。
 
 `getHaveResponse()` 与 `getBluetooth()` 在每次调用时捕获当前快照并现场筛选，保留产品原序；初始化/载入时不预先分类，也不缓存分类结果。UUID 与名称索引仍在快照建立时生成。
 
-`Catalog.kt` 内的 `private Repository` 是唯一事务后端，没有可实例化的 `CatalogRepository` 或兼容入口；编解码、匹配、采样、曲线计算及平台 I/O 保持分文件。JVM 偏好实现归位到 `shared/src@jvm/SunRiseSettings.kt` 的 `UiSettingsStore`，原 Preferences 节点和键不变，不迁移或清空用户设置。
+`Catalog.kt` 内的 `private Repository` 仍是唯一事务后端；编解码、匹配、采样、曲线计算及平台 I/O 保持分文件。纯计算直接使用 `matchesCatalogDevice`、`resolveCatalogReference`、`orderedCatalogProducts` 等包级函数，不经生命周期服务转发。共同设置契约位于 `shared/src/settings`，使用 StateFlow；平台实现为 `AndroidUiSettingsStore` / `JvmUiSettingsStore`，原 SharedPreferences/Preferences 节点、键和写入规则不变。
+
+Koin 4.2.2 使用普通 DSL，不使用注解扫描、ViewModel 或 Compose 注入。共享模块启用编译插件 1.2.1 的 `compileSafety=true`；Android、desktop、preview 均以显式 modules 列表创建隔离容器。模块属性每次返回新 `Module`，避免 Koin singleton factory 缓存跨容器共享；真实双容器烟测验证 A 导入/关闭/reinit 不影响 B 的导出和 GATT 控制。缺依赖 probe 产生 `KOIN-D001`，补齐后真实 resolve 成功；Toolchain 0.12.2 的富文本错误渲染器会崩溃，完整诊断由同版本编译器直连同插件取得，安全检查未关闭。
+
+`ConnectionCoordinator` 拥有进程级连接策略：初始权限未报告/目录加载中接受零台，授权且首次加载结束后启动一次自动连接。快照/筛选变化只更新 predicate；重复权限报告和页面附着不替换当前 epoch。缺失权限恢复或用户显式 retry 才重新启动。桌面正常退出及 shutdown hook 共用 suspend runtime.close，先停止协调器、取消初始化、排空 Catalog 与应用 scope，最后关闭 Koin 蓝牙 owner。
+
+展示层使用普通 Kotlin 控制器，不采用 ViewModel 或 Compose/Koin 注入。每个宿主从 runtime 创建独立 `PresentationSession`：`HeadsetPresentationController` 拥有候选、事件、能力读回与动作状态；`CatalogOperations` 拥有文档选择、导入确认与显式下载；`EqSessionOwner` 按 GAIA controls 的引用身份复用或更换现有 `ParamEqEditor`。页面切换不关闭 editor，控件失效或宿主释放才关闭。会话按 EQ → 目录操作 → 耳机展示 → 子 scope 的顺序释放，不关闭进程服务或宿主 picker。关闭后的旧异步结果不能重新发布确认框或成功通知；已开始的 Catalog 原子提交仍胜出。
 
 维护随包基线时手动运行 `python tools/fetch_moondrop_catalog.py`；明确选择海外源用 `--cdn overseas`。脚本不挂到构建或启动流程中，普通构建不重新下载数据。
 
@@ -129,11 +136,13 @@ Android 使用应用私有 `filesDir/catalog/active.json` 和 SAF 文档选择�
 
 | 文档 | 查阅内容 |
 | --- | --- |
-| [blueConnector / Docs.md](shared/src/blueConnector/Docs.md) | 通用蓝牙 API、Android 权限和发现、设备级 GATT、读写与通知、并发取消、异常与 JVM 限制 |
-| [drop / Docs.md](shared/src/drop/Docs.md) | DropController 会话绑定、GAIA/9ECA 功能与参数、能力探测、ANC 读回、设备映射与协议异常 |
+| [blueConnector / Docs.md](drop/src/blueConnector/Docs.md) | 通用蓝牙 API、Android 权限和发现、设备级 GATT、读写与通知、并发取消、异常与 JVM 限制 |
+| [drop / Docs.md](drop/src/drop/Docs.md) | DropController 会话绑定、GAIA/9ECA 功能与参数、能力探测、ANC 读回、设备映射与协议异常 |
 | [headset / Docs.md](shared/src/headset/Docs.md) | Android/Compose 接入、单耳机自动与手动选择、音频/BLE 关联、重连、轮询、状态与资源所有权 |
 
 接入现有应用先读 `headset`；直接控制协议先读 `drop`；只需要通用蓝牙通讯先读 `blueConnector`。三份文档互相链接，并各自给出源码索引和调用示例。
+
+`drop` 不依赖应用、Compose 或 Koin，仅导出 coroutines；源码模块附带原始 `LICENSE` 与 `NOTICE`，沿用 PolyForm Noncommercial 1.0.0，不提供 Maven 发布配置。参数换算和验证通过公开 `GaiaPeqParameters`，无 I/O 数学估算通过 `PeqBiquad` / `PeqHeadroom`；协议 binding 与 payload codec 仍为 internal。只复制 `drop` 的独立 JVM 消费者已运行：1000 Hz、6 dB、Q=1 的中心响应为 `5.999999999999984 dB`，前置增益 raw 为 `-366`，非法 Q=0 被拒绝；JVM 工厂仍明确报告蓝牙不可用。
 
 源码注释采用 KDoc：公开类型、模型字段、属性和方法说明可在 Android Studio / IntelliJ 的快速文档中查阅；队列、会话绑定和连接切换处同时记录内部生命周期约束。未增加文档构建模块或新的运行依赖。
 
@@ -217,3 +226,11 @@ Android 使用应用私有 `filesDir/catalog/active.json` 和 SAF 文档选择�
 - 关闭测试的加载 fixture 在 `NonCancellable` 中等待释放，模拟关闭期间迟到的读取；保留关闭等待、无快照发布、加载标志清理、无存储写入/网络访问及 fetcher 关闭断言，移除对取消异常具体抛出位置的依赖。正式生命周期实现未修改。
 - 将随包资源验收移至 JVM 的 `BundledCatalogSnapshotTest`，继续使用真实 Compose 资源读取器并校验全部引用资产与哈希；不在 Android 宿主单测中调用 Android 资源 API，也不模拟日志或资源。实读结果为 107 条物理产品、48 条 Response、155 条总记录、99 份资产及 98 份可解析曲线。
 - 修复后运行完整 `kotlin.bat test -m shared`：JVM 189 项、Android 宿主 171 项全部通过，均为零失败、零跳过；未恢复已按用户要求删除的 22 个 EQ 响应测试。未运行 Android 应用或向耳机发送 EQ。
+
+## 独立 drop 库与 Koin 迁移验收
+
+- 临时 smoke / GATT fixture / PreferencesFactory 源码移除后，运行 `kotlin.bat test -m drop`、`kotlin.bat test -m shared` 和 `kotlin.bat build`：drop 的 JVM/Android 宿主各 30 项，shared 的 JVM 177 项、Android 宿主 159 项全部通过，零失败、零跳过；Android 应用与 JVM 应用构建成功。`kotlin.bat show modules` 仅列出 android-app、drop、jvm-app、shared。批准计划完整保存在 [`.ai/plans/koin-migration-plan.md`](.ai/plans/koin-migration-plan.md)。
+- 只复制独立 drop 的 JVM consumer 使用公开参数/数学 API，中心响应 `5.999999999999984 dB`、headroom raw `-366`；非法 Q=0 拒绝，JVM 蓝牙工厂明确 unavailable。Koin 缺依赖 probe 在同版本编译器/插件下给出 `KOIN-D001`，补齐后真实 resolve 成功；fresh Module getter 同样通过负/正验证。Toolchain 富文本诊断渲染器的限制见上文，未关闭 compileSafety。
+- 生产 applicationModule / assembleRuntime 双容器烟测：初始化 155 项目录，网络请求与写盘均为 0；真实 HeadsetClient 通过公开字节 GATT fixture 读回五段配置。展示会话重建、重复权限及 predicate 更新后仍为一次 connect、原 session；EQ 配置写入为 0。关闭 A 时唯一 owner 执行 client→manager，旧控件失效；B 仍可读，A 目录 reinit 不污染 B。
+- 实际生产桌面入口使用隔离 home / Preferences 文件，观察蓝牙不可用、未知电量、离线目录与源/目标频响选择；隐藏目标保留 UUID，页面切换及目录导入保留源/目标。原生导入/导出取消无副作用；确认导入、落盘和实际导出逐字节一致，SHA-256 为 `af41d5413539b92831bd2b8c3cc9ee7ebf0352daea898d498215721096c98593`。重启显示本地快照 `2026-10-06T00:00:00Z` 并恢复目标 UUID，未连接时源参考仍仅为会话预览。两次正常关窗均退出码 0。截图、实际 JSON 与隔离状态保存在 `%TEMP%\sunrise-koin-ui-j6rla665`，正式源码不保留验收 backend。
+- 未安装/运行 Android，未覆盖用户真实目录、绑定或签名；Android Activity 重建、SAF 与后台持续运行没有实机证明。GATT fixture 不证明耳机 DSP 应用、Flash 保存或爆音修复；没有向真实耳机提交 EQ。

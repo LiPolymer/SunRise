@@ -1,5 +1,8 @@
 package ink.lipoly.app.sunrise.catalog
 
+internal fun catalogSourceUrl(snapshot: CatalogSnapshot, product: CatalogProduct): String =
+    if (product.uuid in snapshot.responseLibraryUuids) snapshot.responseLibraryUrl else snapshot.catalogueUrl
+
 internal fun matchesCatalogDevice(snapshot: CatalogSnapshot?, name: String?): Boolean {
     val normalizedName = normalizeCatalogName(name) ?: return false
     return snapshot?.productsByNormalizedName?.get(normalizedName)?.any { it.type == "BT" } == true

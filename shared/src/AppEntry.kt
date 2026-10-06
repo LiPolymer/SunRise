@@ -3,12 +3,15 @@ package ink.lipoly.app.sunrise
 import androidx.compose.runtime.Composable
 import ink.lipoly.app.sunrise.composeLegacy.*
 import ink.lipoly.app.sunrise.headset.HeadsetClient
-import ink.lipoly.app.sunrise.catalog.CatalogDocuments
+import ink.lipoly.app.sunrise.presentation.PresentationSession
+import ink.lipoly.app.sunrise.catalog.Catalog
+import ink.lipoly.app.sunrise.settings.UiSettings
 
 @Composable
 internal fun AppEntry(
+    catalog: Catalog,
     client: HeadsetClient?,
-    documents: CatalogDocuments,
+    session: PresentationSession,
     missingPermissions: Set<String>,
     onRequestPermissions: () -> Unit,
     settings: UiSettings,
@@ -17,5 +20,5 @@ internal fun AppEntry(
     navigation: AppNavigationState,
     onSettingsChange: (UiSettings) -> Unit,
 ) {
-    AppContent(client, documents, missingPermissions, onRequestPermissions, settings, english, dynamicColorAvailable, navigation, onSettingsChange)
+    AppContent(catalog, client, session, missingPermissions, onRequestPermissions, settings, english, dynamicColorAvailable, navigation, onSettingsChange)
 }

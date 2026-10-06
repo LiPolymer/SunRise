@@ -15,6 +15,7 @@ import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
@@ -28,7 +29,7 @@ internal class JvmCatalogDocuments(private val window: Frame) : CatalogDocuments
 
     override suspend fun openImport(): ByteArray? {
         val path = chooseFile(save = false, suggestedName = null) ?: return null
-        return withContext(Dispatchers.IO) { readCatalogDocument(path) }
+        return withContext(Dispatchers.IO) { readCatalogDocument(path, currentCoroutineContext()) }
     }
 
     override suspend fun saveExport(bytes: ByteArray, suggestedName: String): Boolean {
@@ -36,7 +37,7 @@ internal class JvmCatalogDocuments(private val window: Frame) : CatalogDocuments
         val path = chooseFile(save = true, suggestedName = suggestedName) ?: return false
         val exists = withContext(Dispatchers.IO) { Files.exists(path) }
         if (exists && !confirmOverwrite(path)) return false
-        withContext(Dispatchers.IO) { replaceCatalogDocument(path, bytes) }
+        withContext(Dispatchers.IO) { replaceCatalogDocument(path, bytes, currentCoroutineContext()) }
         return true
     }
 

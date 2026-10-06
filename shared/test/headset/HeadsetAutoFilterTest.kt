@@ -1,17 +1,19 @@
 package ink.lipoly.app.sunrise.headset
 
 import ink.lipoly.app.sunrise.catalog.CatalogTestFixtures
-import ink.lipoly.app.sunrise.catalog.Catalog
 import ink.lipoly.app.sunrise.catalog.CatalogResponse
+import ink.lipoly.app.sunrise.catalog.matchesCatalogDevice
+import ink.lipoly.app.sunrise.catalog.resolveCatalogReference
 import ink.lipoly.app.sunrise.drop.DropProtocol
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlin.test.*
+import kotlin.time.Duration.Companion.milliseconds
 
 class HeadsetAutoFilterTest {
     private val catalogue = CatalogTestFixtures.snapshot()
     private fun installCatalogueFilter(fixture: HeadsetAutoLoopFixture) {
-        fixture.client.setAutoDeviceFilter { Catalog.matchesDevice(catalogue, it.name) }
+        fixture.client.setAutoDeviceFilter { matchesCatalogDevice(catalogue, it.name) }
     }
 
     @Test fun strangerNeverConnectsAndDiscoveryStaysRaw() = runBlocking {
@@ -26,7 +28,7 @@ class HeadsetAutoFilterTest {
             assertEquals(0, stranger.connects.value)
             val raw = fixture.client.discoverConnectedDevices()
             assertEquals(listOf(stranger.address), raw.map { it.address })
-            assertFalse(Catalog.matchesDevice(catalogue, raw.single().name))
+            assertFalse(matchesCatalogDevice(catalogue, raw.single().name))
             assertEquals(0, stranger.connects.value)
         } finally { fixture.dispose() }
     }
@@ -64,17 +66,17 @@ class HeadsetAutoFilterTest {
                         CatalogTestFixtures.responseEntry(uuid = responseUuid, name = "USB model"),
                     )),
                 )
-                assertFalse(Catalog.matchesDevice(mixed, nonBluetooth.info.value.name))
-                assertNull(Catalog.resolveReference(mixed, nonBluetooth.info.value.name, null, english = true).product)
-                val manual = Catalog.resolveReference(mixed, nonBluetooth.info.value.name, responseUuid, english = true)
+                assertFalse(matchesCatalogDevice(mixed, nonBluetooth.info.value.name))
+                assertNull(resolveCatalogReference(mixed, nonBluetooth.info.value.name, null, english = true).product)
+                val manual = resolveCatalogReference(mixed, nonBluetooth.info.value.name, responseUuid, english = true)
                 assertEquals(responseUuid, manual.product?.uuid)
                 assertEquals("Response", manual.product?.type)
                 assertIs<CatalogResponse.Ready>(manual.response)
-                val physical = Catalog.resolveReference(mixed, nonBluetooth.info.value.name, CatalogTestFixtures.SECOND_UUID, english = true)
+                val physical = resolveCatalogReference(mixed, nonBluetooth.info.value.name, CatalogTestFixtures.SECOND_UUID, english = true)
                 assertEquals(CatalogTestFixtures.SECOND_UUID, physical.product?.uuid)
                 assertIs<CatalogResponse.Ready>(physical.response)
                 fixture.audio(nonBluetooth, bluetooth)
-                fixture.client.setAutoDeviceFilter { Catalog.matchesDevice(mixed, it.name) }
+                fixture.client.setAutoDeviceFilter { matchesCatalogDevice(mixed, it.name) }
                 fixture.client.startAutoConnect()
                 assertEquals(bluetooth.address, fixture.awaitPhase(HeadsetPhase.READY).device?.address)
                 assertEquals(0, nonBluetooth.connects.value)
@@ -161,7 +163,7 @@ class HeadsetAutoFilterTest {
             val gaia = fixture.client.gaia
             val readback = gaia.getParamEq()
             fixture.client.setAutoDeviceFilter { false }
-            delay(150) // Give a mistaken restart/disconnect a chance to execute on the client's real dispatcher.
+            delay(150.milliseconds) // Give a mistaken restart/disconnect a chance to execute on the client's real dispatcher.
             assertEquals(HeadsetPhase.READY, fixture.client.state.value.phase)
             assertEquals(ultra.address, fixture.client.state.value.device?.address)
             assertSame(session, ultra.gatt.state.value.session)
@@ -184,7 +186,7 @@ class HeadsetAutoFilterTest {
             val currentGaia = fixture.client.gaia
             val session = current.gatt.state.value.session
             installCatalogueFilter(fixture)
-            delay(150)
+            delay(150.milliseconds)
             assertEquals(HeadsetPhase.READY, fixture.client.state.value.phase)
             assertEquals(current.address, fixture.client.state.value.device?.address)
             assertSame(session, current.gatt.state.value.session)

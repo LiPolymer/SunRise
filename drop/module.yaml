@@ -1,0 +1,20 @@
+product:
+  type: kmp/lib
+  platforms: [ jvm, android ]
+
+dependencies:
+  - org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0: exported
+
+test-dependencies:
+  - org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0
+  - org.jetbrains.kotlin:kotlin-test:2.4.20:all: compile-only
+
+settings:
+  kotlin:
+    version: 2.4.20
+    freeCompilerArgs: [ -Xexpect-actual-classes ]
+  junit: junit-4
+  android:
+    namespace: ink.lipoly.app.sunrise.drop
+    compileSdk: 37
+    minSdk: 24

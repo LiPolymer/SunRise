@@ -137,7 +137,7 @@ internal fun mergeCatalogProducts(
     library: List<CatalogResponseLibraryEntry>,
 ): List<CatalogProduct> {
     val uuids = HashSet<String>(products.size + library.size)
-    for (product in products) uuids.add(product.uuid.lowercase())
+    for ((uuid) in products) uuids.add(uuid.lowercase())
     val merged = ArrayList<CatalogProduct>(products.size + library.size)
     merged.addAll(products)
     for (entry in library) {
@@ -229,7 +229,7 @@ internal fun decodeCatalogSnapshot(bytes: ByteArray): CatalogSnapshot {
     require(responses.keys == expectedPaths) { "Snapshot is missing frequency response assets: ${expectedPaths - responses.keys}" }
     return CatalogSnapshot(
         bytes, retrievedAt, catalogueUrl, cdnBaseUrl, products, responses, hashes,
-        responseLibraryUrl, buildSet(library.size) { for (entry in library) add(entry.uuid) },
+        responseLibraryUrl, buildSet(library.size) { for ((uuid) in library) add(uuid) },
     )
 }
 

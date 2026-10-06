@@ -87,7 +87,7 @@ fun DropDiagnosticsScreen(
                     message = "$label${t("：", ": ")}${activeClient.action()}"
                 } catch (e: CancellationException) {
                     throw e
-                } catch (e: DropException.Unverified) {
+                } catch (_: DropException.Unverified) {
                     message = "$label${t("：已发送但未能验证，当前状态未知；请刷新。", ": sent but not verified. Current state is unknown; refresh to retry.")}"
                 } catch (e: DropException.AncModeMismatch) {
                     message = "$label${t("：读回不一致，目标", ": readback mismatch; requested")} ${e.requested.label(english)}${t("，", ", ")}${t("实际", "observed")} ${e.observed.label(english)}"

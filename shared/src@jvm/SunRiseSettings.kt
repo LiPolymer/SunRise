@@ -1,18 +1,19 @@
 package ink.lipoly.app.sunrise
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import ink.lipoly.app.sunrise.composeLegacy.UiSettings
-import ink.lipoly.app.sunrise.composeLegacy.decodeReferenceProducts
-import ink.lipoly.app.sunrise.composeLegacy.encodeReferenceProducts
+import ink.lipoly.app.sunrise.settings.UiSettings
+import ink.lipoly.app.sunrise.settings.UiSettingsStore
+import ink.lipoly.app.sunrise.settings.decodeReferenceProducts
+import ink.lipoly.app.sunrise.settings.encodeReferenceProducts
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.prefs.Preferences
 
 /** Only catalog choices persist; appearance and language retain their process-local behavior. */
-internal class UiSettingsStore(
+internal class JvmUiSettingsStore(
     private val preferences: Preferences = Preferences.userRoot().node("ink/lipoly/app/sunrise/catalog"),
-) {
-    var current by mutableStateOf(
+) : UiSettingsStore {
+    private val mutableState = MutableStateFlow(
         UiSettings(
             catalogOnlyDevices = preferences.getBoolean("catalog_only_devices", true),
             showReferenceResponse = preferences.getBoolean("show_reference_response", true),
@@ -22,9 +23,9 @@ internal class UiSettingsStore(
             showTargetResponse = preferences.getBoolean("show_target_response", true),
         )
     )
-        private set
+    override val state: StateFlow<UiSettings> = mutableState.asStateFlow()
 
-    fun update(next: UiSettings) {
+    override fun update(next: UiSettings) {
         val previous = current
         if (next.catalogOnlyDevices != previous.catalogOnlyDevices) {
             preferences.putBoolean("catalog_only_devices", next.catalogOnlyDevices)
@@ -45,6 +46,6 @@ internal class UiSettingsStore(
         if (next.showTargetResponse != previous.showTargetResponse) {
             preferences.putBoolean("show_target_response", next.showTargetResponse)
         }
-        current = next
+        mutableState.value = next
     }
 }

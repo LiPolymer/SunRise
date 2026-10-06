@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise.composeLegacy
 
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.GaiaBluetrumPeqCodec
+import ink.lipoly.app.sunrise.drop.GaiaPeqParameters
 import ink.lipoly.app.sunrise.drop.PeqFilter
 import kotlin.math.*
 
@@ -86,11 +86,11 @@ internal fun peqParseInput(text: String, band: GaiaPeqBand, parameter: PeqParame
     return when (parameter) {
         PeqParameter.GAIN -> {
             require(value in -12.0..12.0)
-            GaiaBluetrumPeqCodec.gainRaw(value)
+            GaiaPeqParameters.gainRaw(value)
         }
         PeqParameter.Q -> {
             require(value >= 1.0 / 4096 && value <= 65535.0 / 4096)
-            GaiaBluetrumPeqCodec.qRaw(value).also { require(it in 1..65535) }
+            GaiaPeqParameters.qRaw(value).also { require(it in 1..65535) }
         }
     }
 }
