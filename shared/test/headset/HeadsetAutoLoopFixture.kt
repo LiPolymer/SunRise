@@ -1,14 +1,14 @@
 package ink.lipoly.app.sunrise.headset
 
 import ink.lipoly.app.sunrise.blueConnector.*
-import ink.lipoly.app.sunrise.drop.GaiaGattDeviceFixture
 import ink.lipoly.app.sunrise.drop.GaiaIds
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
+import kotlin.time.Duration.Companion.milliseconds
 
-/** Audio enumeration and counted GATT lifecycles around the existing byte-level GAIA device fixture. */
+/** Audio enumeration and counted GATT lifecycles around the application byte-level GAIA fixture. */
 internal class HeadsetAutoLoopFixture : BtManager {
     override val availability = MutableStateFlow(BtAvailability.ENABLED)
     override val devices = MutableStateFlow<List<BtDevice>>(emptyList())
@@ -29,18 +29,15 @@ internal class HeadsetAutoLoopFixture : BtManager {
         override val info = MutableStateFlow(BtDeviceInfo(name, BtDeviceKind.DUAL, BtBondState.BONDED))
         val connects = MutableStateFlow(0)
         val disconnects = MutableStateFlow(0)
-        var storage: GaiaGattDeviceFixture? = null
+        var storage: HeadsetGattFixture? = null
             private set
         override val gatt = object : BtGatt {
             override val state = MutableStateFlow(GattState())
             override suspend fun connect(): GattSession {
                 connects.value++
                 state.value.session?.let { return it }
-                val bytes = GaiaGattDeviceFixture(id = ++nextSessionId)
-                storage = bytes
-                val session = object : GattSession by bytes {
-                    override val device: BtDevice get() = this@Device
-                }
+                val session = HeadsetGattFixture(device = this@Device, id = ++nextSessionId)
+                storage = session
                 state.value = GattState(GattPhase.CONNECTED, session)
                 return session
             }
@@ -54,7 +51,7 @@ internal class HeadsetAutoLoopFixture : BtManager {
     }
 
     fun add(address: String, name: String?): Device = Device(address, name).also {
-        devices.value = devices.value + it
+        devices.value += it
     }
 
     suspend fun audio(vararg selected: Device) {
@@ -76,9 +73,9 @@ internal class HeadsetAutoLoopFixture : BtManager {
         devices.value.filter { (name != null && it.info.value.name.equals(name, ignoreCase = true)) ||
             (address != null && it.address.equals(address, ignoreCase = true)) }
 
-    suspend fun awaitRefresh(after: Int = 0) = withTimeout(8_000) { refreshes.first { it > after } }
+    suspend fun awaitRefresh(after: Int = 0) = withTimeout(8_000.milliseconds) { refreshes.first { it > after } }
     suspend fun awaitPhase(phase: HeadsetPhase): HeadsetState =
-        withTimeout(8_000) { client.state.first { it.phase == phase } }
+        withTimeout(8_000.milliseconds) { client.state.first { it.phase == phase } }
 
 
     suspend fun dispose() {

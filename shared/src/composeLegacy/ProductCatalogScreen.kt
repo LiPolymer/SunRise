@@ -17,8 +17,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 
 private fun catalogMetadata(product: CatalogProduct, key: String, english: Boolean): String {
-    val value = product.raw[key]
-    val text = when (value) {
+    val text = when (val value = product.raw[key]) {
         null, JsonNull -> null
         is JsonPrimitive -> value.content.takeIf { it.isNotBlank() }
         else -> value.toString().takeUnless { it == "[]" || it == "{}" }
@@ -65,7 +64,7 @@ internal fun CatalogProductSelector(
     title: String = tr(english, "选择参考频响", "Choose a reference response"),
 ) {
     var query by remember { mutableStateOf("") }
-    val ordered = remember(snapshot, deviceName, english) { snapshot?.let { Catalog.orderedProducts(it, deviceName, english) }.orEmpty() }
+    val ordered = remember(snapshot, deviceName, english) { snapshot?.let { orderedCatalogProducts(it, deviceName, english) }.orEmpty() }
     val products = remember(ordered, query) { searchCatalogProducts(ordered, query) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.padding(16.dp).widthIn(max = 720.dp).fillMaxWidth().fillMaxHeight(0.9f), shape = MaterialTheme.shapes.large) {
@@ -100,7 +99,7 @@ internal fun ProductCatalogScreen(
 ) {
     var query by remember { mutableStateOf("") }
     var selectedUuid by remember { mutableStateOf<String?>(null) }
-    val ordered = remember(snapshot, deviceName, english) { snapshot?.let { Catalog.orderedProducts(it, deviceName, english) }.orEmpty() }
+    val ordered = remember(snapshot, deviceName, english) { snapshot?.let { orderedCatalogProducts(it, deviceName, english) }.orEmpty() }
     val products = remember(ordered, query) { searchCatalogProducts(ordered, query) }
     val selected = selectedUuid?.let { snapshot?.productsByUuid?.get(it) }
     if (snapshot != null && selected != null) {
@@ -145,10 +144,10 @@ private fun CatalogProductDetail(
     var comparisonUuid by remember(product.uuid) { mutableStateOf<String?>(null) }
     var chooseComparison by remember(product.uuid) { mutableStateOf(false) }
     val response = product.freqResponse?.let { snapshot.responsesByPath[it] } as? CatalogResponse.Ready
-    val sampled = remember(response) { response?.let { Catalog.sampleResponse(it.response) } }
+    val sampled = remember(response) { response?.let { sampleCatalogResponse(it.response) } }
     val comparison = comparisonUuid?.let { snapshot.productsByUuid[it] }
     val comparisonResponse = comparison?.freqResponse?.let { snapshot.responsesByPath[it] } as? CatalogResponse.Ready
-    val otherSampled = remember(comparisonResponse) { comparisonResponse?.let { Catalog.sampleResponse(it.response) } }
+    val otherSampled = remember(comparisonResponse) { comparisonResponse?.let { sampleCatalogResponse(it.response) } }
     val firstReason = comparisonUnavailableReason(snapshot, product, english)
     val secondReason = comparison?.let {
         if (it.uuid == product.uuid) tr(english, "请选择另一个 UUID 进行双曲线对比", "Choose a different UUID for a two-curve comparison")
@@ -189,7 +188,7 @@ private fun CatalogProductDetail(
                     Text(catalogResponseStatus(snapshot, product, english))
                     Text("${tr(english, "参考资产路径", "Reference asset path")}: ${catalogMetadata(product, "freqResponse", english)}", style = MaterialTheme.typography.bodySmall)
                     Text("${tr(english, "来源 UTC", "Source UTC")}: ${snapshot.retrievedAt}", style = MaterialTheme.typography.bodySmall)
-                    Text("${tr(english, "资料来源", "Data source")}: ${Catalog.sourceUrl(snapshot, product)}", style = MaterialTheme.typography.bodySmall)
+                    Text("${tr(english, "资料来源", "Data source")}: ${catalogSourceUrl(snapshot, product)}", style = MaterialTheme.typography.bodySmall)
                     Text("CDN: ${snapshot.cdnBaseUrl}", style = MaterialTheme.typography.bodySmall)
                     Text(tr(english, "来源信息来自快照文件；参考频响或目标资料并非当前设备的实测频响。", "Provenance is supplied by the snapshot file; reference responses or targets are not measurements of the connected device."), style = MaterialTheme.typography.bodySmall)
                 }

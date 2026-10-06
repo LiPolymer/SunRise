@@ -22,7 +22,22 @@ internal data class SampledCatalogResponse(
     val frequencyHz: DoubleArray,
     val referenceDb: DoubleArray,
     val normalizationHz: Double?,
-)
+) {
+    // Preserve the data class's shallow array equality for memoized display samples.
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is SampledCatalogResponse) return false
+        return frequencyHz === other.frequencyHz &&
+            referenceDb === other.referenceDb &&
+            (normalizationHz?.equals(other.normalizationHz) ?: (other.normalizationHz == null))
+    }
+
+    override fun hashCode(): Int {
+        var result = frequencyHz.contentHashCode()
+        result = 31 * result + referenceDb.contentHashCode()
+        return 31 * result + (normalizationHz?.hashCode() ?: 0)
+    }
+}
 
 private fun interpolateLogSegment(
     lowerDb: Double, upperDb: Double, lowerLogHz: Double, upperLogHz: Double, frequencyHz: Double,

@@ -1,8 +1,8 @@
 package ink.lipoly.app.sunrise
 
-import ink.lipoly.app.sunrise.composeLegacy.ThemeMode
-import ink.lipoly.app.sunrise.composeLegacy.UiLanguage
-import ink.lipoly.app.sunrise.composeLegacy.UiSettings
+import ink.lipoly.app.sunrise.settings.ThemeMode
+import ink.lipoly.app.sunrise.settings.UiLanguage
+import ink.lipoly.app.sunrise.settings.UiSettings
 import java.util.UUID
 import java.util.prefs.Preferences
 import kotlin.test.Test
@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 
 class UiSettingsStoreTest {
     @Test fun catalogChoicesPersistButAppearanceRemainsProcessLocal() = withPreferences { preferences ->
-        val store = UiSettingsStore(preferences)
+        val store = JvmUiSettingsStore(preferences)
         val bindings = mapOf("AA:BB:CC:DD:EE:FF" to "12345678-1234-1234-1234-123456789abc")
         val targetUuid = "87654321-4321-4321-4321-cba987654321"
         val next = store.current.copy(
@@ -38,7 +38,7 @@ class UiSettingsStoreTest {
                 "target_product_uuid", "show_target_response"),
             preferences.keys().toSet(),
         )
-        val restored = UiSettingsStore(preferences).current
+        val restored = JvmUiSettingsStore(preferences).current
         assertEquals(
             UiSettings(
                 catalogOnlyDevices = false,
@@ -53,7 +53,7 @@ class UiSettingsStoreTest {
         store.update(store.current.copy(targetProductUuid = null))
         preferences.flush()
         assertNull(store.current.targetProductUuid)
-        val cleared = UiSettingsStore(preferences).current
+        val cleared = JvmUiSettingsStore(preferences).current
         assertNull(cleared.targetProductUuid)
         assertFalse(cleared.showTargetResponse)
         assertEquals(bindings, cleared.referenceProductByAddress)
@@ -61,18 +61,18 @@ class UiSettingsStoreTest {
     }
 
     @Test fun appearanceOnlyChangesDoNotCreatePersistentSettings() = withPreferences { preferences ->
-        val store = UiSettingsStore(preferences)
+        val store = JvmUiSettingsStore(preferences)
         store.update(store.current.copy(themeMode = ThemeMode.LIGHT, seedIndex = 2))
         assertTrue(preferences.keys().isEmpty())
         assertEquals(ThemeMode.LIGHT, store.current.themeMode)
-        assertEquals(UiSettings(), UiSettingsStore(preferences).current)
+        assertEquals(UiSettings(), JvmUiSettingsStore(preferences).current)
     }
 
     @Test fun brokenBindingJsonDoesNotResetOtherCatalogPreferences() = withPreferences { preferences ->
         preferences.putBoolean("catalog_only_devices", false)
         preferences.putBoolean("show_reference_response", false)
         preferences.put("reference_products", "not valid JSON")
-        val restored = UiSettingsStore(preferences).current
+        val restored = JvmUiSettingsStore(preferences).current
         assertFalse(restored.catalogOnlyDevices)
         assertFalse(restored.showReferenceResponse)
         assertTrue(restored.includeResponsePreGain)

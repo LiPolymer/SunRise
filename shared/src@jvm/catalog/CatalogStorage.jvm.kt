@@ -6,6 +6,7 @@ import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -18,7 +19,7 @@ internal class JvmCatalogStorage(
 
     override suspend fun readActive(): ByteArray? = withContext(Dispatchers.IO) {
         try {
-            readCatalogDocument(active)
+            readCatalogDocument(active, currentCoroutineContext())
         } catch (_: NoSuchFileException) {
             null
         }
@@ -27,15 +28,14 @@ internal class JvmCatalogStorage(
     override suspend fun writeActive(bytes: ByteArray) = withContext(Dispatchers.IO) {
         require(bytes.size <= MAX_CATALOG_SNAPSHOT_BYTES) { "Snapshot exceeds 64 MiB" }
         Files.createDirectories(directory)
-        replaceCatalogDocument(active, bytes)
+        replaceCatalogDocument(active, bytes, currentCoroutineContext())
     }
 }
 
 /** Bounds both known file sizes and files which grow while being read. Call on Dispatchers.IO. */
-internal suspend fun readCatalogDocument(path: Path): ByteArray {
+internal fun readCatalogDocument(path: Path, context: CoroutineContext): ByteArray {
     val size = Files.size(path)
     require(size <= MAX_CATALOG_SNAPSHOT_BYTES) { "Snapshot exceeds 64 MiB" }
-    val context = currentCoroutineContext()
     return Files.newInputStream(path).use { input ->
         val output = ByteArrayOutputStream(minOf(size, 64 * 1024L).toInt())
         val buffer = ByteArray(8192)
@@ -53,14 +53,13 @@ internal suspend fun readCatalogDocument(path: Path): ByteArray {
     }
 }
 
-/** Never degrades an unsupported atomic move to a truncating or non-atomic replacement. */
-internal suspend fun replaceCatalogDocument(path: Path, bytes: ByteArray) {
+/** Never degrades an unsupported atomic move to a truncating or non-atomic replacement. Call on Dispatchers.IO. */
+internal fun replaceCatalogDocument(path: Path, bytes: ByteArray, context: CoroutineContext) {
     require(bytes.size <= MAX_CATALOG_SNAPSHOT_BYTES) { "Snapshot exceeds 64 MiB" }
     val target = path.toAbsolutePath()
     val temporary = Files.createTempFile(target.parent, ".sunrise-catalog-", ".tmp")
     var failure: Throwable? = null
     try {
-        val context = currentCoroutineContext()
         FileOutputStream(temporary.toFile()).use { output ->
             var offset = 0
             while (offset < bytes.size) {

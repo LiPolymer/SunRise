@@ -115,10 +115,11 @@ private class AndroidCatalogDocuments(
         val uri = picker.await(DocumentAction.IMPORT, launchImport) ?: return null
         return withContext(Dispatchers.IO) {
             try {
-                currentCoroutineContext().ensureActive()
+                val context = currentCoroutineContext()
+                context.ensureActive()
                 val input = resolver.openInputStream(uri)
                     ?: throw IOException("The document provider did not open an input stream")
-                input.use { readAndroidCatalogDocument(it) }
+                input.use { readAndroidCatalogDocument(it, context) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -132,11 +133,12 @@ private class AndroidCatalogDocuments(
         val uri = picker.await(DocumentAction.EXPORT) { launchExport(suggestedName) } ?: return false
         return withContext(Dispatchers.IO) {
             try {
-                currentCoroutineContext().ensureActive()
+                val context = currentCoroutineContext()
+                context.ensureActive()
                 val output = resolver.openOutputStream(uri, "wt")
                     ?: throw IOException("The document provider did not open an output stream")
-                output.use { writeAndroidCatalogDocument(it, bytes) }
-                currentCoroutineContext().ensureActive()
+                output.use { writeAndroidCatalogDocument(it, bytes, context) }
+                context.ensureActive()
                 true
             } catch (cancelled: CancellationException) {
                 throw cancelled

@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.catalog
 
-import ink.lipoly.app.sunrise.drop.GaiaBluetrumPeqCodec
+import ink.lipoly.app.sunrise.drop.GaiaPeqParameters
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqBiquad
 import ink.lipoly.app.sunrise.drop.PeqFilter
@@ -47,7 +47,7 @@ internal fun buildAcousticOverlay(
     if (sampled.frequencyHz.isEmpty()) return referenceOnly("Reference has no displayable frequency range (20–20000 Hz)")
     if (bands.isNullOrEmpty()) return referenceOnly()
     try {
-        GaiaBluetrumPeqCodec.validateBands(bands)
+        GaiaPeqParameters.validateBands(bands)
         require(bands.all { it.filter == PeqFilter.PEAKING }) { "Bluetrum writes currently support peaking only" }
     } catch (error: IllegalArgumentException) {
         return referenceOnly("Draft is not writable: ${error.message}")

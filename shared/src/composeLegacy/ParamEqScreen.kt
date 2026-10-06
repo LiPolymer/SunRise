@@ -125,12 +125,12 @@ internal fun ParamEqScreen(
     val responseKey = referenceResponseHash ?: readyReference
     val overlay = remember(responseKey, bands, includeResponsePreGain, showReferenceResponse) {
         if (showReferenceResponse && readyReference != null)
-            Catalog.buildAcousticOverlay(readyReference, bands.takeIf { it.isNotEmpty() }, includeResponsePreGain)
+            buildAcousticOverlay(readyReference, bands.takeIf { it.isNotEmpty() }, includeResponsePreGain)
         else null
     }
     val readyTarget = (targetResponse as? CatalogResponse.Ready)?.response
     val targetKey = targetResponseHash ?: readyTarget
-    val sampledTarget = remember(targetKey) { readyTarget?.let { Catalog.sampleResponse(it) } }
+    val sampledTarget = remember(targetKey) { readyTarget?.let { sampleCatalogResponse(it) } }
     val targetUnavailableReason = when {
         targetProductUuid == null -> null
         targetProduct == null -> tr(english, "所选目标已不在当前数据库中，请重新选择。", "The selected target is no longer in this database. Choose it again.")
@@ -335,7 +335,7 @@ internal fun ParamEqScreen(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     ParamEqCurve(bands, selectedIndex, editor, editable, english, compact,
-                        onSelect = { if (maySelect && editor.state.value.isEditing != true) selectedIndex = it },
+                        onSelect = { if (maySelect && !editor.state.value.isEditing) selectedIndex = it },
                         modifier = Modifier.fillMaxWidth().height(curveHeight), overlay = overlay, target = target, responseScale = responseScale)
                     if (editable && bands.isNotEmpty()) Text(
                         tr(english, "先选频段；单指拖动调频率/增益，双指横向张开调宽、合拢调窄（Q）。",

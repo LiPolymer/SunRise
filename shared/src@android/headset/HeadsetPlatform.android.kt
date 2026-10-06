@@ -1,6 +1,7 @@
 package ink.lipoly.app.sunrise.headset
 
 import android.content.Context
+import androidx.core.content.edit
 import ink.lipoly.app.sunrise.blueConnector.BtManager
 import ink.lipoly.app.sunrise.drop.DropOptions
 
@@ -25,7 +26,9 @@ fun createHeadsetClient(context: Context, bt: BtManager, options: DropOptions = 
     val associations = object : HeadsetAssociations {
         override fun endpoint(address: String): String? = preferences.getString(address.uppercase(), null)
         override fun remember(address: String, endpoint: String) {
-            preferences.edit().putString(address.uppercase(), endpoint.uppercase()).apply()
+            preferences.edit {
+                putString(address.uppercase(), endpoint.uppercase())
+            }
         }
     }
     return HeadsetClient(bt, associations, options)

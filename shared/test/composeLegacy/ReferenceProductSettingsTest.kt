@@ -1,5 +1,7 @@
 package ink.lipoly.app.sunrise.composeLegacy
 
+import ink.lipoly.app.sunrise.settings.decodeReferenceProducts
+import ink.lipoly.app.sunrise.settings.encodeReferenceProducts
 import kotlin.test.*
 
 class ReferenceProductSettingsTest {

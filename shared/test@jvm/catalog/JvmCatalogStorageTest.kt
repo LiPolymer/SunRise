@@ -3,6 +3,7 @@ package ink.lipoly.app.sunrise.catalog
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.nio.file.Files
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
@@ -59,7 +60,9 @@ class JvmCatalogStorageTest {
         val oldContents = "must survive a failed replacement".encodeToByteArray()
         val marker = destination.resolve("original.txt")
         Files.write(marker, oldContents)
-        assertFailsWith<IOException> { replaceCatalogDocument(destination, "replacement".encodeToByteArray()) }
+        assertFailsWith<IOException> {
+            replaceCatalogDocument(destination, "replacement".encodeToByteArray(), currentCoroutineContext())
+        }
         assertContentEquals(oldContents, Files.readAllBytes(marker))
         Files.list(directory).use { files -> assertEquals(listOf("database.json"), files.map { it.fileName.toString() }.toList()) }
     }

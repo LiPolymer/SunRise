@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -18,38 +17,27 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.material3.Switch
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.headset.HeadsetClient
-import ink.lipoly.app.sunrise.headset.HeadsetDevice
-import ink.lipoly.app.sunrise.headset.HeadsetEvent
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.headset.HeadsetPhase
 import ink.lipoly.app.sunrise.headset.HeadsetState
-import ink.lipoly.app.sunrise.drop.GaiaIds
-import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.catalog.*
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.milliseconds
+import ink.lipoly.app.sunrise.settings.UiSettings
+import ink.lipoly.app.sunrise.presentation.PresentationNotice
+import ink.lipoly.app.sunrise.presentation.PresentationSession
 
 internal enum class MainPage { OVERVIEW, EQUALIZER, SETTINGS }
 
@@ -62,11 +50,11 @@ internal class AppNavigationState {
 @Composable
 internal fun rememberAppNavigationState(): AppNavigationState = remember { AppNavigationState() }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AppContent(
+    catalog: Catalog,
     client: HeadsetClient?,
-    documents: CatalogDocuments,
+    session: PresentationSession,
     missingPermissions: Set<String>,
     onRequestPermissions: () -> Unit,
     settings: UiSettings,
@@ -78,17 +66,12 @@ internal fun AppContent(
         val page = navigation.page
         val diagnostics = navigation.diagnostics
         val state = client?.state?.collectAsState()?.value ?: HeadsetState()
-        val catalogState by Catalog.state.collectAsState()
-        val inspectionMode = LocalInspectionMode.current
-        var pullJob by remember { mutableStateOf<Job?>(null) }
-        var documentBusy by remember { mutableStateOf(false) }
-        var importPreview by remember { mutableStateOf<CatalogSnapshot?>(null) }
-        var documentError by remember { mutableStateOf<String?>(null) }
-        val scope = rememberCoroutineScope()
+        val catalogState by catalog.state.collectAsState()
+        val headsetState by session.headset.state.collectAsState()
+        val operationState by session.catalog.state.collectAsState()
         val snackbar = remember { SnackbarHostState() }
-        var candidates by remember(client) { mutableStateOf<List<HeadsetDevice>>(emptyList()) }
-        var chooserOpen by remember(client) { mutableStateOf(false) }
-        var selectionPrompted by remember(client) { mutableStateOf(false) }
+        val candidates = headsetState.candidates
+        val chooserOpen = headsetState.chooserOpen
         var referenceChooserOpen by remember { mutableStateOf(false) }
         var targetChooserOpen by remember { mutableStateOf(false) }
         var previewReferenceUuid by remember { mutableStateOf<String?>(null) }
@@ -96,53 +79,27 @@ internal fun AppContent(
         val audioAddress = state.device?.address?.uppercase()
         val manualReferenceUuid = if (audioAddress == null) previewReferenceUuid else settings.referenceProductByAddress[audioAddress]
         val reference = remember(snapshot, state.device?.name, manualReferenceUuid, english) {
-            Catalog.resolveReference(snapshot, state.device?.name, manualReferenceUuid, english)
+            resolveCatalogReference(snapshot, state.device?.name, manualReferenceUuid, english)
         }
         val targetProduct = settings.targetProductUuid?.let { snapshot?.productsByUuid?.get(it) }
         val targetResponse = targetProduct?.freqResponse?.let { snapshot?.responsesByPath?.get(it) }
         val visibleCandidates = remember(candidates, snapshot, settings.catalogOnlyDevices) {
-            if (settings.catalogOnlyDevices) candidates.filter { Catalog.matchesDevice(snapshot, it.name) } else candidates
+            if (settings.catalogOnlyDevices) candidates.filter { matchesCatalogDevice(snapshot, it.name) } else candidates
         }
-        val autoFilter = remember(snapshot, settings.catalogOnlyDevices, catalogState.loading) {
-            val loaded = !catalogState.loading
-            val onlyCatalog = settings.catalogOnlyDevices
-            val accept: (HeadsetDevice) -> Boolean = { device -> loaded && (!onlyCatalog || Catalog.matchesDevice(snapshot, device.name)) }
-            accept
-        }
-        val latestAutoFilter by rememberUpdatedState(autoFilter)
-        var recentEvents by remember(client) { mutableStateOf<List<HeadsetEvent>>(emptyList()) }
-        var confirmedReads by remember(client, state.device?.device, state.phase, state.controls.phase) {
-            mutableStateOf<Set<OverviewControl>>(emptySet())
-        }
-        var working by remember(client) { mutableStateOf<String?>(null) }
+        val recentEvents = headsetState.recentEvents
+        val confirmedReads = headsetState.confirmedReads
+        val working = headsetState.working
         var notice by remember { mutableStateOf<String?>(null) }
-        var refreshGeneration by remember { mutableIntStateOf(0) }
         val controls = if (client != null && missingPermissions.isEmpty() &&
             state.phase == HeadsetPhase.READY && state.controls.hasReadyGaia()) {
             try { client.gaia } catch (_: DropException) { null }
         } else null
-        val eqEditor = remember(controls) { controls?.let { ParamEqEditor(scope, it) } }
-        DisposableEffect(eqEditor) { onDispose { eqEditor?.close() } }
+        val eqEditor = remember(session.eq, controls) { session.eq.bind(controls) }
         val eqState = eqEditor?.state?.collectAsState()?.value
         val eqBusy = eqState?.isEditing == true ||
             eqState?.phase == ParamEqEditPhase.PENDING || eqState?.phase == ParamEqEditPhase.WRITING
         LaunchedEffect(eqState?.error) {
             eqState?.error?.let { notice = errorMessage(it, english) }
-        }
-        LaunchedEffect(controls, refreshGeneration) {
-            val bound = controls ?: return@LaunchedEffect
-            if (GaiaIds.CODEC_TYPE !in state.controls.capabilities.gaiaFeatures &&
-                state.controls.capabilities.complete) return@LaunchedEffect
-            for (codec in AudioCodec.entries) {
-                while (working != null) delay(100.milliseconds)
-                try {
-                    bound.isCodecEnabled(codec)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    // Each codec is independently supported; absent values remain unknown.
-                }
-            }
         }
 
         LaunchedEffect(notice) {
@@ -151,115 +108,20 @@ internal fun AppContent(
                 notice = null
             }
         }
+        LaunchedEffect(headsetState.notice, english) {
+            headsetState.notice?.let { expected ->
+                snackbar.showSnackbar(expected.message(english))
+                session.headset.clearNotice(expected)
+            }
+        }
+        LaunchedEffect(operationState.notice, english) {
+            operationState.notice?.let { expected ->
+                snackbar.showSnackbar(expected.message(english))
+                session.catalog.clearNotice(expected)
+            }
+        }
         LaunchedEffect(catalogState.error) {
             catalogState.error?.let { notice = it }
-        }
-        LaunchedEffect(client) {
-            client?.events?.collect { event ->
-                recentEvents = (recentEvents + event).takeLast(10)
-            }
-        }
-        LaunchedEffect(client, missingPermissions.isEmpty(), catalogState.loading) {
-            client?.setAutoDeviceFilter(latestAutoFilter)
-            if (client != null && missingPermissions.isEmpty() && !catalogState.loading) client.startAutoConnect()
-        }
-        LaunchedEffect(client, autoFilter) {
-            client?.setAutoDeviceFilter(autoFilter)
-        }
-        LaunchedEffect(client, state.phase, missingPermissions.isEmpty()) {
-            if (client != null && missingPermissions.isEmpty() && state.phase == HeadsetPhase.SELECTION_REQUIRED) {
-                try {
-                    candidates = client.discoverConnectedDevices()
-                    if (!selectionPrompted) {
-                        chooserOpen = true
-                        selectionPrompted = true
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    notice = tr(english, "发现设备失败：", "Device discovery failed: ") + errorMessage(e, english)
-                }
-            } else if (state.phase == HeadsetPhase.IDLE || state.phase == HeadsetPhase.READY) {
-                selectionPrompted = false
-            }
-        }
-        LaunchedEffect(client, state.phase, state.controls.phase, state.device?.device, missingPermissions.isEmpty(), refreshGeneration) {
-            confirmedReads = emptySet()
-            if (client == null || missingPermissions.isNotEmpty() ||
-                state.phase != HeadsetPhase.READY || !state.controls.hasReadyGaia()) return@LaunchedEffect
-            delay(500.milliseconds) // Let the client's initial battery/ANC reads run first.
-            val advertised = state.controls.capabilities.gaiaFeatures
-            val incomplete = !state.controls.capabilities.complete
-            for (control in OverviewControl.entries) {
-                val feature = when (control) {
-                    OverviewControl.GAIN -> GaiaIds.DAC_GAIN
-                    OverviewControl.LED -> GaiaIds.LED
-                    OverviewControl.SPATIAL, OverviewControl.HEAD_TRACKING -> GaiaIds.SPATIAL_AUDIO
-                }
-                if (feature !in advertised && !incomplete) continue
-                if (control == OverviewControl.HEAD_TRACKING && feature !in advertised &&
-                    OverviewControl.SPATIAL !in confirmedReads) continue
-                while (working != null) delay(100.milliseconds)
-                try {
-                    val current = client.state.value
-                    if (current.phase != HeadsetPhase.READY || !current.controls.hasReadyGaia()) return@LaunchedEffect
-                    when (control) {
-                        OverviewControl.GAIN -> client.gaia.getGain()
-                        OverviewControl.LED -> client.gaia.isLedOn()
-                        OverviewControl.SPATIAL -> client.gaia.isSpatialOn()
-                        OverviewControl.HEAD_TRACKING -> client.gaia.getHeadTracking()
-                    }
-                    confirmedReads = confirmedReads + control
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    // Feature lists may be incomplete; failed optional reads do not block the page.
-                }
-            }
-        }
-
-        fun runAction(label: String, control: Boolean = false, action: suspend HeadsetClient.() -> Unit) {
-            val activeClient = client ?: return
-            if (working != null || missingPermissions.isNotEmpty()) return
-            if (control && (activeClient.state.value.phase != HeadsetPhase.READY ||
-                !activeClient.state.value.controls.hasReadyGaia())) return
-            working = label
-            scope.launch {
-                try {
-                    if (control && (activeClient.state.value.phase != HeadsetPhase.READY ||
-                        !activeClient.state.value.controls.hasReadyGaia())) throw DropException.NotReady()
-                    activeClient.action()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    notice = tr(english, "$label：", "$label: ") + errorMessage(e, english)
-                } finally {
-                    working = null
-                }
-            }
-        }
-
-        fun chooseHeadset() {
-            if (client == null || missingPermissions.isNotEmpty() || working != null) return
-            scope.launch {
-                try {
-                    candidates = client.discoverConnectedDevices()
-                    chooserOpen = true
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    notice = tr(english, "发现设备失败：", "Device discovery failed: ") + errorMessage(error, english)
-                }
-            }
-        }
-
-        fun retryConnection() {
-            if (client == null || missingPermissions.isNotEmpty() || catalogState.loading) return
-            if (state.phase == HeadsetPhase.SELECTION_REQUIRED) chooseHeadset()
-            else {
-                client.setAutoDeviceFilter(latestAutoFilter)
-                client.startAutoConnect()
-            }
         }
 
         fun chooseReference(product: CatalogProduct) {
@@ -283,53 +145,6 @@ internal fun AppContent(
             onSettingsChange(settings.copy(targetProductUuid = null))
         }
 
-        fun importCatalog() {
-            if (inspectionMode) {
-                documentError = "Catalog writes are unavailable in preview"
-                notice = documentError
-                return
-            }
-            if (catalogState.busy || catalogState.loading || documentBusy || importPreview != null) return
-            documentBusy = true
-            scope.launch {
-                try {
-                    documents.openImport()?.let { importPreview = Catalog.prepareImport(it) }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    documentError = errorMessage(error, english)
-                    notice = documentError
-                } finally {
-                    documentBusy = false
-                }
-            }
-        }
-
-        fun exportCatalog() {
-            if (inspectionMode) {
-                documentError = "Catalog writes are unavailable in preview"
-                notice = documentError
-                return
-            }
-            if (catalogState.busy || documentBusy || importPreview != null || catalogState.snapshot == null) return
-            val bytes = Catalog.exportBytes()
-            documentBusy = true
-            scope.launch {
-                try {
-                    if (documents.saveExport(bytes, Catalog.EXPORT_NAME)) {
-                        documentError = null
-                        notice = tr(english, "已导出完整数据库", "Complete database exported")
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    documentError = errorMessage(error, english)
-                    notice = documentError
-                } finally {
-                    documentBusy = false
-                }
-            }
-        }
         val title = when {
             diagnostics -> tr(english, "高级诊断", "Advanced diagnostics")
             navigation.catalogue -> tr(english, "产品与频响目录", "Product and response catalog")
@@ -352,31 +167,7 @@ internal fun AppContent(
                     actions = {
                         if (!diagnostics && !navigation.catalogue && page == MainPage.OVERVIEW) {
                             TextButton(onClick = {
-                                refreshGeneration++
-                                if (state.phase == HeadsetPhase.READY && state.controls.hasReadyGaia()) {
-                                    runAction(tr(english, "刷新", "Refresh"), control = true) {
-                                        var firstFailure: Exception? = null
-                                        if (state.controls.capabilities.ancModes.isNotEmpty()) {
-                                            try {
-                                                gaia.getAncMode()
-                                            } catch (e: CancellationException) {
-                                                throw e
-                                            } catch (e: Exception) {
-                                                firstFailure = e
-                                            }
-                                        }
-                                        try {
-                                            gaia.getBattery()
-                                        } catch (e: CancellationException) {
-                                            throw e
-                                        } catch (e: Exception) {
-                                            if (firstFailure == null) firstFailure = e
-                                        }
-                                        firstFailure?.let { throw it }
-                                    }
-                                } else if (state.phase != HeadsetPhase.READY) {
-                                    retryConnection()
-                                }
+                                session.headset.refresh(tr(english, "刷新", "Refresh"))
                             }, enabled = client != null && missingPermissions.isEmpty() && working == null &&
                                 (state.phase != HeadsetPhase.READY || state.controls.hasReadyGaia())) {
                                 Text(tr(english, "刷新", "Refresh"))
@@ -440,27 +231,26 @@ internal fun AppContent(
                     catalogLoading = catalogState.loading,
                     catalogAvailable = snapshot != null,
                     catalogError = catalogState.error,
-                    catalogMatched = Catalog.matchesDevice(snapshot, state.device?.name),
+                    catalogMatched = matchesCatalogDevice(snapshot, state.device?.name),
                     referenceName = reference.product?.name,
                     onCatalogFilterChange = { onSettingsChange(settings.copy(catalogOnlyDevices = it)) },
-                    onChooseHeadset = ::chooseHeadset,
+                    onChooseHeadset = session.headset::chooseHeadset,
                     onOpenCatalog = { navigation.catalogue = true },
                     confirmedReads = confirmedReads,
                     working = working,
                     codecBlocked = eqBusy,
                     modifier = Modifier.fillMaxSize().padding(padding),
                     onRequestPermissions = onRequestPermissions,
-                    onRetry = ::retryConnection,
-                    onAnc = { mode -> runAction(tr(english, "设置降噪", "Set ANC"), control = true) { gaia.setAncMode(mode) } },
-                    onGain = { gain -> runAction(tr(english, "设置增益", "Set gain"), control = true) { gaia.setGain(gain) } },
-                    onLed = { enabled -> runAction("LED", control = true) { gaia.setLedOn(enabled) } },
-                    onSpatial = { enabled -> runAction(tr(english, "空间音频", "Spatial audio"), control = true) { gaia.setSpatialOn(enabled) } },
-                    onTracking = { mode -> runAction(tr(english, "头部追踪", "Head tracking"), control = true) { gaia.setHeadTracking(mode) } },
+                    onRetry = session.headset::retryConnection,
+                    onAnc = { mode -> session.headset.runAction(tr(english, "设置降噪", "Set ANC"), control = true) { gaia.setAncMode(mode) } },
+                    onGain = { gain -> session.headset.runAction(tr(english, "设置增益", "Set gain"), control = true) { gaia.setGain(gain) } },
+                    onLed = { enabled -> session.headset.runAction("LED", control = true) { gaia.setLedOn(enabled) } },
+                    onSpatial = { enabled -> session.headset.runAction(tr(english, "空间音频", "Spatial audio"), control = true) { gaia.setSpatialOn(enabled) } },
+                    onTracking = { mode -> session.headset.runAction(tr(english, "头部追踪", "Head tracking"), control = true) { gaia.setHeadTracking(mode) } },
                     onCodec = { codec, enabled ->
                         if (!eqBusy) {
-                            val bound = controls
-                            runAction(tr(english, "设置编码", "Set codec"), control = true) {
-                                bound?.setCodecEnabled(codec, enabled) ?: throw DropException.NotReady()
+                            session.headset.runAction(tr(english, "设置编码", "Set codec"), control = true) {
+                                controls?.setCodecEnabled(codec, enabled) ?: throw DropException.NotReady()
                                 eqEditor?.refresh()
                             }
                         }
@@ -473,7 +263,7 @@ internal fun AppContent(
                     enabled = working == null && missingPermissions.isEmpty(),
                     referenceProduct = reference.product,
                     referenceResponse = reference.response,
-                    referenceSource = snapshot?.let { current -> reference.product?.let { Catalog.sourceUrl(current, it) } },
+                    referenceSource = snapshot?.let { current -> reference.product?.let { catalogSourceUrl(current, it) } },
                     referenceRetrievedAt = snapshot?.retrievedAt,
                     referenceResponseHash = reference.product?.freqResponse?.let { snapshot?.responseHashesByPath?.get(it) },
                     showReferenceResponse = settings.showReferenceResponse,
@@ -504,31 +294,14 @@ internal fun AppContent(
                     english = english,
                     dynamicAvailable = dynamicColorAvailable,
                     catalogState = catalogState.copy(
-                        busy = catalogState.busy || documentBusy || importPreview != null,
-                        error = documentError ?: catalogState.error,
+                        busy = catalogState.busy || operationState.documentBusy || operationState.importPreview != null,
+                        error = operationState.error?.let { errorMessage(it, english) } ?: catalogState.error,
                     ),
-                    canCancelPull = pullJob?.isActive == true,
-                    onPull = { cdn ->
-                        if (inspectionMode) {
-                            documentError = "Catalog pulls are unavailable in preview"
-                            notice = documentError
-                        } else if (pullJob?.isActive != true && !Catalog.state.value.busy && !catalogState.loading && !documentBusy && importPreview == null) {
-                            documentError = null
-                            pullJob = scope.launch {
-                                try {
-                                    Catalog.pull(cdn)
-                                } catch (cancelled: CancellationException) {
-                                    throw cancelled
-                                } catch (error: Exception) {
-                                    documentError = errorMessage(error, english)
-                                    notice = documentError
-                                } finally { pullJob = null }
-                            }
-                        }
-                    },
-                    onCancelPull = { pullJob?.cancel() },
-                    onImport = ::importCatalog,
-                    onExport = ::exportCatalog,
+                    canCancelPull = operationState.pullActive,
+                    onPull = session.catalog::pull,
+                    onCancelPull = session.catalog::cancelPull,
+                    onImport = session.catalog::prepareImport,
+                    onExport = session.catalog::export,
                     onOpenCatalog = { navigation.catalogue = true },
                     missingPermissions = missingPermissions,
                     clientAvailable = client != null,
@@ -562,9 +335,9 @@ internal fun AppContent(
             title = tr(english, "选择目标频响", "Choose a target response"),
         )
 
-        importPreview?.let { preview ->
+        operationState.importPreview?.let { preview ->
             AlertDialog(
-                onDismissRequest = { importPreview = null },
+                onDismissRequest = session.catalog::dismissImport,
                 title = { Text(tr(english, "替换当前数据库？", "Replace the current database?")) },
                 text = {
                     Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
@@ -574,35 +347,15 @@ internal fun AppContent(
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = {
-                        if (inspectionMode) {
-                            documentError = "Catalog writes are unavailable in preview"
-                            notice = documentError
-                        } else {
-                            importPreview = null
-                            documentBusy = true
-                            scope.launch {
-                                try {
-                                    Catalog.importSnapshot(preview)
-                                    documentError = null
-                                    if (Catalog.state.value.error == null) notice = tr(english, "数据库已替换", "Database replaced")
-                                } catch (cancelled: CancellationException) {
-                                    throw cancelled
-                                } catch (error: Exception) {
-                                    documentError = errorMessage(error, english)
-                                    notice = documentError
-                                } finally { documentBusy = false }
-                            }
-                        }
-                    }) { Text(tr(english, "替换当前数据库", "Replace current database")) }
+                    TextButton(onClick = session.catalog::confirmImport) { Text(tr(english, "替换当前数据库", "Replace current database")) }
                 },
-                dismissButton = { TextButton(onClick = { importPreview = null }) { Text(tr(english, "取消", "Cancel")) } },
+                dismissButton = { TextButton(onClick = session.catalog::dismissImport) { Text(tr(english, "取消", "Cancel")) } },
             )
         }
 
         if (chooserOpen) {
             AlertDialog(
-                onDismissRequest = { chooserOpen = false },
+                onDismissRequest = session.headset::dismissChooser,
                 title = { Text(tr(english, "选择耳机", "Choose a headset")) },
                 text = {
                     Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
@@ -619,13 +372,10 @@ internal fun AppContent(
                             else tr(english, "没有匹配目录的设备，可切换“显示全部”", "No catalogue matches. Switch on Show all."),
                         )
                         visibleCandidates.forEach { candidate ->
-                            val match = Catalog.matchesDevice(snapshot, candidate.name)
-                            val response = Catalog.resolveReference(snapshot, candidate.name, null, english).response
+                            val match = matchesCatalogDevice(snapshot, candidate.name)
+                            val response = resolveCatalogReference(snapshot, candidate.name, null, english).response
                             TextButton(
-                                onClick = {
-                                    chooserOpen = false
-                                    runAction(tr(english, "连接", "Connect")) { connect(candidate) }
-                                },
+                                onClick = { session.headset.select(candidate, tr(english, "连接", "Connect")) },
                                 enabled = working == null && missingPermissions.isEmpty(),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
@@ -642,11 +392,14 @@ internal fun AppContent(
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { chooserOpen = false }) { Text(tr(english, "稍后", "Later")) }
+                    TextButton(onClick = session.headset::dismissChooser) { Text(tr(english, "稍后", "Later")) }
                 },
             )
         }
 }
+
+private fun PresentationNotice.message(english: Boolean): String =
+    tr(english, chinese, this.english) + (error?.let { errorMessage(it, english) } ?: "")
 
 internal fun errorMessage(error: Exception, english: Boolean): String = when (error) {
     is DropException.Unverified -> tr(

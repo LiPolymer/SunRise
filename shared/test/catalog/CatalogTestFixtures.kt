@@ -1,8 +1,6 @@
 package ink.lipoly.app.sunrise.catalog
 
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.withContext
@@ -15,26 +13,24 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 internal object CatalogTestFixtures {
-    private val catalogMutex = Mutex()
-
     suspend fun <T> withCatalog(
         scope: TestScope,
         storage: CatalogStorage,
         loadBundled: suspend () -> ByteArray,
         fetcher: CatalogByteFetcher,
-        block: suspend () -> T,
-    ): T = catalogMutex.withLock {
-        Catalog.close()
+        block: suspend (Catalog) -> T,
+    ): T {
+        val catalog = Catalog()
         try {
-            Catalog.init(
+            catalog.init(
                 storage = { storage },
                 loadBundled = loadBundled,
                 fetcher = { fetcher },
                 dispatcher = StandardTestDispatcher(scope.testScheduler),
             )
-            block()
+            return block(catalog)
         } finally {
-            withContext(NonCancellable) { Catalog.close() }
+            withContext(NonCancellable) { catalog.close() }
         }
     }
 

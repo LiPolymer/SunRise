@@ -35,7 +35,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.isActive
@@ -44,6 +43,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 应用自有的单耳机组合入口：选择音频身份、显式连接 GATT、创建 [DropController] 并执行重试和轮询。
@@ -68,7 +68,7 @@ class HeadsetClient internal constructor(
     private val lifecycle = Mutex()
     private val closed = MutableStateFlow(false)
     private val connection = MutableStateFlow<Connection?>(null)
-    private val autoDeviceFilter = MutableStateFlow<(HeadsetDevice) -> Boolean>({ true })
+    private val autoDeviceFilter = MutableStateFlow<(HeadsetDevice) -> Boolean> { true }
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val mutableState = MutableStateFlow(HeadsetState())
     private val mutableEvents = MutableSharedFlow<HeadsetEvent>(extraBufferCapacity = 32)
@@ -265,7 +265,7 @@ class HeadsetClient internal constructor(
      * [gaia]/[source] getter 关闭后抛 NotReady，而已取得的旧控件因绑定失效抛 Disconnected。
      */
     fun close() {
-        if (!closed.compareAndSet(false, true)) return
+        if (!closed.compareAndSet(expect = false, update = true)) return
         val previous = connection.getAndUpdate { null }
         previous?.job?.cancel()
         previous?.attempt?.value?.controller?.close()
@@ -410,7 +410,7 @@ class HeadsetClient internal constructor(
                     audioObserver?.cancel()
                 }
             }
-        } catch (e: AudioTargetGone) {
+        } catch (_: AudioTargetGone) {
             currentCoroutineContext().ensureActive()
         } finally {
             current.first?.completeExceptionally(DropException.Disconnected())
@@ -624,7 +624,7 @@ class HeadsetClient internal constructor(
                         // 轮询失败不能用构造的电量覆盖最近真实读值。
                     }
                 }
-                delay(30_000)
+                delay(30_000.milliseconds)
             }
         }
     }
@@ -698,6 +698,6 @@ class HeadsetClient internal constructor(
     private suspend fun awaitWake(timeoutMillis: Long) {
         // 丢弃刚结束尝试自身引起的合并通知，避免立即自唤醒重试；后续事件仍可提前唤醒。
         wake.tryReceive()
-        withTimeoutOrNull(timeoutMillis) { wake.receiveCatching() }
+        withTimeoutOrNull(timeoutMillis.milliseconds) { wake.receiveCatching() }
     }
 }

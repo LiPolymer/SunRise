@@ -29,8 +29,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.catalog.AcousticOverlay
 import ink.lipoly.app.sunrise.catalog.AcousticScale
-import ink.lipoly.app.sunrise.catalog.Catalog
 import ink.lipoly.app.sunrise.catalog.SampledCatalogResponse
+import ink.lipoly.app.sunrise.catalog.acousticAxisTicks
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqFilter
 import ink.lipoly.app.sunrise.drop.PeqBiquad
@@ -334,12 +334,11 @@ internal fun ParamEqCurve(
         }
         .drawWithCache {
             val p = PeqPlot(leftMargin, top, (size.width - leftMargin - rightMargin).coerceAtLeast(0f), (size.height - top - bottom).coerceAtLeast(0f), axis)
-            val cached = geometry
             if (p.width <= 0 || p.height <= 0) return@drawWithCache onDrawBehind {}
-            val totalPath = cached?.composite
+            val totalPath = geometry?.composite
             val selectedPosition = bands.indexOfFirst { it.index == selectedIndex }
-            val selectedPath = cached?.curves?.getOrNull(selectedPosition)
-            val selectedFill = cached?.fills?.getOrNull(selectedPosition)
+            val selectedPath = geometry?.curves?.getOrNull(selectedPosition)
+            val selectedFill = geometry?.fills?.getOrNull(selectedPosition)
             val ticks = intArrayOf(20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000)
             val frequencyGridX = FloatArray(ticks.size) { p.x(ticks[it].toDouble()) }
             val desired = if (compact) intArrayOf(20, 100, 1000, 10000, 20000) else ticks
@@ -364,7 +363,7 @@ internal fun ParamEqCurve(
             ) else null
             val rightLabels = responseScale?.let { scale ->
                 val maxLabels = (p.height / (eqCaption.size.height + 2.dp.toPx())).toInt().coerceAtLeast(2)
-                val candidates = Catalog.acousticAxisTicks(scale, maxLabels).map { db ->
+                val candidates = acousticAxisTicks(scale, maxLabels).map { db ->
                     val layout = textMeasurer.measure(acousticAxisLabel(db), labelStyle.copy(color = textColor))
                     val y = p.top + ((scale.maxDb - db) / (scale.maxDb - scale.minDb) * p.height).toFloat()
                     layout to (y - layout.size.height / 2).coerceIn(p.top, (p.top + p.height - layout.size.height).coerceAtLeast(p.top))

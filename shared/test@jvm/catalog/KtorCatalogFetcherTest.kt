@@ -19,6 +19,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Exercises the production CIO client over loopback HTTP, including streaming boundaries. */
 class KtorCatalogFetcherTest {
@@ -41,7 +42,7 @@ class KtorCatalogFetcherTest {
             }
             val fetcher = KtorCatalogFetcher()
             try {
-                withTimeout(5_000) {
+                withTimeout(5_000.milliseconds) {
                     assertContentEquals(bytes, fetcher.fetch(server.url("/fixed"), bytes.size))
                     assertContentEquals(bytes, fetcher.fetch(server.url("/chunked"), bytes.size))
                     assertEquals(listOf(null, null), credentials.await())
@@ -69,7 +70,7 @@ class KtorCatalogFetcherTest {
             }
             val fetcher = KtorCatalogFetcher()
             try {
-                withTimeout(5_000) {
+                withTimeout(5_000.milliseconds) {
                     for (status in listOf(204, 206, 301, 302, 307, 308, 404, 500)) {
                         assertFailsWith<IllegalArgumentException> { fetcher.fetch(server.url("/status/$status"), 16) }
                     }
@@ -92,7 +93,7 @@ class KtorCatalogFetcherTest {
             }
             val fetcher = KtorCatalogFetcher()
             try {
-                withTimeout(5_000) {
+                withTimeout(5_000.milliseconds) {
                     assertFailsWith<IllegalArgumentException> { fetcher.fetch(server.url("/large"), 8) }
                 }
             } finally {
@@ -113,7 +114,7 @@ class KtorCatalogFetcherTest {
             }
             val fetcher = KtorCatalogFetcher()
             try {
-                withTimeout(5_000) {
+                withTimeout(5_000.milliseconds) {
                     assertFailsWith<IllegalArgumentException> { fetcher.fetch(server.url("/large"), 8) }
                 }
             } finally {
@@ -141,7 +142,7 @@ class KtorCatalogFetcherTest {
             }
             val fetcher = KtorCatalogFetcher()
             try {
-                withTimeout(5_000) {
+                withTimeout(5_000.milliseconds) {
                     val pending = async { fetcher.fetch(server.url("/stalled"), 16) }
                     started.await()
                     pending.cancelAndJoin()
@@ -210,7 +211,7 @@ class KtorCatalogFetcherTest {
             }
             val fetcher = KtorCatalogFetcher()
             try {
-                withTimeout(5_000) {
+                withTimeout(5_000.milliseconds) {
                     val pending = List(8) { async { fetcher.fetch(server.url("/parallel"), 1) } }
                     firstFour.await()
                     assertEquals(4, arrived.get())
@@ -232,7 +233,7 @@ class KtorCatalogFetcherTest {
                 exchange.sendResponseHeaders(200, 1)
                 exchange.responseBody.write(1)
             }
-            withTimeout(5_000) {
+            withTimeout(5_000.milliseconds) {
                 repeat(12) {
                     val fetcher = KtorCatalogFetcher()
                     val start = CompletableDeferred<Unit>()

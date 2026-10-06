@@ -1,6 +1,5 @@
 package ink.lipoly.app.sunrise.catalog
 
-import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -22,14 +21,15 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/** Process-owned offline data. Pages own their operation jobs, never this lifetime. */
-internal object Catalog {
+internal const val CATALOG_EXPORT_NAME = "sunrise-moondrop-catalog.json"
+
+/** Offline catalogue instance. Pages own their operation jobs, never this lifetime. */
+internal class Catalog {
     private val mutableState = MutableStateFlow(CatalogState())
     val state: StateFlow<CatalogState> = mutableState.asStateFlow()
     private val lifecycleMutex = Mutex()
     private var runtime: Runtime? = null
     private var hasInitialized = false
-    const val EXPORT_NAME = "sunrise-moondrop-catalog.json"
 
     private class Runtime(
         val repository: Repository,
@@ -122,22 +122,6 @@ internal object Catalog {
         return product.freqResponse?.let { snapshot.responsesByPath[it] }
     }
 
-    fun matchesDevice(snapshot: CatalogSnapshot?, name: String?): Boolean = matchesCatalogDevice(snapshot, name)
-    fun resolveReference(
-        snapshot: CatalogSnapshot?, deviceName: String?, manualUuid: String?, english: Boolean,
-    ): CatalogReferenceSelection = resolveCatalogReference(snapshot, deviceName, manualUuid, english)
-    fun orderedProducts(snapshot: CatalogSnapshot, deviceName: String?, english: Boolean): List<CatalogProduct> =
-        orderedCatalogProducts(snapshot, deviceName, english)
-    fun sourceUrl(snapshot: CatalogSnapshot, product: CatalogProduct): String =
-        if (product.uuid in snapshot.responseLibraryUuids) snapshot.responseLibraryUrl else snapshot.catalogueUrl
-    fun sampleResponse(reference: FrequencyResponse): SampledCatalogResponse = sampleCatalogResponse(reference)
-    fun buildAcousticOverlay(
-        reference: FrequencyResponse, bands: List<GaiaPeqBand>?, includePreGain: Boolean,
-    ): AcousticOverlay = ink.lipoly.app.sunrise.catalog.buildAcousticOverlay(reference, bands, includePreGain)
-    fun acousticScaleLimits(minimum: Double, maximum: Double): AcousticScale? =
-        ink.lipoly.app.sunrise.catalog.acousticScaleLimits(minimum, maximum)
-    fun acousticAxisTicks(scale: AcousticScale, maxLabels: Int): DoubleArray =
-        ink.lipoly.app.sunrise.catalog.acousticAxisTicks(scale, maxLabels)
 
     private class Repository(
         private val storage: CatalogStorage,

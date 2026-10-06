@@ -215,7 +215,7 @@ internal fun OverviewScreen(
                     Row(
                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(codec.name, style = MaterialTheme.typography.titleSmall)

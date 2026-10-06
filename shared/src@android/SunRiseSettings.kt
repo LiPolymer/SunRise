@@ -7,17 +7,26 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import ink.lipoly.app.sunrise.composeLegacy.*
+import androidx.core.content.edit
+import ink.lipoly.app.sunrise.composeLegacy.SunRiseTheme
+import ink.lipoly.app.sunrise.settings.ThemeMode
+import ink.lipoly.app.sunrise.settings.UiLanguage
+import ink.lipoly.app.sunrise.settings.UiSettings
+import ink.lipoly.app.sunrise.settings.UiSettingsStore
+import ink.lipoly.app.sunrise.settings.decodeReferenceProducts
+import ink.lipoly.app.sunrise.settings.encodeReferenceProducts
+import ink.lipoly.app.sunrise.settings.isDark
+import ink.lipoly.app.sunrise.settings.usesEnglish
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
-internal class UiSettingsStore(private val preferences: SharedPreferences) {
+internal class AndroidUiSettingsStore(private val preferences: SharedPreferences) : UiSettingsStore {
     constructor(context: Context) : this(context.applicationContext.getSharedPreferences("sunrise_ui", Context.MODE_PRIVATE))
 
-    var current by mutableStateOf(
+    private val mutableState = MutableStateFlow(
         UiSettings(
             themeMode = enumAt(preferences.getInt("theme_mode", 0), ThemeMode.entries),
             dynamicColor = preferences.getBoolean("dynamic_color", true),
@@ -33,27 +42,25 @@ internal class UiSettingsStore(private val preferences: SharedPreferences) {
             showTargetResponse = preferences.getBoolean("show_target_response", true),
         )
     )
-        private set
+    override val state: StateFlow<UiSettings> = mutableState.asStateFlow()
 
-    fun update(next: UiSettings) {
-        current = next
-        preferences.edit()
-            .putInt("theme_mode", next.themeMode.ordinal)
-            .putBoolean("dynamic_color", next.dynamicColor)
-            .putBoolean("amoled", next.amoled)
-            .putInt("seed", next.seedIndex)
-            .putInt("language", next.language.ordinal)
-            .putBoolean("show_wind", next.showWind)
-            .putBoolean("catalog_only_devices", next.catalogOnlyDevices)
-            .putBoolean("show_reference_response", next.showReferenceResponse)
-            .putBoolean("include_response_pregain", next.includeResponsePreGain)
-            .putString("reference_products", encodeReferenceProducts(next.referenceProductByAddress))
-            .putBoolean("show_target_response", next.showTargetResponse)
-            .apply {
-                if (next.targetProductUuid == null) remove("target_product_uuid")
-                else putString("target_product_uuid", next.targetProductUuid)
-            }
-            .apply()
+    override fun update(next: UiSettings) {
+        mutableState.value = next
+        preferences.edit {
+            putInt("theme_mode", next.themeMode.ordinal)
+            putBoolean("dynamic_color", next.dynamicColor)
+            putBoolean("amoled", next.amoled)
+            putInt("seed", next.seedIndex)
+            putInt("language", next.language.ordinal)
+            putBoolean("show_wind", next.showWind)
+            putBoolean("catalog_only_devices", next.catalogOnlyDevices)
+            putBoolean("show_reference_response", next.showReferenceResponse)
+            putBoolean("include_response_pregain", next.includeResponsePreGain)
+            putString("reference_products", encodeReferenceProducts(next.referenceProductByAddress))
+            putBoolean("show_target_response", next.showTargetResponse)
+            if (next.targetProductUuid == null) remove("target_product_uuid")
+            else putString("target_product_uuid", next.targetProductUuid)
+        }
     }
 }
 

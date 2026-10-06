@@ -3,40 +3,37 @@ package ink.lipoly.app.sunrise
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
-import ink.lipoly.app.sunrise.catalog.AndroidCatalogStorage
-import ink.lipoly.app.sunrise.catalog.CatalogByteFetcher
-import ink.lipoly.app.sunrise.catalog.Catalog
-import ink.lipoly.app.sunrise.catalog.CatalogStorage
-import ink.lipoly.app.sunrise.catalog.KtorCatalogFetcher
 import ink.lipoly.app.sunrise.catalog.rememberCatalogDocuments
 import ink.lipoly.app.sunrise.composeLegacy.*
-import ink.lipoly.app.sunrise.headset.HeadsetClient
-import ink.lipoly.app.sunrise.resources.Res
+import ink.lipoly.app.sunrise.di.SunRiseRuntime
+import ink.lipoly.app.sunrise.di.createPreviewSunRiseRuntime
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.withContext
 
 @Composable
-@Preview
 fun App(
-    client: HeadsetClient? = null,
+    runtime: SunRiseRuntime,
     missingPermissions: Set<String> = emptySet(),
     onRequestPermissions: () -> Unit = {},
 ) {
-    val context = LocalContext.current
-    val preview = LocalInspectionMode.current
-    LaunchedEffect(context.applicationContext, preview) {
-        Catalog.init(
-            storage = { if (preview) PreviewCatalogStorage else AndroidCatalogStorage(context.applicationContext) },
-            loadBundled = { Res.readBytes("files/moondrop-catalog.snapshot.json") },
-            fetcher = { if (preview) PreviewCatalogFetcher else KtorCatalogFetcher() },
-        )
+    LaunchedEffect(runtime) {
+        runtime.awaitInitialized()
     }
+    val settings by runtime.settings.state.collectAsState()
     val documents = rememberCatalogDocuments()
-    val settingsStore = remember(context) { UiSettingsStore(context) }
-    val settings = settingsStore.current
+    val scope = rememberCoroutineScope()
+    val preview = LocalInspectionMode.current
+    val session = remember(runtime, documents) { runtime.createPresentationSession(documents, scope, preview) }
+    DisposableEffect(session) { onDispose { session.close() } }
     val navigation = rememberAppNavigationState()
 
     BackHandler(navigation.catalogue || navigation.diagnostics) {
@@ -44,27 +41,31 @@ fun App(
     }
     AndroidSunRiseTheme(settings) {
         AppEntry(
-            client = client,
-            documents = documents,
+            catalog = runtime.catalog,
+            client = runtime.client,
+            session = session,
             missingPermissions = missingPermissions,
             onRequestPermissions = onRequestPermissions,
             settings = settings,
             english = settings.english(),
             dynamicColorAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
             navigation = navigation,
-            onSettingsChange = settingsStore::update,
+            onSettingsChange = runtime.settings::update,
         )
     }
 }
 
-private object PreviewCatalogStorage : CatalogStorage {
-    override suspend fun readActive(): ByteArray? = null
-    override suspend fun writeActive(bytes: ByteArray): Unit =
-        error("Catalog writes are unavailable in preview")
-}
-
-private object PreviewCatalogFetcher : CatalogByteFetcher {
-    override suspend fun fetch(url: String, maxBytes: Int): ByteArray =
-        error("Catalog pulls are unavailable in preview")
-    override fun close() = Unit
+@Preview
+@Composable
+fun AppPreview() {
+    val runtime = remember { createPreviewSunRiseRuntime() }
+    LaunchedEffect(runtime) {
+        try {
+            runtime.awaitInitialized()
+            awaitCancellation()
+        } finally {
+            withContext(NonCancellable) { runtime.close() }
+        }
+    }
+    App(runtime)
 }

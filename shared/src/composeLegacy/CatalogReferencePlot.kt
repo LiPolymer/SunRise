@@ -18,7 +18,8 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.catalog.SampledCatalogResponse
-import ink.lipoly.app.sunrise.catalog.Catalog
+import ink.lipoly.app.sunrise.catalog.acousticAxisTicks
+import ink.lipoly.app.sunrise.catalog.acousticScaleLimits
 import kotlin.math.ln
 import kotlin.math.abs
 import kotlin.math.floor
@@ -45,7 +46,7 @@ internal fun CatalogReferencePlot(
         }
         include(first.referenceDb)
         second?.let { include(it.referenceDb) }
-        Catalog.acousticScaleLimits(minimum, maximum)
+        acousticScaleLimits(minimum, maximum)
     }
     if (range == null) {
         Text(tr(english, "参考数值范围无法显示。", "Reference values exceed the displayable range."), modifier)
@@ -66,7 +67,7 @@ internal fun CatalogReferencePlot(
         if (height <= 0f || size.width <= 0f) return@drawWithCache onDrawBehind {}
         val labelHeight = textMeasurer.measure("0", textStyle).size.height
         val maxLabels = (height / (labelHeight + 2.dp.toPx())).toInt().coerceAtLeast(2)
-        val dbLabels = Catalog.acousticAxisTicks(range, maxLabels).map { db ->
+        val dbLabels = acousticAxisTicks(range, maxLabels).map { db ->
             db to textMeasurer.measure(acousticAxisLabel(db), textStyle)
         }
         val left = maxOf(42.dp.toPx(), dbLabels.maxOf { it.second.size.width }.toFloat() + 4.dp.toPx())

@@ -1,20 +1,11 @@
 package ink.lipoly.app.sunrise.composeLegacy
 
-import ink.lipoly.app.sunrise.drop.AncMode
-import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.DropException
-import ink.lipoly.app.sunrise.drop.EarbudBattery
-import ink.lipoly.app.sunrise.drop.GainLevel
-import ink.lipoly.app.sunrise.drop.GaiaCommand
-import ink.lipoly.app.sunrise.drop.GaiaControls
-import ink.lipoly.app.sunrise.drop.GaiaPacket
 import ink.lipoly.app.sunrise.drop.GaiaParamEqState
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.HeadTrackingMode
 import ink.lipoly.app.sunrise.drop.PeqFilter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -26,6 +17,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ParamEqEditorTest {
@@ -77,7 +69,7 @@ class ParamEqEditorTest {
         runCurrent()
         assertEquals(ParamEqEditPhase.FAILED, editor.state.value.phase)
         assertNull(editor.state.value.confirmed)
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(1, device.reads)
 
@@ -98,7 +90,7 @@ class ParamEqEditorTest {
         editor.changeGain(30)
         runCurrent()
         for (step in 2..13) {
-            advanceTimeBy(25)
+            advanceTimeBy(25.milliseconds)
             editor.changeGain(step * 30)
             runCurrent()
         }
@@ -124,7 +116,7 @@ class ParamEqEditorTest {
         editor.beginEdit()
         editor.changeGain(60)
         runCurrent()
-        advanceTimeBy(10)
+        advanceTimeBy(10.milliseconds)
         editor.changeGain(180)
         runCurrent()
         assertEquals(ParamEqEditPhase.PENDING, editor.state.value.phase)
@@ -153,13 +145,13 @@ class ParamEqEditorTest {
         runCurrent()
         assertNull(editor.state.value.confirmed)
         assertNull(editor.state.value.lastSent)
-        advanceTimeBy(50)
+        advanceTimeBy(50.milliseconds)
         editor.changeGain(180)
         runCurrent()
         assertEquals(ParamEqEditPhase.WRITING, editor.state.value.phase)
         assertEquals(1, device.writes.size)
 
-        advanceTimeBy(150)
+        advanceTimeBy(150.milliseconds)
         runCurrent()
 
         assertNull(editor.state.value.confirmed)
@@ -169,7 +161,7 @@ class ParamEqEditorTest {
         assertEquals(listOf(0L, 200L), device.writes.map { it.startedAt })
         assertEquals(0, device.canceledWrites)
         assertEquals(1, device.maxConcurrentWrites)
-        advanceTimeBy(200)
+        advanceTimeBy(200.milliseconds)
         runCurrent()
         assertEquals(180, device.stored.bands.single().gainRaw)
         assertTrue(editor.state.value.isEditing)
@@ -188,20 +180,20 @@ class ParamEqEditorTest {
         editor.beginEdit()
         editor.changeGain(60)
         runCurrent()
-        advanceTimeBy(10)
+        advanceTimeBy(10.milliseconds)
         editor.changeGain(120)
         editor.changeGain(180)
         editor.endEdit()
         runCurrent()
         assertEquals(1, device.writes.size)
 
-        advanceTimeBy(90)
+        advanceTimeBy(90.milliseconds)
         runCurrent()
         assertEquals(listOf(0L, 100L), device.writes.map { it.startedAt })
         assertEquals(listOf(60, 180), device.writes.map { it.bands.single().gainRaw })
         assertEquals(1, device.maxConcurrentWrites)
         assertEquals(0, device.canceledWrites)
-        advanceTimeBy(100)
+        advanceTimeBy(100.milliseconds)
         runCurrent()
         assertEquals(180, device.stored.bands.single().gainRaw)
         assertEquals(ParamEqEditPhase.SENT, editor.state.value.phase)
@@ -230,14 +222,14 @@ class ParamEqEditorTest {
         assertEquals(ParamEqEditPhase.WRITING, editor.state.value.phase)
         assertFalse(editor.state.value.canUndo)
         assertEquals(1, device.writes.size)
-        advanceTimeBy(300)
+        advanceTimeBy(300.milliseconds)
         runCurrent()
         assertNull(editor.state.value.confirmed)
         assertEquals(180, editor.state.value.lastSent?.single()?.gainRaw)
         assertEquals(0, editor.state.value.draft.single().gainRaw)
         assertEquals(listOf(180, 0), device.writes.map { it.bands.single().gainRaw })
         assertEquals(ParamEqEditPhase.WRITING, editor.state.value.phase)
-        advanceTimeBy(300)
+        advanceTimeBy(300.milliseconds)
         runCurrent()
         assertEquals(0, device.stored.bands.single().gainRaw)
         assertEquals(ParamEqEditPhase.SENT, editor.state.value.phase)
@@ -306,10 +298,10 @@ class ParamEqEditorTest {
         editor.beginEdit()
         editor.changeGain(180)
         runCurrent()
-        advanceTimeBy(10)
+        advanceTimeBy(10.milliseconds)
         editor.changeGain(240)
         editor.flush()
-        advanceTimeBy(90)
+        advanceTimeBy(90.milliseconds)
         runCurrent()
 
         assertEquals(ParamEqEditPhase.FAILED, editor.state.value.phase)
@@ -325,7 +317,7 @@ class ParamEqEditorTest {
         editor.undo()
         editor.changeGain(60)
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertFalse(editor.state.value.isEditing)
         assertEquals(1, device.writes.size)
@@ -388,7 +380,7 @@ class ParamEqEditorTest {
         assertEquals(0, device.stored.bands.single().gainRaw)
         editor.undo()
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(1, device.writes.size)
         editor.refresh()
@@ -414,7 +406,7 @@ class ParamEqEditorTest {
         editor.endEdit()
         editor.refresh()
         assertEquals(ParamEqEditPhase.WRITING, editor.state.value.phase)
-        advanceTimeBy(100)
+        advanceTimeBy(100.milliseconds)
         runCurrent()
         assertTrue(editor.state.value.canUndo)
 
@@ -437,7 +429,7 @@ class ParamEqEditorTest {
         oldEditor.beginEdit()
         oldEditor.changeGain(180)
         runCurrent()
-        advanceTimeBy(50)
+        advanceTimeBy(50.milliseconds)
         oldEditor.changeGain(240)
         oldEditor.close()
         oldEditor.endEdit()
@@ -447,7 +439,7 @@ class ParamEqEditorTest {
         val newDevice = device()
         val newEditor = editor(newDevice)
         runCurrent()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
 
         assertEquals(1, oldDevice.writes.size)
@@ -567,13 +559,13 @@ class ParamEqEditorTest {
         editor.beginEdit()
         editor.changeGain(60)
         runCurrent()
-        advanceTimeBy(10)
+        advanceTimeBy(10.milliseconds)
         editor.changeGain(120)
         runCurrent()
         editor.changeGain(60)
         editor.endEdit()
         runCurrent()
-        advanceTimeBy(200)
+        advanceTimeBy(200.milliseconds)
         runCurrent()
         assertEquals(1, device.writes.size)
         assertEquals(60, device.stored.bands.single().gainRaw)
@@ -600,7 +592,7 @@ class ParamEqEditorTest {
         assertEquals(180, editor.state.value.draft.single().gainRaw)
         assertEquals(actual, device.stored)
         assertEquals(1, device.reads)
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(1, device.writes.size)
 
@@ -635,7 +627,7 @@ class ParamEqEditorTest {
             editor.flush()
             editor.endEdit()
             runCurrent()
-            advanceTimeBy(200)
+            advanceTimeBy(200.milliseconds)
             runCurrent()
         }
 
@@ -653,7 +645,7 @@ class ParamEqEditorTest {
         assertEquals(0, editor.state.value.lastSent?.single()?.gainRaw)
         assertFalse(editor.state.value.canUndo)
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(2, device.writes.size)
         editor.close()
@@ -667,14 +659,14 @@ class ParamEqEditorTest {
         editor.beginEdit()
         editor.changeGain(60)
         runCurrent()
-        advanceTimeBy(50)
+        advanceTimeBy(50.milliseconds)
         editor.changeGain(180)
         editor.changeGain(60)
         editor.endEdit()
         editor.flush()
         runCurrent()
         assertEquals(ParamEqEditPhase.WRITING, editor.state.value.phase)
-        advanceTimeBy(150)
+        advanceTimeBy(150.milliseconds)
         runCurrent()
 
         assertEquals(ParamEqEditPhase.SENT, editor.state.value.phase)
@@ -682,7 +674,7 @@ class ParamEqEditorTest {
         assertEquals(editor.state.value.draft, editor.state.value.lastSent)
         assertEquals(60, editor.state.value.draft.single().gainRaw)
         assertTrue(editor.state.value.canUndo)
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(1, device.writes.size)
         assertEquals(1, device.reads)
@@ -715,7 +707,7 @@ class ParamEqEditorTest {
         assertNull(editor.state.value.lastSent)
         assertFalse(editor.state.value.canUndo)
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(1, device.writes.size)
         editor.close()
@@ -785,7 +777,7 @@ class ParamEqEditorTest {
         editor.changeGain(240)
         editor.undo()
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(2, device.writes.size)
         assertEquals(1, device.reads)
@@ -817,7 +809,7 @@ class ParamEqEditorTest {
         assertNull(editor.state.value.lastSent)
         assertFalse(editor.state.value.canUndo)
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(1, device.writes.size)
         assertEquals(1, device.canceledWrites)
@@ -851,7 +843,7 @@ class ParamEqEditorTest {
         assertTrue(editor.state.value.draft.isEmpty())
         assertFalse(editor.state.value.canUndo)
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(2, device.reads)
         assertEquals(1, device.writes.size)
@@ -880,7 +872,7 @@ class ParamEqEditorTest {
             editor.editBand(band)
             editor.flush()
             editor.submit() // An active gesture is not a submission boundary.
-            advanceTimeBy(200)
+            advanceTimeBy(200.milliseconds)
             runCurrent()
             assertTrue(device.writes.isEmpty())
         }
@@ -899,7 +891,7 @@ class ParamEqEditorTest {
         editor.endEdit()
         editor.undo()
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
 
         assertEquals(edited, editor.state.value.draft)
@@ -947,7 +939,7 @@ class ParamEqEditorTest {
         editor.endEdit()
         editor.submit()
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(1, device.writes.size)
         assertEquals(1, device.reads)
@@ -997,7 +989,7 @@ class ParamEqEditorTest {
             assertFalse(editor.state.value.canSubmit)
             assertFalse(editor.state.value.canChangeSubmitMode)
             assertEquals(ParamEqSubmitMode.MANUAL, editor.state.value.submitMode)
-            if (step == 0) runCurrent() else advanceTimeBy(200)
+            if (step == 0) runCurrent() else advanceTimeBy(200.milliseconds)
         }
         runCurrent()
         repeat(3) {
@@ -1005,7 +997,7 @@ class ParamEqEditorTest {
             editor.flush()
             editor.endEdit()
             runCurrent()
-            advanceTimeBy(200)
+            advanceTimeBy(200.milliseconds)
         }
         runCurrent()
         assertEquals(listOf(submitted), device.writes.map { it.bands })
@@ -1034,7 +1026,7 @@ class ParamEqEditorTest {
         editor.endEdit()
         assertEquals(ParamEqEditPhase.PENDING, editor.state.value.phase)
         assertTrue(editor.state.value.canSubmit)
-        advanceTimeBy(200)
+        advanceTimeBy(200.milliseconds)
         runCurrent()
         assertEquals(1, device.writes.size)
         editor.submit()
@@ -1043,7 +1035,7 @@ class ParamEqEditorTest {
         assertTrue(editor.state.value.canUndo)
         editor.undo()
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(2, device.writes.size)
         assertEquals(0, editor.state.value.draft.single().gainRaw)
@@ -1082,7 +1074,7 @@ class ParamEqEditorTest {
         runCurrent()
         editor.undo()
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(2, device.reads)
         assertTrue(device.writes.isEmpty())
@@ -1126,7 +1118,7 @@ class ParamEqEditorTest {
         editor.undo()
         editor.endEdit()
         editor.flush()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(1, device.writes.size)
         assertEquals(1, device.reads)
@@ -1166,7 +1158,7 @@ class ParamEqEditorTest {
         assertTrue(editor.state.value.draft.isEmpty())
         assertFalse(editor.state.value.canSubmit)
         editor.submit()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(2, device.reads)
         assertTrue(device.writes.isEmpty())
@@ -1207,7 +1199,7 @@ class ParamEqEditorTest {
         assertFalse(editor.state.value.canChangeSubmitMode)
         editor.setSubmitMode(ParamEqSubmitMode.REALTIME)
         editor.flush()
-        advanceTimeBy(200)
+        advanceTimeBy(200.milliseconds)
         runCurrent()
         assertEquals(ParamEqSubmitMode.MANUAL, editor.state.value.submitMode)
         assertTrue(device.writes.isEmpty())
@@ -1217,7 +1209,7 @@ class ParamEqEditorTest {
         editor.setSubmitMode(ParamEqSubmitMode.REALTIME)
         editor.setSubmitMode(ParamEqSubmitMode.MANUAL)
         editor.flush()
-        advanceTimeBy(200)
+        advanceTimeBy(200.milliseconds)
         runCurrent()
         assertEquals(1, device.writes.size)
         editor.setSubmitMode(ParamEqSubmitMode.REALTIME)
@@ -1236,7 +1228,7 @@ class ParamEqEditorTest {
         runCurrent()
         editor.changeGain(60)
         runCurrent()
-        advanceTimeBy(10)
+        advanceTimeBy(10.milliseconds)
         editor.changeGain(120)
         runCurrent() // The realtime worker is waiting for its next 150ms start.
         editor.changeGain(60)
@@ -1246,7 +1238,7 @@ class ParamEqEditorTest {
         editor.changeGain(181)
         editor.endEdit()
         editor.flush()
-        advanceTimeBy(500)
+        advanceTimeBy(500.milliseconds)
         runCurrent()
         assertEquals(listOf(60), device.writes.map { it.bands.single().gainRaw })
         assertEquals(ParamEqEditPhase.PENDING, editor.state.value.phase)
@@ -1254,7 +1246,7 @@ class ParamEqEditorTest {
         editor.submit()
         editor.flush()
         runCurrent()
-        advanceTimeBy(500)
+        advanceTimeBy(500.milliseconds)
         runCurrent()
         assertEquals(listOf(60, 181), device.writes.map { it.bands.single().gainRaw })
         assertEquals(1, device.reads)
@@ -1268,7 +1260,7 @@ class ParamEqEditorTest {
         runCurrent()
         editor.changeGain(60)
         runCurrent()
-        advanceTimeBy(10)
+        advanceTimeBy(10.milliseconds)
         editor.changeGain(120)
         runCurrent()
         editor.changeGain(60)
@@ -1280,7 +1272,7 @@ class ParamEqEditorTest {
         runCurrent()
         assertEquals(listOf(0L, 10L), device.writes.map { it.startedAt })
         assertEquals(listOf(60, 181), device.writes.map { it.bands.single().gainRaw })
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertEquals(2, device.writes.size)
         assertEquals(ParamEqEditPhase.SENT, editor.state.value.phase)
@@ -1305,7 +1297,7 @@ class ParamEqEditorTest {
         val newDevice = device()
         val newEditor = editor(newDevice)
         runCurrent()
-        advanceTimeBy(1_000)
+        advanceTimeBy(1_000.milliseconds)
         runCurrent()
         assertTrue(oldDevice.writes.isEmpty())
         assertTrue(newDevice.writes.isEmpty())
@@ -1336,88 +1328,3 @@ class ParamEqEditorTest {
 private fun band(index: Int, gainRaw: Int = 0) =
     GaiaPeqBand(index, 1000 + index * 1000, gainRaw, 4096, PeqFilter.PEAKING)
 
-/** Stateful device substitute: successful transport can apply, clamp, or leave device values unchanged. */
-private class StoredGaiaDevice(initial: GaiaParamEqState, private val now: () -> Long) : GaiaControls {
-    data class Write(val startedAt: Long, val bands: List<GaiaPeqBand>)
-
-    var stored = initial.copy(bands = initial.bands.toList())
-        private set
-    val writes = mutableListOf<Write>()
-    var reads = 0
-        private set
-    var available = true
-    var writeDelayMillis = 0L
-    var gainLimitRaw: Int? = null
-    var applyWrites = true
-    var nextReadFailure: Exception? = null
-    var nextWriteFailure: Exception? = null
-    var failAfterApply = false
-    var maxConcurrentWrites = 0
-        private set
-    var canceledWrites = 0
-        private set
-    private var concurrentWrites = 0
-
-    override suspend fun getParamEq(): GaiaParamEqState {
-        reads++
-        if (!available) throw DropException.UnsupportedCapability("GAIA Bluetrum PEQ")
-        nextReadFailure?.let {
-            nextReadFailure = null
-            throw it
-        }
-        return stored.copy(bands = stored.bands.toList())
-    }
-
-    override suspend fun setParamEq(bands: List<GaiaPeqBand>) {
-        writes += Write(now(), bands.toList())
-        concurrentWrites++
-        maxConcurrentWrites = maxOf(maxConcurrentWrites, concurrentWrites)
-        try {
-            delay(writeDelayMillis)
-            if (!available) throw DropException.Disconnected()
-            val failure = nextWriteFailure
-            nextWriteFailure = null
-            if (failure != null && !failAfterApply) throw failure
-            val limit = gainLimitRaw
-            val actualBands = bands.map { band ->
-                if (limit == null) band else band.copy(gainRaw = band.gainRaw.coerceIn(-limit, limit))
-            }
-            if (applyWrites) stored = stored.copy(currentPreset = 63, bands = actualBands)
-            if (failure != null) throw failure
-        } catch (cancelled: CancellationException) {
-            canceledWrites++
-            throw cancelled
-        } finally {
-            concurrentWrites--
-        }
-    }
-
-    private fun unexpected(): Nothing = throw AssertionError("Editor called an unrelated GAIA operation")
-    override suspend fun getBattery(): EarbudBattery = unexpected()
-    override suspend fun getAncMode(): AncMode = unexpected()
-    override suspend fun setAncMode(mode: AncMode): AncMode = unexpected()
-    override suspend fun getGain(): GainLevel = unexpected()
-    override suspend fun setGain(level: GainLevel): GainLevel = unexpected()
-    override suspend fun isLedOn(): Boolean = unexpected()
-    override suspend fun setLedOn(on: Boolean): Boolean = unexpected()
-    override suspend fun isSpatialOn(): Boolean = unexpected()
-    override suspend fun setSpatialOn(on: Boolean): Boolean = unexpected()
-    override suspend fun getHeadTracking(): HeadTrackingMode = unexpected()
-    override suspend fun setHeadTracking(mode: HeadTrackingMode): HeadTrackingMode = unexpected()
-    override suspend fun isCodecEnabled(codec: AudioCodec): Boolean = unexpected()
-    override suspend fun setCodecEnabled(codec: AudioCodec, enabled: Boolean): Boolean = unexpected()
-    override suspend fun isDynamicBassOn(): Boolean = unexpected()
-    override suspend fun setDynamicBassOn(on: Boolean): Boolean = unexpected()
-    override suspend fun isLeftRightReversed(): Boolean = unexpected()
-    override suspend fun setLeftRightReversed(reversed: Boolean): Boolean = unexpected()
-    override suspend fun getEqualizerPreset(): Int = unexpected()
-    override suspend fun setEqualizerPreset(index: Int): Int = unexpected()
-    override suspend fun getGestureConfiguration(gesture: Int, context: Int): GaiaPacket = unexpected()
-    override suspend fun resetGestureConfiguration(): GaiaPacket = unexpected()
-    override suspend fun getBasicInfo(command: Int): GaiaPacket = unexpected()
-    override suspend fun getAudioCuration(command: Int): GaiaPacket = unexpected()
-    override suspend fun setAudioCuration(command: Int, payload: ByteArray): GaiaPacket = unexpected()
-    override suspend fun powerOff(): Unit = unexpected()
-    override suspend fun requestRaw(command: GaiaCommand): GaiaPacket = unexpected()
-    override suspend fun sendRaw(command: GaiaCommand): Unit = unexpected()
-}
