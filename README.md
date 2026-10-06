@@ -5,7 +5,7 @@
 > 
 > under construction
 
-Kotlin Toolchain 0.12.2 项目，包含 Android 应用、JVM 桌面应用、应用共享库 `shared` 和可独立消费的 Android/JVM KMP 库 `drop`。`drop/src/blueConnector` 是协议无关的蓝牙通讯契约，`drop/src/drop` 是平台无关的 GAIA / 9ECA 控制器，`shared/src/headset` 是本应用的单耳机连接与选择策略；`composeLegacy` 是两平台共用的概览、设置和诊断界面。平台蓝牙实现位于 `drop/src@android/blueConnector`，JVM actual 明确不可用。Kotlin 包名仍为 `ink.lipoly.app.sunrise`。
+Kotlin Toolchain 0.12.2 项目，包含 Android 应用、JVM 桌面应用、应用共享库 `shared` 和可独立消费的 Android/JVM KMP 库 `drop`。`drop/src/blueConnector` 是协议无关的蓝牙通讯契约，`drop/src/drop` 是平台无关的 GAIA / 9ECA 控制器，`shared/src/headset` 是本应用的单耳机连接与选择策略。当前共享界面入口位于 `shared/src/compose`，可复用 PEQ 控件位于 `shared/src/controls/peq`；`composeLegacy` 保留旧概览、设置、目录和诊断界面，不再作为默认入口。平台蓝牙实现位于 `drop/src@android/blueConnector`，JVM actual 明确不可用。Kotlin 包名仍为 `ink.lipoly.app.sunrise`。
 
 ## 运行
 
@@ -19,13 +19,36 @@ kotlin.bat run -m jvm-app
 kotlin.bat run -m android-app
 ```
 
-Android 构建需要 Android SDK 37；运行需要已连接的设备或模拟器。Android 首次启动请求蓝牙权限；先在系统蓝牙中连接音频耳机，应用会尝试自动连接。多个候选设备时可在选择框中选择耳机；关闭选择框后，概览的“选择耳机”可再次打开设备列表。概览显示连接、电量与降噪，连接地址和协议收在可展开的“连接详情”中，未知值为“—”；ANC 等控制只在能力及读回确认后可用。底部“设置”集中管理主题、语言与界面选项；高级诊断入口在权限与诊断分组中，GAIA、9ECA 和通知测试按需展开。设置存入 `sunrise_ui` 偏好设置，重启后保留。未连接设备时仍可查看界面，设备控制不可用。
+Android 构建需要 Android SDK 37；运行需要已连接的设备或模拟器。Android 首次启动请求蓝牙权限；宿主继续管理权限和连接生命周期。当前新入口仅显示标题、连接阶段、目录条目数、可用时的 EQ 段数及缺失权限时的授权按钮，没有迁入旧导航和业务页面。以下概览、设置、目录、诊断与完整 EQ 页面的说明对应保留的旧界面或独立控件，不表示新入口已经展示这些页面。
 
-JVM 桌面运行同一套界面，但不注册蓝牙管理器或客户端：概览和权限区域明确提示当前平台不可用，刷新及连接操作不可用，诊断不提供可执行蓝牙动作。外观/语言仅保存在本次进程内；目录筛选、源/目标显示及绑定仍持久化。
+JVM 桌面运行同一新入口，但不注册蓝牙管理器或客户端，显示蓝牙不可用；离线目录仍初始化。设置服务和持久化规则保持不变，新入口尚未提供设置编辑界面。
 
 Android `SunRiseApplication` 创建唯一进程级 `SunRiseRuntime`，Activity 只报告权限和附着展示层，销毁/重建不关闭应用耳机资源。`ApplicationBluetoothResources` 是唯一蓝牙 owner，显式关闭时先 `client.close()` 再 `bt.close()`；生产不依赖 `Application.onTerminate`，不增加 Service 或后台保活，系统杀进程不保证优雅清理。Android 12+ 需要 `BLUETOOTH_CONNECT`，扫描还需要 `BLUETOOTH_SCAN`，旧版 LE 扫描需要定位权限；权限由消费者宿主申请。原音频→BLE 关联、经典 RFCOMM EQ 路径与设置键保持不变。
 
 编译说明：共享模块用 `-Xexpect-actual-classes` 确认 Kotlin `BtHost` expect/actual 类仍处于 Beta；Android GATT 为兼容 API 24–32 保留旧版回调及写入分支，弃用抑制局限于旧 API 使用处。Material3 明确固定为与 Compose 1.12.1 对应的 `1.12.0-alpha03`，避免自动推断旧版本导致桌面诊断输入框运行时崩溃。
+
+## 手动重写 Compose 界面
+
+入口链路：Android `App` / JVM `DesktopApp` → `shared/src/AppEntry.kt` → `shared/src/compose/AppContent.kt`。直接修改新 `AppContent` 的内容即可；无需重新创建 runtime、Koin 容器或后端会话。两平台暂时复用原主题，旧页面布局和交互未修改，旧 `AppContent` 仅更新 PEQ import。
+
+新入口显式接收以下接口，不依赖 Compose/Koin 注入：
+
+| 参数 | 用途 |
+| --- | --- |
+| `catalog` | `Catalog.state`、产品/频响查询、目录数据 |
+| `client` | 可空 `HeadsetClient`；`state`、协议控件；JVM 为 null |
+| `session.headset` | 连接选择/重试、操作执行、候选与通知状态 |
+| `session.catalog` | 拉取、取消、导入确认、导出及操作状态 |
+| `session.eq` | 按 GAIA 控件引用身份管理编辑器 |
+| `settings` / `onSettingsChange` | 当前设置及写回宿主设置服务 |
+| `missingPermissions` / `onRequestPermissions` | 缺失权限及宿主授权回调 |
+| `english` / `dynamicColorAvailable` | 语言选择及平台动态色能力 |
+
+StateFlow 用 `collectAsState()` 订阅。`compose/ParamEqBinding.kt` 的 `rememberParamEqEditor(client, headsetState, session.eq, missingPermissions)` 在根级绑定 EQ：权限不足、连接失效或 GAIA 未就绪时解绑；相同控件复用同一编辑器。把绑定留在导航外，页面只接收 `editor` 和 `editor.state`；不要在页面切换时关闭 editor、session、client 或 Catalog。宿主仍负责释放会话。
+
+复用 `ink.lipoly.app.sunrise.controls.peq` 下的 `ParamEqScreen`（完整控件）或 `ParamEqCurve`（曲线），编辑状态和数值工具分别在 `ParamEqEditor.kt`、`ParamEqValues.kt`。API 保持 `internal`，供 `shared` 内的新 Compose 界面使用；旧包没有兼容别名。
+
+本次切换验收：删除临时烟测入口后，`kotlin.bat build` 成功；`ParamEqEditorTest`、`ParamEqValuesTest`、`EqSessionOwnerTest` 在 JVM 和 Android 宿主各 58 项全部通过。实际 JVM 新入口显示蓝牙不可用和 155 条离线目录；迁出的 PEQ 在独立零蓝牙烟测窗口绘制源/预测/目标曲线，鼠标拖动更新草稿，手动模式读取 1 次、写入 0 次。IDEA MCP 已检查新入口和迁出控件并解析绑定符号；新入口的设置与动态色预留参数尚未用于最小界面。临时源码、窗口和隔离数据已清理，未运行 Android 应用或向真实耳机提交 EQ。
 
 ## 通讯与控制
 

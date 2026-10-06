@@ -38,6 +38,8 @@ import ink.lipoly.app.sunrise.catalog.*
 import ink.lipoly.app.sunrise.settings.UiSettings
 import ink.lipoly.app.sunrise.presentation.PresentationNotice
 import ink.lipoly.app.sunrise.presentation.PresentationSession
+import ink.lipoly.app.sunrise.controls.peq.ParamEqEditPhase
+import ink.lipoly.app.sunrise.controls.peq.ParamEqScreen
 
 internal enum class MainPage { OVERVIEW, EQUALIZER, SETTINGS }
 

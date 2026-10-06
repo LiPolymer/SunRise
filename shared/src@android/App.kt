@@ -1,7 +1,6 @@
 package ink.lipoly.app.sunrise
 
 import android.os.Build
-import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -12,7 +11,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
 import ink.lipoly.app.sunrise.catalog.rememberCatalogDocuments
-import ink.lipoly.app.sunrise.composeLegacy.*
 import ink.lipoly.app.sunrise.di.SunRiseRuntime
 import ink.lipoly.app.sunrise.di.createPreviewSunRiseRuntime
 import kotlinx.coroutines.NonCancellable
@@ -34,11 +32,6 @@ fun App(
     val preview = LocalInspectionMode.current
     val session = remember(runtime, documents) { runtime.createPresentationSession(documents, scope, preview) }
     DisposableEffect(session) { onDispose { session.close() } }
-    val navigation = rememberAppNavigationState()
-
-    BackHandler(navigation.catalogue || navigation.diagnostics) {
-        if (navigation.catalogue) navigation.catalogue = false else navigation.diagnostics = false
-    }
     AndroidSunRiseTheme(settings) {
         AppEntry(
             catalog = runtime.catalog,
@@ -49,7 +42,6 @@ fun App(
             settings = settings,
             english = settings.english(),
             dynamicColorAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
-            navigation = navigation,
             onSettingsChange = runtime.settings::update,
         )
     }

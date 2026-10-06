@@ -1,8 +1,8 @@
 package ink.lipoly.app.sunrise.presentation
 
-import ink.lipoly.app.sunrise.composeLegacy.ParamEqEditPhase
-import ink.lipoly.app.sunrise.composeLegacy.ParamEqSubmitMode
-import ink.lipoly.app.sunrise.composeLegacy.StoredGaiaDevice
+import ink.lipoly.app.sunrise.controls.peq.ParamEqEditPhase
+import ink.lipoly.app.sunrise.controls.peq.ParamEqSubmitMode
+import ink.lipoly.app.sunrise.controls.peq.StoredGaiaDevice
 import ink.lipoly.app.sunrise.drop.GaiaControls
 import ink.lipoly.app.sunrise.drop.GaiaParamEqState
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand

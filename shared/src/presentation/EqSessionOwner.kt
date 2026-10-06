@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.presentation
 
-import ink.lipoly.app.sunrise.composeLegacy.ParamEqEditor
+import ink.lipoly.app.sunrise.controls.peq.ParamEqEditor
 import ink.lipoly.app.sunrise.drop.GaiaControls
 import kotlinx.coroutines.CoroutineScope
 import kotlin.time.TimeSource

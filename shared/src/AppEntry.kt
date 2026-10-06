@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise
 
 import androidx.compose.runtime.Composable
-import ink.lipoly.app.sunrise.composeLegacy.*
+import ink.lipoly.app.sunrise.compose.AppContent
 import ink.lipoly.app.sunrise.headset.HeadsetClient
 import ink.lipoly.app.sunrise.presentation.PresentationSession
 import ink.lipoly.app.sunrise.catalog.Catalog
@@ -17,8 +17,17 @@ internal fun AppEntry(
     settings: UiSettings,
     english: Boolean,
     dynamicColorAvailable: Boolean,
-    navigation: AppNavigationState,
     onSettingsChange: (UiSettings) -> Unit,
 ) {
-    AppContent(catalog, client, session, missingPermissions, onRequestPermissions, settings, english, dynamicColorAvailable, navigation, onSettingsChange)
+    AppContent(
+        catalog = catalog,
+        client = client,
+        session = session,
+        missingPermissions = missingPermissions,
+        onRequestPermissions = onRequestPermissions,
+        settings = settings,
+        english = english,
+        dynamicColorAvailable = dynamicColorAvailable,
+        onSettingsChange = onSettingsChange,
+    )
 }

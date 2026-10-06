@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.composeLegacy
+package ink.lipoly.app.sunrise.controls.peq
 
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -35,6 +35,13 @@ import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqFilter
 import ink.lipoly.app.sunrise.drop.PeqBiquad
 import kotlin.math.*
+
+private fun acousticAxisLabel(value: Double): String {
+    if (abs(value) < 1e6) return value.toString().removeSuffix(".0")
+    val exponent = floor(log10(abs(value))).toInt()
+    val mantissa = round(value / 10.0.pow(exponent) * 100.0) / 100.0
+    return "${mantissa.toString().removeSuffix(".0")}e$exponent"
+}
 
 private val bandColors = listOf(Color(0xffe69f00), Color(0xff56b4e9), Color(0xff009e73), Color(0xffcc79a7), Color(0xffd55e00), Color(0xff0072b2))
 private fun bandColor(index: Int): Color = bandColors[index % bandColors.size]

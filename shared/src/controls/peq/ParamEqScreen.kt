@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.composeLegacy
+package ink.lipoly.app.sunrise.controls.peq
 
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -38,7 +38,40 @@ import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqFilter
 import ink.lipoly.app.sunrise.drop.PeqHeadroom
 import ink.lipoly.app.sunrise.catalog.*
+import ink.lipoly.app.sunrise.drop.AncMode
+import ink.lipoly.app.sunrise.drop.DropException
 import kotlin.math.roundToInt
+
+internal fun tr(english: Boolean, chinese: String, englishText: String): String =
+    if (english) englishText else chinese
+
+private fun AncMode.display(english: Boolean): String = when (this) {
+    AncMode.OFF -> tr(english, "关闭", "Off")
+    AncMode.NOISE_CANCELLING -> tr(english, "降噪", "Noise cancelling")
+    AncMode.TRANSPARENCY -> tr(english, "通透", "Transparency")
+    AncMode.WIND -> tr(english, "抗风噪", "Wind")
+    AncMode.ADAPTIVE -> tr(english, "自适应", "Adaptive")
+    AncMode.LIVE -> "Live"
+}
+
+private fun errorMessage(error: Exception, english: Boolean): String = when (error) {
+    is DropException.Unverified -> tr(
+        english,
+        "命令已发送，可能已部分应用，但读回未能验证；当前状态未知，请重新读取。",
+        "Command sent and may be partially applied, but readback failed. Current state is unknown; reload.",
+    )
+    is DropException.AncModeMismatch -> tr(
+        english,
+        "读回不一致；设备实际为 ${error.observed.display(false)}。",
+        "Readback mismatch; device reports ${error.observed.display(true)}.",
+    )
+    is DropException.CodecStateMismatch -> tr(
+        english,
+        "${error.codec} 读回不一致；设备实际${if (error.observed) "开启" else "关闭"}。",
+        "${error.codec} readback mismatch; the device reports ${if (error.observed) "enabled" else "disabled"}.",
+    )
+    else -> error.message ?: tr(english, "未知错误", "Unknown error")
+}
 
 private sealed interface PeqSheet {
     data object Bands : PeqSheet

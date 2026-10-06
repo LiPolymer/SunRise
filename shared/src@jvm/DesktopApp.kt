@@ -9,7 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import ink.lipoly.app.sunrise.catalog.JvmCatalogDocuments
-import ink.lipoly.app.sunrise.composeLegacy.*
+import ink.lipoly.app.sunrise.composeLegacy.SunRiseTheme
 import ink.lipoly.app.sunrise.di.SunRiseRuntime
 import ink.lipoly.app.sunrise.settings.usesEnglish
 import ink.lipoly.app.sunrise.settings.isDark
@@ -30,7 +30,6 @@ fun DesktopApp(window: Frame, runtime: SunRiseRuntime) {
             try { session.close() } finally { documents.close() }
         }
     }
-    val navigation = rememberAppNavigationState()
     SunRiseTheme(settings, dark = settings.isDark(isSystemInDarkTheme())) {
         AppEntry(
             catalog = runtime.catalog,
@@ -41,7 +40,6 @@ fun DesktopApp(window: Frame, runtime: SunRiseRuntime) {
             settings = settings,
             english = settings.language.usesEnglish(Locale.getDefault().language),
             dynamicColorAvailable = false,
-            navigation = navigation,
             onSettingsChange = runtime.settings::update,
         )
     }
