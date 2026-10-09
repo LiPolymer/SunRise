@@ -27,11 +27,13 @@ import kotlinx.serialization.modules.polymorphic
 
 object OurNavStack {
 
-    interface INavNode : NavKey {
-        val displayName : String
+    interface INavNode: NavKey {
+        val displayName: String
             get() = ""
-        val icon : ImageVector?
+        val icon: ImageVector?
             get() = null
+        val index: Int
+            get() = 0
     }
 
     @Serializable
@@ -42,6 +44,8 @@ object OurNavStack {
                 get() = "总览"
             override val icon: ImageVector
                 get() = Icons.Rounded.PlayArrow
+            override val index: Int
+                get() = 1
         }
 
         @Serializable
@@ -50,6 +54,8 @@ object OurNavStack {
                 get() = "均衡器"
             override val icon: ImageVector
                 get() = ImportedIcons.Tune
+            override val index: Int
+                get() = 2
         }
 
         @Serializable
@@ -58,6 +64,8 @@ object OurNavStack {
                 get() = "设定"
             override val icon: ImageVector
                 get() = Icons.Filled.Settings
+            override val index: Int
+                get() = 3
         }
     }
 
@@ -88,6 +96,7 @@ object OurNavStack {
                 routeJson.decodeFromJsonElement(serializer,jsonObj)
             }
             .filterIsInstance<INavNode>()
+            .sortedBy { it.index }
             .toList()
     }
 
