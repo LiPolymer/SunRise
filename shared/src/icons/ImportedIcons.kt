@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.dp
 
 object ImportedIcons {
     @Suppress("CheckReturnValue")
-    public val Tune: ImageVector
+    val Tune: ImageVector
         get() {
             if (_tune != null) {
                 return _tune!!

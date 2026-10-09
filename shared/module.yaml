@@ -5,12 +5,14 @@ product:
 dependencies:
   - ../drop: exported
   - $compose.foundation: exported
-  - org.jetbrains.compose.material3:material3:1.12.0-alpha03: exported
+  - # noinspection AmperCanConvertToCatalogVersion
+    org.jetbrains.compose.material3:material3:1.11.0-alpha07: exported
   - org.jetbrains.compose.material:material-icons-core:1.7.3
+  - org.jetbrains.androidx.navigation3:navigation3-ui:1.1.1
 
   - $compose.ui
   - org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0
-  - org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0
+  - $kotlin.serialization.json
   - io.ktor:ktor-client-core:3.3.0
   - io.ktor:ktor-client-cio:3.3.0
   - io.insert-koin:koin-core:4.2.2
@@ -18,7 +20,7 @@ dependencies:
 
 test-dependencies:
   - org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0
-  - org.jetbrains.kotlin:kotlin-test:2.4.20:all: compile-only
+  - $kotlin.test: compile-only
 
 dependencies@android:
   - androidx.activity:activity-compose:1.13.0
@@ -29,6 +31,7 @@ settings:
   kotlin:
     version: 2.4.20
     freeCompilerArgs: [ -Xexpect-actual-classes ]
+    serialization: enabled
     compilerPlugins:
       - id: io.insert-koin.compiler.plugin
         dependency: io.insert-koin:koin-compiler-plugin:1.2.1
