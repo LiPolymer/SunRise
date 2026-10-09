@@ -42,35 +42,20 @@ import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropException
 import kotlin.math.roundToInt
 
-internal fun tr(english: Boolean, chinese: String, englishText: String): String =
-    if (english) englishText else chinese
-
-private fun AncMode.display(english: Boolean): String = when (this) {
-    AncMode.OFF -> tr(english, "关闭", "Off")
-    AncMode.NOISE_CANCELLING -> tr(english, "降噪", "Noise cancelling")
-    AncMode.TRANSPARENCY -> tr(english, "通透", "Transparency")
-    AncMode.WIND -> tr(english, "抗风噪", "Wind")
-    AncMode.ADAPTIVE -> tr(english, "自适应", "Adaptive")
+private fun AncMode.display(): String = when (this) {
+    AncMode.OFF -> "关闭"
+    AncMode.NOISE_CANCELLING -> "降噪"
+    AncMode.TRANSPARENCY -> "通透"
+    AncMode.WIND -> "抗风噪"
+    AncMode.ADAPTIVE -> "自适应"
     AncMode.LIVE -> "Live"
 }
 
-private fun errorMessage(error: Exception, english: Boolean): String = when (error) {
-    is DropException.Unverified -> tr(
-        english,
-        "命令已发送，可能已部分应用，但读回未能验证；当前状态未知，请重新读取。",
-        "Command sent and may be partially applied, but readback failed. Current state is unknown; reload.",
-    )
-    is DropException.AncModeMismatch -> tr(
-        english,
-        "读回不一致；设备实际为 ${error.observed.display(false)}。",
-        "Readback mismatch; device reports ${error.observed.display(true)}.",
-    )
-    is DropException.CodecStateMismatch -> tr(
-        english,
-        "${error.codec} 读回不一致；设备实际${if (error.observed) "开启" else "关闭"}。",
-        "${error.codec} readback mismatch; the device reports ${if (error.observed) "enabled" else "disabled"}.",
-    )
-    else -> error.message ?: tr(english, "未知错误", "Unknown error")
+private fun errorMessage(error: Exception): String = when (error) {
+    is DropException.Unverified -> "命令已发送，可能已部分应用，但读回未能验证；当前状态未知，请重新读取。"
+    is DropException.AncModeMismatch -> "读回不一致；设备实际为 ${error.observed.display()}。"
+    is DropException.CodecStateMismatch -> "${error.codec} 读回不一致；设备实际${if (error.observed) "开启" else "关闭"}。"
+    else -> error.message ?: "未知错误"
 }
 
 private sealed interface PeqSheet {
@@ -79,17 +64,17 @@ private sealed interface PeqSheet {
     data class Number(val editor: ParamEqEditor, val band: GaiaPeqBand, val parameter: PeqParameter, val returnFocus: FocusRequester) : PeqSheet
 }
 
-private fun filterName(filter: PeqFilter, english: Boolean): String = when (filter) {
-    PeqFilter.PEAKING -> tr(english, "钟形 / 峰值", "Bell / Peaking")
-    PeqFilter.LOW_SHELF -> tr(english, "低架", "Low shelf")
-    PeqFilter.HIGH_SHELF -> tr(english, "高架", "High shelf")
-    PeqFilter.LOW_PASS -> tr(english, "低通", "Low pass")
-    PeqFilter.HIGH_PASS -> tr(english, "高通", "High pass")
-    PeqFilter.BYPASS -> tr(english, "旁路", "Bypass")
+private fun filterName(filter: PeqFilter): String = when (filter) {
+    PeqFilter.PEAKING -> "钟形 / 峰值"
+    PeqFilter.LOW_SHELF -> "低架"
+    PeqFilter.HIGH_SHELF -> "高架"
+    PeqFilter.LOW_PASS -> "低通"
+    PeqFilter.HIGH_PASS -> "高通"
+    PeqFilter.BYPASS -> "旁路"
 }
-private fun parameterName(parameter: PeqParameter, english: Boolean): String = when (parameter) {
-    PeqParameter.GAIN -> tr(english, "增益", "Gain")
-    PeqParameter.FREQUENCY -> tr(english, "频率", "Frequency")
+private fun parameterName(parameter: PeqParameter): String = when (parameter) {
+    PeqParameter.GAIN -> "增益"
+    PeqParameter.FREQUENCY -> "频率"
     PeqParameter.Q -> "Q"
 }
 private fun parameterValue(band: GaiaPeqBand, parameter: PeqParameter): String = when (parameter) {
@@ -97,7 +82,7 @@ private fun parameterValue(band: GaiaPeqBand, parameter: PeqParameter): String =
     PeqParameter.FREQUENCY -> "${band.frequencyHz} Hz"
     PeqParameter.Q -> "Q ${(band.q * 1000).roundToInt() / 1000.0}"
 }
-private fun bandSummary(band: GaiaPeqBand, english: Boolean): String = "${band.frequencyHz} Hz · ${parameterValue(band, PeqParameter.GAIN)} · ${parameterValue(band, PeqParameter.Q)} · ${filterName(band.filter, english)}"
+private fun bandSummary(band: GaiaPeqBand): String = "${band.frequencyHz} Hz · ${parameterValue(band, PeqParameter.GAIN)} · ${parameterValue(band, PeqParameter.Q)} · ${filterName(band.filter)}"
 private fun canEdit(state: ParamEqEditState?): Boolean = when (state?.phase) {
     ParamEqEditPhase.READY, ParamEqEditPhase.SENT, ParamEqEditPhase.PENDING -> true
     ParamEqEditPhase.WRITING -> state.submitMode != ParamEqSubmitMode.MANUAL
@@ -122,7 +107,7 @@ private fun ResponseLegend(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ParamEqScreen(
-    editor: ParamEqEditor?, state: ParamEqEditState?, english: Boolean, enabled: Boolean,
+    editor: ParamEqEditor?, state: ParamEqEditState?, enabled: Boolean,
     referenceProduct: CatalogProduct?,
     referenceResponse: CatalogResponse?,
     showReferenceResponse: Boolean,
@@ -166,13 +151,13 @@ internal fun ParamEqScreen(
     val sampledTarget = remember(targetKey) { readyTarget?.let { sampleCatalogResponse(it) } }
     val targetUnavailableReason = when {
         targetProductUuid == null -> null
-        targetProduct == null -> tr(english, "所选目标已不在当前数据库中，请重新选择。", "The selected target is no longer in this database. Choose it again.")
-        targetResponse is CatalogResponse.Unavailable -> tr(english, "目标频响无法解析：${targetResponse.reason}", "Target response unparseable: ${targetResponse.reason}")
-        sampledTarget == null -> tr(english, "目录未提供可用的目标频响。", "The catalogue provides no usable target response.")
-        sampledTarget.normalizationHz == null -> tr(english, "目标不覆盖 500 Hz，无法进行归一化形状对比。", "The target does not cover 500 Hz; normalized shape comparison is unavailable.")
-        readyReference == null -> tr(english, "请先选择可用的源频响，才能进行形状对比。", "Choose a usable source response first to compare shapes.")
+        targetProduct == null -> "所选目标已不在当前数据库中，请重新选择。"
+        targetResponse is CatalogResponse.Unavailable -> "目标频响无法解析：${targetResponse.reason}"
+        sampledTarget == null -> "目录未提供可用的目标频响。"
+        sampledTarget.normalizationHz == null -> "目标不覆盖 500 Hz，无法进行归一化形状对比。"
+        readyReference == null -> "请先选择可用的源频响，才能进行形状对比。"
         readyReference.frequencyHz.first() > 500.0 || readyReference.frequencyHz.last() < 500.0 ->
-            tr(english, "源频响不覆盖 500 Hz，无法进行归一化形状对比。", "The source does not cover 500 Hz; normalized shape comparison is unavailable.")
+            "源频响不覆盖 500 Hz，无法进行归一化形状对比。"
         else -> null
     }
     val target = sampledTarget.takeIf { showTargetResponse && targetProductUuid != null && targetUnavailableReason == null }
@@ -237,36 +222,36 @@ internal fun ParamEqScreen(
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(tr(english, "源频响", "Source response"), style = MaterialTheme.typography.titleMedium)
+                        Text("源频响", style = MaterialTheme.typography.titleMedium)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(referenceProduct?.let { "${it.name} · ${it.languageType ?: tr(english, "语言未提供", "Language unspecified")}" }
-                                ?: tr(english, "未选择参考频响", "No reference response selected"), Modifier.weight(1f))
+                            Text(referenceProduct?.let { "${it.name} · ${it.languageType ?: "语言未提供"}" }
+                                ?: "未选择参考频响", Modifier.weight(1f))
                             TextButton(onClick = { showReferenceDetails = !showReferenceDetails }) {
-                                Text(tr(english, "资料", "Details"))
+                                Text("资料")
                             }
                         }
                         if (showReferenceDetails) {
                             referenceProduct?.let { Text("UUID: ${it.uuid}", style = MaterialTheme.typography.bodySmall) }
-                            referenceSource?.let { Text(tr(english, "资料来源：$it", "Data source: $it"), style = MaterialTheme.typography.bodySmall) }
-                            referenceRetrievedAt?.let { Text(tr(english, "快照时间：$it", "Snapshot time: $it"), style = MaterialTheme.typography.bodySmall) }
+                            referenceSource?.let { Text("资料来源：$it", style = MaterialTheme.typography.bodySmall) }
+                            referenceRetrievedAt?.let { Text("快照时间：$it", style = MaterialTheme.typography.bodySmall) }
                         }
                         if (referenceResponse !is CatalogResponse.Ready) Text(
                             when (referenceResponse) {
-                                is CatalogResponse.Unavailable -> tr(english, "参考频响无法解析：${referenceResponse.reason}", "Reference response unparseable: ${referenceResponse.reason}")
-                                else -> tr(english, "目录未提供参考频响", "No reference response provided by the catalogue")
+                                is CatalogResponse.Unavailable -> "参考频响无法解析：${referenceResponse.reason}"
+                                else -> "目录未提供参考频响"
                             },
                             style = MaterialTheme.typography.bodySmall,
                         )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = onChooseReference) { Text(tr(english, "选择参考频响", "Choose reference response")) }
-                            TextButton(onClick = onResetReference) { Text(tr(english, "恢复自动匹配", "Restore auto")) }
+                            OutlinedButton(onClick = onChooseReference) { Text("选择参考频响") }
+                            TextButton(onClick = onResetReference) { Text("恢复自动匹配") }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(tr(english, "显示源频响", "Show source response"), Modifier.weight(1f))
+                            Text("显示源频响", Modifier.weight(1f))
                             Switch(checked = showReferenceResponse, onCheckedChange = onReferenceResponseChange)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(tr(english, "预测含自动前置增益", "Include automatic pregain"), Modifier.weight(1f))
+                            Text("预测含自动前置增益", Modifier.weight(1f))
                             Switch(checked = includeResponsePreGain, onCheckedChange = onResponsePreGainChange)
                         }
                     }
@@ -275,21 +260,21 @@ internal fun ParamEqScreen(
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(tr(english, "目标参考频响", "Target reference response"), style = MaterialTheme.typography.titleMedium)
-                        Text(targetProduct?.let { "${it.name} · ${it.languageType ?: tr(english, "语言未提供", "Language unspecified")}" }
-                            ?: if (targetProductUuid != null) tr(english, "所选目标不可用", "Selected target unavailable")
-                            else tr(english, "未选择目标频响", "No target response selected"))
+                        Text("目标参考频响", style = MaterialTheme.typography.titleMedium)
+                        Text(targetProduct?.let { "${it.name} · ${it.languageType ?: "语言未提供"}" }
+                            ?: if (targetProductUuid != null) "所选目标不可用"
+                            else "未选择目标频响")
                         targetProductUuid?.let { Text("UUID: $it", style = MaterialTheme.typography.bodySmall) }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = onChooseTarget) { Text(tr(english, "选择目标频响", "Choose target response")) }
-                            TextButton(onClick = onClearTarget, enabled = targetProductUuid != null) { Text(tr(english, "清除目标", "Clear target")) }
+                            OutlinedButton(onClick = onChooseTarget) { Text("选择目标频响") }
+                            TextButton(onClick = onClearTarget, enabled = targetProductUuid != null) { Text("清除目标") }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(tr(english, "显示目标频响", "Show target response"), Modifier.weight(1f))
+                            Text("显示目标频响", Modifier.weight(1f))
                             Switch(checked = showTargetResponse, onCheckedChange = onTargetResponseChange)
                         }
                         targetUnavailableReason?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                        Text(tr(english, "仅供手动调音参照，不自动匹配 EQ，不改变耳机配置。", "For manual tuning only. No automatic EQ fitting or changes to headset configuration."),
+                        Text("仅供手动调音参照，不自动匹配 EQ，不改变耳机配置。",
                             style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -297,133 +282,130 @@ internal fun ParamEqScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(when {
-                        editor == null || state == null -> tr(english, "离线参考 · 不可编辑", "Offline reference · not editable")
-                        state.isEditing -> tr(english, "调整中", "Editing")
+                        editor == null || state == null -> "离线参考 · 不可编辑"
+                        state.isEditing -> "调整中"
                         else -> when (state.phase) {
-                            ParamEqEditPhase.LOADING -> tr(english, "正在读取", "Loading")
-                            ParamEqEditPhase.READY -> tr(english, "已读取设备配置", "Device configuration read")
-                            ParamEqEditPhase.SENT -> tr(english, "已发送", "Sent")
-                            ParamEqEditPhase.PENDING -> if (manual) tr(english, "草稿，尚未发送", "Draft, not sent") else tr(english, "待下发", "Pending")
-                            ParamEqEditPhase.WRITING -> tr(english, "正在发送", "Sending")
-                            ParamEqEditPhase.FAILED -> tr(english, "操作失败：需要重新读取", "Operation failed: reload required")
-                            else -> tr(english, "不可用", "Unavailable")
+                            ParamEqEditPhase.LOADING -> "正在读取"
+                            ParamEqEditPhase.READY -> "已读取设备配置"
+                            ParamEqEditPhase.SENT -> "已发送"
+                            ParamEqEditPhase.PENDING -> if (manual) "草稿，尚未发送" else "待下发"
+                            ParamEqEditPhase.WRITING -> "正在发送"
+                            ParamEqEditPhase.FAILED -> "操作失败：需要重新读取"
+                            else -> "不可用"
                         }
                     }, style = MaterialTheme.typography.titleMedium)
                     if (editor != null && state != null) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(tr(english, "手动提交（诊断）", "Manual submission (diagnostic)"), Modifier.weight(1f))
+                            Text("手动提交（诊断）", Modifier.weight(1f))
                             Switch(
                                 checked = manual,
                                 onCheckedChange = { editor.setSubmitMode(if (it) ParamEqSubmitMode.MANUAL else ParamEqSubmitMode.REALTIME) },
                                 enabled = enabled && state.canChangeSubmitMode,
-                                modifier = Modifier.semantics { contentDescription = tr(english, "手动提交（诊断）", "Manual submission (diagnostic)") },
+                                modifier = Modifier.semantics { contentDescription = "手动提交（诊断）" },
                             )
                         }
                         Text(
-                            if (manual) tr(english, "编辑只保留草稿，松手不会发送。点击后提交一次完整配置，可能按 MTU 分包。", "Editing keeps a draft; release does not send. Submit sends one complete configuration, possibly in MTU-sized batches.")
-                            else tr(english, "当前实时发送：编辑会自动写入耳机。", "Realtime submission: editing automatically writes to the headphones."),
+                            if (manual) "编辑只保留草稿，松手不会发送。点击后提交一次完整配置，可能按 MTU 分包。"
+                            else "当前实时发送：编辑会自动写入耳机。",
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         if (manual && !state.canChangeSubmitMode && state.phase == ParamEqEditPhase.PENDING && !state.isEditing) {
-                            Text(tr(english, "先提交或重新读取草稿，再切换发送方式。", "Submit or reload the draft before changing submission mode."), style = MaterialTheme.typography.bodySmall)
+                            Text("先提交或重新读取草稿，再切换发送方式。", style = MaterialTheme.typography.bodySmall)
                         }
                         if (manual) Button(
                             onClick = { editor.submit() },
                             enabled = enabled && state.canSubmit,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                        ) { Text(tr(english, "提交一次", "Submit once")) }
+                        ) { Text("提交一次") }
                     }
                     if (!filterSelectionEnabled && bands.isNotEmpty()) {
                         if (preGainRaw != null) {
                             val db = (preGainRaw / 60.0 * 100).roundToInt() / 100.0
                             val label = if (state?.phase == ParamEqEditPhase.SENT)
-                                tr(english, "已发送前置增益", "Sent pregain")
-                            else tr(english, "自动前置增益（下次发送）", "Automatic pregain (next send)")
+                                "已发送前置增益"
+                            else "自动前置增益（下次发送）"
                             Text("$label：$db dB", style = MaterialTheme.typography.bodyMedium)
                         } else {
-                            Text(tr(english, "无法计算可写入的峰值 EQ 前置增益；此配置不会发送。", "Cannot calculate writable peaking EQ headroom; this configuration will not be sent."),
+                            Text("无法计算可写入的峰值 EQ 前置增益；此配置不会发送。",
                                 color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                     if (state?.confirmed?.currentPreset != null && state.confirmed.currentPreset != 63) {
-                        Text(if (manual) tr(english, "提交将切换至用户 EQ", "Submission will switch to User EQ") else tr(english, "编辑将切换至用户 EQ", "Editing will switch to User EQ"), style = MaterialTheme.typography.bodyMedium)
+                        Text(if (manual) "提交将切换至用户 EQ" else "编辑将切换至用户 EQ", style = MaterialTheme.typography.bodyMedium)
                     }
-                    if (editor == null || state == null) Text(tr(english, "仅显示参考频响资料；连接支持 GAIA Bluetrum 参数 EQ 的设备后才能编辑。", "Reference response data only. Connect a GAIA Bluetrum parametric EQ device to edit."), style = MaterialTheme.typography.bodySmall)
-                    else if (state.phase == ParamEqEditPhase.UNAVAILABLE && state.error == null) Text(tr(english, "设备未提供可编辑的 Bluetrum 用户 EQ", "The device does not expose an editable Bluetrum User EQ"))
+                    if (editor == null || state == null) Text("仅显示参考频响资料；连接支持 GAIA Bluetrum 参数 EQ 的设备后才能编辑。", style = MaterialTheme.typography.bodySmall)
+                    else if (state.phase == ParamEqEditPhase.UNAVAILABLE && state.error == null) Text("设备未提供可编辑的 Bluetrum 用户 EQ")
                 }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (hasOverlay) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (overlay != null) ResponseLegend(tr(english, "源频响", "Source response"), 0.65f, 1.5.dp, dashed = true)
-                            if (overlay?.predictedDb != null) ResponseLegend(tr(english, "DSP 预测", "DSP prediction"), 1f, 2.dp)
-                            if (target != null) ResponseLegend(tr(english, "目标参考", "Target reference"), 1f, 2.dp, dashed = true, lineColor = targetResponseColor)
-                            if (bands.isNotEmpty()) ResponseLegend(tr(english, "EQ 响应", "EQ response"), 0.30f, 2.5.dp)
+                            if (overlay != null) ResponseLegend("源频响", 0.65f, 1.5.dp, dashed = true)
+                            if (overlay?.predictedDb != null) ResponseLegend("DSP 预测", 1f, 2.dp)
+                            if (target != null) ResponseLegend("目标参考", 1f, 2.dp, dashed = true, lineColor = targetResponseColor)
+                            if (bands.isNotEmpty()) ResponseLegend("EQ 响应", 0.30f, 2.5.dp)
                         }
                     }
                     if (selected != null) Text(
-                        "${tr(english, "第 ${selected.index + 1} 段", "Band ${selected.index + 1}")} · ${parameterValue(selected, PeqParameter.Q)}",
+                        "第 ${selected.index + 1} 段 · ${parameterValue(selected, PeqParameter.Q)}",
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    ParamEqCurve(bands, selectedIndex, editor, editable, english, compact,
+                    ParamEqCurve(bands, selectedIndex, editor, editable, compact,
                         onSelect = { if (maySelect && !editor.state.value.isEditing) selectedIndex = it },
                         modifier = Modifier.fillMaxWidth().height(curveHeight), overlay = overlay, target = target, responseScale = responseScale)
                     if (editable && bands.isNotEmpty()) Text(
-                        tr(english, "先选频段；单指拖动调频率/增益，双指横向张开调宽、合拢调窄（Q）。",
-                            "Select a band. Drag one finger for frequency/gain; spread two fingers horizontally to widen, pinch to narrow (Q)."),
+                        "先选频段；单指拖动调频率/增益，双指横向张开调宽、合拢调窄（Q）。",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     if (target != null) {
-                        Text(tr(english, "源频响与目标各自以 500 Hz=0 dB 归一化；源频响、预测和目标共用右轴，仅对比调音形状，各自只画资料覆盖范围。",
-                            "Source and target are each normalized at 500 Hz=0 dB. Source, prediction and target share the right axis for shape comparison; each uses only its data coverage."),
+                        Text("源频响与目标各自以 500 Hz=0 dB 归一化；源频响、预测和目标共用右轴，仅对比调音形状，各自只画资料覆盖范围。",
                             style = MaterialTheme.typography.bodySmall)
-                        Text(tr(english, "测量条件、佩戴与音量可能不同，曲线接近不保证听感相同。比较形状时可关闭“预测含自动前置增益”，避免整体音量偏移干扰。",
-                            "Measurement conditions, fit and volume may differ; similar curves do not guarantee the same sound. Exclude automatic pregain when comparing shapes to avoid an overall level offset."),
+                        Text("测量条件、佩戴与音量可能不同，曲线接近不保证听感相同。比较形状时可关闭“预测含自动前置增益”，避免整体音量偏移干扰。",
                             style = MaterialTheme.typography.bodySmall)
-                        if (!hasOverlay) Text(tr(english, "目标及其他频响数值超出可显示范围。", "Target and other response values exceed the displayable range."),
+                        if (!hasOverlay) Text("目标及其他频响数值超出可显示范围。",
                             style = MaterialTheme.typography.bodySmall)
                     }
                     if (overlay != null) {
                         if (!hasOverlay) Text(
-                            if (overlay.frequencyHz.isEmpty()) tr(english, "参考在 20–20000 Hz 内没有可显示频段。", "Reference has no displayable frequency range within 20–20000 Hz.")
-                            else tr(english, "参考及预测数值超出可显示范围。", "Reference and prediction values exceed the displayable range."),
+                            if (overlay.frequencyHz.isEmpty()) "参考在 20–20000 Hz 内没有可显示频段。"
+                            else "参考及预测数值超出可显示范围。",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         else {
                             Text(
                                 if (overlay.normalizationHz != null)
-                                    tr(english, "SunRise 显示归一化：500 Hz=0 dB；仅绘制资料覆盖范围，左轴用于 EQ 编辑，右轴用于参考。", "SunRise display normalization: 500 Hz=0 dB. Only the data's covered range is drawn; left axis edits EQ, right axis shows reference.")
-                                else tr(english, "资料不覆盖 500 Hz：显示未归一化原始 SPL；仅绘制资料覆盖范围，左轴用于 EQ 编辑，右轴用于参考。", "Data does not cover 500 Hz: unnormalized raw SPL is shown. Only the covered range is drawn; left axis edits EQ, right axis shows reference."),
+                                    "SunRise 显示归一化：500 Hz=0 dB；仅绘制资料覆盖范围，左轴用于 EQ 编辑，右轴用于参考。"
+                                else "资料不覆盖 500 Hz：显示未归一化原始 SPL；仅绘制资料覆盖范围，左轴用于 EQ 编辑，右轴用于参考。",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        overlay.predictionError?.let { Text(tr(english, "预测不可用：$it", "Prediction unavailable: $it"), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                        overlay.predictionError?.let { Text("预测不可用：$it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                         if (overlay.predictedDb != null) Text(
-                            tr(english, "参考 + 当前 EQ（48 kHz RBJ，默认含自动前置增益）；${if (includeResponsePreGain) "当前前置增益 ${overlay.includedPreGainRaw?.div(60.0)} dB" else "当前已关闭前置增益"}。这是当前草稿的写入模型预测，已发送不等于已应用或实测。", "Reference + current EQ (48 kHz RBJ, automatic pregain included by default); ${if (includeResponsePreGain) "current pregain ${overlay.includedPreGainRaw?.div(60.0)} dB" else "pregain currently excluded"}. This is the current draft's write-model prediction; sent does not mean applied or measured."),
+                            "参考 + 当前 EQ（48 kHz RBJ，默认含自动前置增益）；${if (includeResponsePreGain) "当前前置增益 ${overlay.includedPreGainRaw?.div(60.0)} dB" else "当前已关闭前置增益"}。这是当前草稿的写入模型预测，已发送不等于已应用或实测。",
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
                     if (referenceProduct != null) Text(
-                        tr(english, "参考频响来自产品目录或频响库，测量资料可能已含调音，目标曲线并非设备实测；不代表当前耳机实测，不保证不同 ANC、佩戴或音量状态一致，不能作为绝对声压。", "Reference responses come from the product catalog or response library. Measurement data may already include tuning; target curves are not device measurements. They do not measure the connected headset; ANC, fit and volume may differ. This is not absolute sound pressure."),
+                        "参考频响来自产品目录或频响库，测量资料可能已含调音，目标曲线并非设备实测；不代表当前耳机实测，不保证不同 ANC、佩戴或音量状态一致，不能作为绝对声压。",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
             if (bands.isNotEmpty()) {
                 item {
-                    BandSelector(bands, selectedIndex, maySelect, english) { if (editor?.state?.value?.isEditing != true) selectedIndex = it }
+                    BandSelector(bands, selectedIndex, maySelect) { if (editor?.state?.value?.isEditing != true) selectedIndex = it }
                 }
                 if (compact) item {
                     OutlinedButton(onClick = { sheet = PeqSheet.Bands }, enabled = maySelect, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text(tr(english, "全部频段", "All bands"))
+                        Text("全部频段")
                     }
                 }
             }
             // Stable selected controls stay below the graph: nothing floats under a moving finger.
             if (selected != null && editor != null) item {
-                ParamEqBandCard(selected, editor, state, editable, english,
+                ParamEqBandCard(selected, editor, state, editable,
                     filterSelectionEnabled = filterSelectionEnabled,
                     onNumber = { parameter, requester ->
                         if (maySelect && !editor.state.value.isEditing) editor.state.value.draft.firstOrNull { it.index == selected.index }?.let {
@@ -436,59 +418,59 @@ internal fun ParamEqScreen(
             if (editor != null) item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     state?.error?.let { error ->
-                        Text(errorMessage(error, english), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                        Text(errorMessage(error), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                     }
                     if (state?.phase == ParamEqEditPhase.FAILED && state.confirmed == null) {
-                        Text(tr(english, "设备当前配置未知，写入可能已部分生效。", "The device configuration is unknown; a write may have partially applied."), color = MaterialTheme.colorScheme.error)
+                        Text("设备当前配置未知，写入可能已部分生效。", color = MaterialTheme.colorScheme.error)
                     }
                     OutlinedButton(onClick = { editor.refresh() }, enabled = enabled && idle,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text(if (manual && state.phase == ParamEqEditPhase.PENDING) tr(english, "重新读取（丢弃草稿）", "Reload (discard draft)") else tr(english, "重新读取", "Reload"))
+                        Text(if (manual && state.phase == ParamEqEditPhase.PENDING) "重新读取（丢弃草稿）" else "重新读取")
                     }
                     OutlinedButton(onClick = { editor.undo() }, enabled = editable && state?.canUndo == true && !state.isEditing,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(tr(english, "撤销", "Undo")) }
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("撤销") }
                     OutlinedButton(onClick = { editor.state.value.draft.firstOrNull { it.index == selectedIndex }?.let { grouped(peqReset(it)) } }, enabled = maySelect && selected != null,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(tr(english, "重置当前段", "Reset band")) }
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("重置当前段") }
                     TextButton(onClick = { flattenDialog = true }, enabled = maySelect && bands.isNotEmpty(),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(tr(english, "平直…", "Flatten…")) }
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("平直…") }
                 }
             }
             if (!compact && bands.isNotEmpty()) {
-                item { Text(tr(english, "全部频段", "All bands"), style = MaterialTheme.typography.titleMedium) }
+                item { Text("全部频段", style = MaterialTheme.typography.titleMedium) }
                 items(bands, key = { it.index }) { band ->
                     // Wide layouts expose every raw-preserving parameter entry, using the same sheets and groups.
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { selectedIndex = band.index }, enabled = maySelect,
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { stateDescription = if (band.index == selectedIndex) tr(english, "已选中", "Selected") else tr(english, "未选中", "Not selected") }) {
-                                Text(tr(english, "第 ${band.index + 1} 段", "Band ${band.index + 1}"))
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { stateDescription = if (band.index == selectedIndex) "已选中" else "未选中" }) {
+                                Text("第 ${band.index + 1} 段")
                             }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 PeqParameter.entries.forEach { parameter ->
                                     val requester = remember(editor, band.index, parameter) { FocusRequester() }
                                     OutlinedButton(onClick = { sheet = PeqSheet.Number(editor!!, band, parameter, requester) }, enabled = maySelect && (parameter != PeqParameter.GAIN || band.filter !in listOf(PeqFilter.LOW_PASS, PeqFilter.HIGH_PASS)),
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).focusRequester(requester).semantics { contentDescription = tr(english, "第 ${band.index + 1} 段 ${parameterName(parameter, english)}", "Band ${band.index + 1} ${parameterName(parameter, english)}"); stateDescription = parameterValue(band, parameter) }) {
-                                        Text("${parameterName(parameter, english)}\n${parameterValue(band, parameter)}")
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).focusRequester(requester).semantics { contentDescription = "第 ${band.index + 1} 段 ${parameterName(parameter)}"; stateDescription = parameterValue(band, parameter) }) {
+                                        Text("${parameterName(parameter)}\n${parameterValue(band, parameter)}")
                                     }
                                 }
                             }
-                            OutlinedButton(onClick = { sheet = PeqSheet.Filter(band.index) }, enabled = filterSelectionEnabled && maySelect, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(filterName(band.filter, english)) }
+                            OutlinedButton(onClick = { sheet = PeqSheet.Filter(band.index) }, enabled = filterSelectionEnabled && maySelect, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(filterName(band.filter)) }
                         }
                     }
                 }
             }
             item {
-                if (bands.isNotEmpty()) Text(tr(english, "左轴 EQ 曲线为 48 kHz 参数响应估算，不含自动前置衰减，非耳机实测。", "The left-axis EQ curve is a 48 kHz parameter-response estimate without automatic pregain, not a headphone measurement."), style = MaterialTheme.typography.bodySmall)
-                if (bands.isNotEmpty() && !filterSelectionEnabled) Text(tr(english, "Bluetrum 验证模式：固定峰值，写入类型码 0。", "Bluetrum verification mode: peaking only, wire type 0."), style = MaterialTheme.typography.bodySmall)
-                if (!compact && bands.isNotEmpty()) Text(tr(english, "鼠标：拖节点；Shift 锁轴；Q 手柄 / 滚轮；双击重置。方向键细调，Shift 大步、Ctrl 精细。", "Mouse: drag nodes; Shift locks an axis; Q handles / wheel; double-click resets. Arrow keys adjust; Shift is coarse, Ctrl fine."), style = MaterialTheme.typography.bodySmall)
+                if (bands.isNotEmpty()) Text("左轴 EQ 曲线为 48 kHz 参数响应估算，不含自动前置衰减，非耳机实测。", style = MaterialTheme.typography.bodySmall)
+                if (bands.isNotEmpty() && !filterSelectionEnabled) Text("Bluetrum 验证模式：固定峰值，写入类型码 0。", style = MaterialTheme.typography.bodySmall)
+                if (!compact && bands.isNotEmpty()) Text("鼠标：拖节点；Shift 锁轴；Q 手柄 / 滚轮；双击重置。方向键细调，Shift 大步、Ctrl 精细。", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
     if (flattenDialog) {
-        AlertDialog(onDismissRequest = { flattenDialog = false }, title = { Text(tr(english, "平直所有频段？", "Flatten all bands?")) },
+        AlertDialog(onDismissRequest = { flattenDialog = false }, title = { Text("平直所有频段？") },
             text = { Text(if (manual)
-                tr(english, "将所有频段草稿设为平直，不发送到耳机；需要点击“提交一次”。这不是恢复出厂或保存到 Flash。", "Set the draft bands flat without sending to the headphones; use Submit once to send. This is not a factory reset or a Flash save.")
-                else tr(english, "将所有频段设为平直并发送到耳机。这不是恢复出厂或保存到 Flash。", "Set all bands flat and send them to the headphones. This is not a factory reset or a Flash save.")) },
+                "将所有频段草稿设为平直，不发送到耳机；需要点击“提交一次”。这不是恢复出厂或保存到 Flash。"
+                else "将所有频段设为平直并发送到耳机。这不是恢复出厂或保存到 Flash。") },
             confirmButton = { TextButton(enabled = maySelect, onClick = {
                 flattenDialog = false
                 if (maySelect) {
@@ -496,8 +478,8 @@ internal fun ParamEqScreen(
                     val changed = peqFlatten(latest)
                     if (changed != latest) { editor.beginEdit(); editor.replaceDraft(changed); editor.endEdit() }
                 }
-            }, modifier = Modifier.heightIn(min = 48.dp)) { Text(tr(english, "确认", "Confirm")) } },
-            dismissButton = { TextButton(onClick = { flattenDialog = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text(tr(english, "取消", "Cancel")) } })
+            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("确认") } },
+            dismissButton = { TextButton(onClick = { flattenDialog = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消") } })
     }
     val currentSheet = sheet
     if (currentSheet != null && editable && (filterSelectionEnabled || currentSheet !is PeqSheet.Filter)) {
@@ -510,13 +492,13 @@ internal fun ParamEqScreen(
         ) {
             when (currentSheet) {
                 PeqSheet.Bands -> {
-                    Text(tr(english, "全部频段", "All bands"), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(16.dp))
+                    Text("全部频段", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(16.dp))
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 600.dp).navigationBarsPadding()) {
                         items(bands, key = { it.index }) { band ->
                             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected = band.index == selectedIndex, enabled = maySelect, role = Role.RadioButton,
                                 onClick = { selectedIndex = band.index; closeSheet() }).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 RadioButton(selected = band.index == selectedIndex, onClick = null, enabled = maySelect)
-                                Column(Modifier.padding(start = 12.dp)) { Text(tr(english, "第 ${band.index + 1} 段", "Band ${band.index + 1}")); Text(bandSummary(band, english), style = MaterialTheme.typography.bodyMedium) }
+                                Column(Modifier.padding(start = 12.dp)) { Text("第 ${band.index + 1} 段"); Text(bandSummary(band), style = MaterialTheme.typography.bodyMedium) }
                             }
                         }
                     }
@@ -524,19 +506,19 @@ internal fun ParamEqScreen(
                 is PeqSheet.Filter -> {
                     val band = bands.firstOrNull { it.index == currentSheet.index }
                     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp).selectableGroup()) {
-                        Text(tr(english, "第 ${currentSheet.index + 1} 段 · 滤波器", "Band ${currentSheet.index + 1} · Filter"), style = MaterialTheme.typography.titleLarge)
+                        Text("第 ${currentSheet.index + 1} 段 · 滤波器", style = MaterialTheme.typography.titleLarge)
                         listOf(PeqFilter.PEAKING, PeqFilter.LOW_SHELF, PeqFilter.HIGH_SHELF, PeqFilter.LOW_PASS, PeqFilter.HIGH_PASS, PeqFilter.BYPASS).forEach { filter ->
                             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected = band?.filter == filter, enabled = maySelect, role = Role.RadioButton,
                                 onClick = { if (band != null) grouped(peqEnableFilter(band, filter)); closeSheet() }), verticalAlignment = Alignment.CenterVertically) {
                                 RadioButton(selected = band?.filter == filter, onClick = null, enabled = maySelect)
-                                Text(filterName(filter, english), modifier = Modifier.padding(start = 12.dp))
+                                Text(filterName(filter), modifier = Modifier.padding(start = 12.dp))
                             }
                         }
-                        TextButton(onClick = { closeSheet() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(tr(english, "取消", "Cancel")) }
+                        TextButton(onClick = { closeSheet() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("取消") }
                     }
                 }
                 is PeqSheet.Number -> key(currentSheet) {
-                    PeqNumberSheet(currentSheet.band, currentSheet.parameter, english, onCancel = { closeSheet() }, onConfirm = { raw ->
+                    PeqNumberSheet(currentSheet.band, currentSheet.parameter, onCancel = { closeSheet() }, onConfirm = { raw ->
                         if (currentSheet.editor === editor && maySelect) {
                             // Resolve the current complete draft; replace this field only, never the stale opening band.
                             currentSheet.editor.state.value.draft.firstOrNull { it.index == currentSheet.band.index }?.let { latest ->
@@ -552,7 +534,7 @@ internal fun ParamEqScreen(
 }
 
 @Composable
-private fun BandSelector(bands: List<GaiaPeqBand>, selectedIndex: Int, enabled: Boolean, english: Boolean, onSelect: (Int) -> Unit) {
+private fun BandSelector(bands: List<GaiaPeqBand>, selectedIndex: Int, enabled: Boolean, onSelect: (Int) -> Unit) {
     val scroll = rememberScrollState()
     var viewport by remember { mutableStateOf(0f) }
     var selectedLeft by remember { mutableStateOf(0f) }
@@ -573,7 +555,7 @@ private fun BandSelector(bands: List<GaiaPeqBand>, selectedIndex: Int, enabled: 
                         selectedLeft = bounds.left
                         selectedRight = bounds.right
                     }
-                }.semantics { contentDescription = tr(english, "第 ${band.index + 1} 段，${band.frequencyHz} Hz", "Band ${band.index + 1}, ${band.frequencyHz} Hz") },
+                }.semantics { contentDescription = "第 ${band.index + 1} 段，${band.frequencyHz} Hz" },
                 label = { Text("${band.index + 1} · ${band.frequencyHz} Hz") })
         }
     }
@@ -581,33 +563,33 @@ private fun BandSelector(bands: List<GaiaPeqBand>, selectedIndex: Int, enabled: 
 
 @Composable
 private fun ParamEqBandCard(
-    band: GaiaPeqBand, editor: ParamEqEditor, state: ParamEqEditState?, enabled: Boolean, english: Boolean,
+    band: GaiaPeqBand, editor: ParamEqEditor, state: ParamEqEditState?, enabled: Boolean,
     filterSelectionEnabled: Boolean,
     onNumber: (PeqParameter, FocusRequester) -> Unit, onFilter: () -> Unit, onNudge: (PeqParameter, Int) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(tr(english, "第 ${band.index + 1} 段", "Band ${band.index + 1}"), style = MaterialTheme.typography.titleMedium)
-            if (band.filter == PeqFilter.BYPASS) Text(tr(english, "旁路：保留原始数值。选择其他滤波器后启用参数。", "Bypassed: raw values are preserved. Choose another filter to enable parameters."))
+            Text("第 ${band.index + 1} 段", style = MaterialTheme.typography.titleMedium)
+            if (band.filter == PeqFilter.BYPASS) Text("旁路：保留原始数值。选择其他滤波器后启用参数。")
             PeqParameter.entries.forEach { parameter ->
-                PeqParameterControl(band, parameter, editor, state, enabled, english, onNumber, onNudge)
+                PeqParameterControl(band, parameter, editor, state, enabled, onNumber, onNudge)
             }
             OutlinedButton(onClick = onFilter, enabled = filterSelectionEnabled && enabled && state?.isEditing != true,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = tr(english, "第 ${band.index + 1} 段滤波器", "Band ${band.index + 1} filter"); stateDescription = filterName(band.filter, english) }) { Text(filterName(band.filter, english)) }
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = "第 ${band.index + 1} 段滤波器"; stateDescription = filterName(band.filter) }) { Text(filterName(band.filter)) }
         }
     }
 }
 
 @Composable
 private fun PeqParameterControl(
-    band: GaiaPeqBand, parameter: PeqParameter, editor: ParamEqEditor, state: ParamEqEditState?, enabled: Boolean, english: Boolean,
+    band: GaiaPeqBand, parameter: PeqParameter, editor: ParamEqEditor, state: ParamEqEditState?, enabled: Boolean,
     onNumber: (PeqParameter, FocusRequester) -> Unit, onNudge: (PeqParameter, Int) -> Unit,
 ) {
     val requester = remember(editor, band.index, parameter) { FocusRequester() }
     var sliderGroup by remember(editor, band.index, parameter) { mutableStateOf(false) }
     val latestBand by rememberUpdatedState(band)
-    val name = parameterName(parameter, english)
-    val description = tr(english, "第 ${band.index + 1} 段 $name", "Band ${band.index + 1} $name")
+    val name = parameterName(parameter)
+    val description = "第 ${band.index + 1} 段 $name"
     val inRange = peqSliderInRange(band, parameter)
     val applicable = band.filter != PeqFilter.BYPASS && (parameter != PeqParameter.GAIN || peqHasGain(band.filter))
     val sliderEnabled = enabled && applicable && inRange && (state?.isEditing != true || sliderGroup)
@@ -621,7 +603,7 @@ private fun PeqParameterControl(
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).focusRequester(requester).semantics { contentDescription = description; stateDescription = parameterValue(band, parameter) }) {
             Text(parameterValue(band, parameter))
         }
-        if (!inRange && applicable) Text(tr(english, "超出滑杆范围，点数值编辑", "Outside slider range; tap the value to edit"), style = MaterialTheme.typography.bodySmall)
+        if (!inRange && applicable) Text("超出滑杆范围，点数值编辑", style = MaterialTheme.typography.bodySmall)
         val value = when (parameter) {
             PeqParameter.GAIN -> peqGainFraction(band.gainRaw).coerceIn(0f, 1f)
             PeqParameter.FREQUENCY -> peqFrequencyFraction(band.frequencyHz)
@@ -661,15 +643,15 @@ private fun PeqParameterControl(
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { onNudge(parameter, -1) }, enabled = sliderEnabled && state?.isEditing != true,
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = tr(english, "$description 减小", "Decrease $description") }) { Text("−") }
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = "$description 减小" }) { Text("−") }
             OutlinedButton(onClick = { onNudge(parameter, 1) }, enabled = sliderEnabled && state?.isEditing != true,
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = tr(english, "$description 增大", "Increase $description") }) { Text("+") }
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = "$description 增大" }) { Text("+") }
         }
     }
 }
 
 @Composable
-private fun PeqNumberSheet(band: GaiaPeqBand, parameter: PeqParameter, english: Boolean, onCancel: () -> Unit, onConfirm: (Int?) -> Unit) {
+private fun PeqNumberSheet(band: GaiaPeqBand, parameter: PeqParameter, onCancel: () -> Unit, onConfirm: (Int?) -> Unit) {
     val original = remember(band, parameter) { peqInputText(band, parameter) }
     var text by remember { mutableStateOf(original) }
     var invalid by remember { mutableStateOf(false) }
@@ -682,23 +664,23 @@ private fun PeqNumberSheet(band: GaiaPeqBand, parameter: PeqParameter, english: 
     }
     LaunchedEffect(Unit) { requester.requestFocus() }
     Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(tr(english, "第 ${band.index + 1} 段 · ${parameterName(parameter, english)}", "Band ${band.index + 1} · ${parameterName(parameter, english)}"), style = MaterialTheme.typography.titleLarge)
+        Text("第 ${band.index + 1} 段 · ${parameterName(parameter)}", style = MaterialTheme.typography.titleLarge)
         Text(when (parameter) {
-            PeqParameter.FREQUENCY -> tr(english, "20–20000 Hz，整数", "20–20000 Hz, integers")
+            PeqParameter.FREQUENCY -> "20–20000 Hz，整数"
             PeqParameter.GAIN -> "−12–+12 dB"
             PeqParameter.Q -> "Q ${1.0 / 4096}–${65535.0 / 4096}"
         })
         OutlinedTextField(value = text, onValueChange = { text = it; invalid = false }, singleLine = true, isError = invalid,
-            label = { Text(parameterName(parameter, english)) },
+            label = { Text(parameterName(parameter)) },
             keyboardOptions = KeyboardOptions(keyboardType = if (parameter == PeqParameter.FREQUENCY) KeyboardType.Number else KeyboardType.Decimal, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { confirm() }),
-            modifier = Modifier.fillMaxWidth().focusRequester(requester).semantics { contentDescription = tr(english, "第 ${band.index + 1} 段 ${parameterName(parameter, english)}", "Band ${band.index + 1} ${parameterName(parameter, english)}") })
+            modifier = Modifier.fillMaxWidth().focusRequester(requester).semantics { contentDescription = "第 ${band.index + 1} 段 ${parameterName(parameter)}" })
         if (parameter == PeqParameter.GAIN) OutlinedButton(onClick = {
             text = if (text.trim().startsWith('-')) text.trim().removePrefix("-") else "-${text.trim().removePrefix("+")}"
             invalid = false
-        }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(tr(english, "切换正 / 负号", "Toggle positive / negative")) }
-        if (invalid) Text(tr(english, "请输入范围内的有效数值。只允许一个小数点或逗号，不支持千位分组。", "Enter a valid value in range. Use one decimal dot or comma, without digit grouping."), color = MaterialTheme.colorScheme.error)
-        Button(onClick = { confirm() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(tr(english, "确认", "Confirm")) }
-        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(tr(english, "取消", "Cancel")) }
+        }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("切换正 / 负号") }
+        if (invalid) Text("请输入范围内的有效数值。只允许一个小数点或逗号，不支持千位分组。", color = MaterialTheme.colorScheme.error)
+        Button(onClick = { confirm() }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("确认") }
+        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("取消") }
     }
 }

@@ -5,14 +5,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 internal enum class ThemeMode { SYSTEM, LIGHT, DARK }
-internal enum class UiLanguage { SYSTEM, CHINESE, ENGLISH }
 
 internal data class UiSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
     val amoled: Boolean = false,
     val seedIndex: Int = 0,
-    val language: UiLanguage = UiLanguage.SYSTEM,
     val showWind: Boolean = true,
     val catalogOnlyDevices: Boolean = true,
     val showReferenceResponse: Boolean = true,
@@ -40,11 +38,6 @@ internal fun decodeReferenceProducts(value: String?): Map<String, String> {
     }
 }
 
-internal fun UiLanguage.usesEnglish(systemLanguage: String): Boolean = when (this) {
-    UiLanguage.CHINESE -> false
-    UiLanguage.ENGLISH -> true
-    UiLanguage.SYSTEM -> systemLanguage != "zh"
-}
 
 internal fun UiSettings.isDark(systemDark: Boolean): Boolean = when (themeMode) {
     ThemeMode.SYSTEM -> systemDark

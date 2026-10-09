@@ -106,7 +106,7 @@ private class AcousticCurveGeometry(
 @Composable
 internal fun ParamEqCurve(
     bands: List<GaiaPeqBand>, selectedIndex: Int, editor: ParamEqEditor?, enabled: Boolean,
-    english: Boolean, compact: Boolean, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,
+    compact: Boolean, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,
     overlay: AcousticOverlay?,
     target: SampledCatalogResponse?,
     responseScale: AcousticScale?,
@@ -154,11 +154,10 @@ internal fun ParamEqCurve(
         .onSizeChanged { measuredSize = it }
         .semantics {
             contentDescription = if (hasResponse && editor == null)
-                tr(english, "离线参考/目标频响；右轴为参考 dB，当前不能编辑 EQ，也没有预测。", "Offline reference/target response; right axis shows reference dB. EQ is not editable and there is no prediction.")
+                "离线参考/目标频响；右轴为参考 dB，当前不能编辑 EQ，也没有预测。"
             else if (hasResponse)
-                tr(english, "左轴 EQ dB 用于编辑；右轴参考/目标频响及可用时的非实测预测。双指横向开合调整所选频段 Q，或使用下方滑杆编辑",
-                    "Left EQ dB axis is editable; right axis shows reference/target response and non-measured prediction when available. Spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below")
-            else tr(english, "参数响应估算；双指横向开合调整所选频段 Q，或使用下方滑杆编辑", "Estimated parameter response; spread or pinch two fingers horizontally to adjust the selected band Q, or use the sliders below")
+                "左轴 EQ dB 用于编辑；右轴参考/目标频响及可用时的非实测预测。双指横向开合调整所选频段 Q，或使用下方滑杆编辑"
+            else "参数响应估算；双指横向开合调整所选频段 Q，或使用下方滑杆编辑"
         }
         .focusRequester(focusRequester)
         .onKeyEvent { event ->
@@ -365,8 +364,8 @@ internal fun ParamEqCurve(
             }
             val eqCaption = textMeasurer.measure("EQ dB", labelStyle.copy(color = textColor))
             val acousticCaption = if (hasResponse) textMeasurer.measure(
-                if (overlay?.normalizationHz != null || (overlay == null && target?.normalizationHz != null)) tr(english, "参考 dB · 500 Hz=0", "Reference dB · 500 Hz=0")
-                else tr(english, "原始 SPL dB", "Raw SPL dB"), labelStyle.copy(color = textColor)
+                if (overlay?.normalizationHz != null || (overlay == null && target?.normalizationHz != null)) "参考 dB · 500 Hz=0"
+                else "原始 SPL dB", labelStyle.copy(color = textColor)
             ) else null
             val rightLabels = responseScale?.let { scale ->
                 val maxLabels = (p.height / (eqCaption.size.height + 2.dp.toPx())).toInt().coerceAtLeast(2)

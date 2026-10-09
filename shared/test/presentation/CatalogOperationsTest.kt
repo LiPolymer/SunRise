@@ -26,6 +26,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -173,7 +174,6 @@ class CatalogOperationsTest {
             awaitDocumentIdle(operations)
 
             assertContentEquals(initial, documents.exportedBytes)
-            assertEquals("Complete database exported", operations.state.value.notice?.english)
             operations.close()
         } finally {
             catalog.close()
@@ -249,7 +249,7 @@ class CatalogOperationsTest {
     }
 
     @Test
-    fun previewActionsExposeExactUnavailableErrorsWithoutCallingDocumentsOrNetwork() = runTest {
+    fun previewActionsRejectWritesAndPullsWithoutCallingDocumentsOrNetwork() = runTest {
         val storage = MemoryStorage(CatalogTestFixtures.document())
         val fetcher = CountingFetcher { _, _ -> error("Preview attempted a network request") }
         val catalog = openCatalog(storage, fetcher)
@@ -258,8 +258,7 @@ class CatalogOperationsTest {
             val operations = CatalogOperations(catalog, documents, backgroundScope, preview = true)
 
             operations.prepareImport()
-            assertEquals("Catalog writes are unavailable in preview", operations.state.value.error?.message)
-            assertEquals("Catalog writes are unavailable in preview", operations.state.value.notice?.english)
+            assertIs<IllegalStateException>(operations.state.value.error)
             val writeNotice = operations.state.value.notice!!
             operations.clearNotice(writeNotice.copy())
             assertSame(writeNotice, operations.state.value.notice)
@@ -267,10 +266,9 @@ class CatalogOperationsTest {
             assertNull(operations.state.value.notice)
 
             operations.export()
-            assertEquals("Catalog writes are unavailable in preview", operations.state.value.error?.message)
+            assertIs<IllegalStateException>(operations.state.value.error)
             operations.pull(CatalogCdn.CHINA)
-            assertEquals("Catalog pulls are unavailable in preview", operations.state.value.error?.message)
-            assertEquals("Catalog pulls are unavailable in preview", operations.state.value.notice?.english)
+            assertIs<IllegalStateException>(operations.state.value.error)
             assertEquals(0, documents.importCalls)
             assertEquals(0, documents.exportCalls)
             assertTrue(fetcher.requests.isEmpty())

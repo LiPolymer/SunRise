@@ -1,7 +1,6 @@
 package ink.lipoly.app.sunrise
 
 import ink.lipoly.app.sunrise.settings.ThemeMode
-import ink.lipoly.app.sunrise.settings.UiLanguage
 import ink.lipoly.app.sunrise.settings.UiSettings
 import java.util.UUID
 import java.util.prefs.Preferences
@@ -21,7 +20,6 @@ class UiSettingsStoreTest {
             dynamicColor = false,
             amoled = true,
             seedIndex = 3,
-            language = UiLanguage.ENGLISH,
             showWind = false,
             catalogOnlyDevices = false,
             showReferenceResponse = false,

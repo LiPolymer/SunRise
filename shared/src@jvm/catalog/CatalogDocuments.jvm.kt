@@ -44,7 +44,7 @@ internal class JvmCatalogDocuments(private val window: Frame) : CatalogDocuments
     private suspend fun chooseFile(save: Boolean, suggestedName: String?): Path? = showDialog { request ->
         val picker = FileDialog(
             window,
-            if (save) "Export device database" else "Import device database",
+            if (save) "导出设备数据库" else "导入设备数据库",
             if (save) FileDialog.SAVE else FileDialog.LOAD,
         )
         request.dialog = picker
@@ -93,15 +93,18 @@ internal class JvmCatalogDocuments(private val window: Frame) : CatalogDocuments
     /** Runs on the EDT, with the same owner and cancellation disposal as the native picker. */
     private suspend fun confirmOverwrite(path: Path): Boolean = showDialog { request ->
         val pane = JOptionPane(
-            "Replace the existing file?\n${path.fileName}",
+            "替换现有文件？\n${path.fileName}",
             JOptionPane.WARNING_MESSAGE,
             JOptionPane.YES_NO_OPTION,
+            null,
+            arrayOf("替换", "取消"),
+            "取消",
         )
-        val dialog = pane.createDialog(window, "Confirm overwrite")
+        val dialog = pane.createDialog(window, "确认覆盖")
         request.dialog = dialog
         if (!request.continuation.isActive) return@showDialog false
         dialog.isVisible = true
-        request.continuation.isActive && pane.value == JOptionPane.YES_OPTION
+        request.continuation.isActive && pane.value == "替换"
     }
 
     override fun close() {

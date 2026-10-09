@@ -41,7 +41,7 @@ internal class CatalogOperations(
     fun pull(cdn: CatalogCdn) = synchronized(guard) {
         if (closed) return@synchronized
         if (preview) {
-            reportPreviewUnavailable("Catalog pulls are unavailable in preview")
+            reportPreviewUnavailable("预览中无法拉取目录")
             return@synchronized
         }
         if (pullJob != null || catalog.state.value.busy || catalog.state.value.loading ||
@@ -63,7 +63,7 @@ internal class CatalogOperations(
     fun prepareImport() = synchronized(guard) {
         if (closed) return@synchronized
         if (preview) {
-            reportPreviewUnavailable("Catalog writes are unavailable in preview")
+            reportPreviewUnavailable("预览中无法写入目录")
             return@synchronized
         }
         if (!canStartDocumentOperation(allowLoading = false)) return@synchronized
@@ -82,7 +82,7 @@ internal class CatalogOperations(
     fun export() = synchronized(guard) {
         if (closed) return@synchronized
         if (preview) {
-            reportPreviewUnavailable("Catalog writes are unavailable in preview")
+            reportPreviewUnavailable("预览中无法写入目录")
             return@synchronized
         }
         if (!canStartDocumentOperation(allowLoading = true) || catalog.state.value.snapshot == null) return@synchronized
@@ -99,7 +99,7 @@ internal class CatalogOperations(
         launchDocument {
             if (documents.saveExport(bytes, CATALOG_EXPORT_NAME) && isDocumentOperationOpen()) {
                 update {
-                    it.copy(notice = PresentationNotice("已导出完整数据库", "Complete database exported"))
+                    it.copy(notice = PresentationNotice("已导出完整数据库"))
                 }
             }
         }
@@ -108,7 +108,7 @@ internal class CatalogOperations(
     fun confirmImport() = synchronized(guard) {
         if (closed) return@synchronized
         if (preview) {
-            reportPreviewUnavailable("Catalog writes are unavailable in preview")
+            reportPreviewUnavailable("预览中无法写入目录")
             return@synchronized
         }
         val snapshot = state.value.importPreview ?: return@synchronized
@@ -119,7 +119,7 @@ internal class CatalogOperations(
             catalog.importSnapshot(snapshot)
             if (isDocumentOperationOpen() && catalog.state.value.error == null) {
                 update {
-                    it.copy(notice = PresentationNotice("数据库已替换", "Database replaced"))
+                    it.copy(notice = PresentationNotice("数据库已替换"))
                 }
             }
         }
@@ -213,7 +213,7 @@ internal class CatalogOperations(
         update {
             it.copy(
                 error = error,
-                notice = PresentationNotice("", "", error),
+                notice = PresentationNotice("", error),
             )
         }
     }
@@ -221,7 +221,7 @@ internal class CatalogOperations(
     private fun reportPreviewUnavailable(message: String) {
         val error = IllegalStateException(message)
         update {
-            it.copy(error = error, notice = PresentationNotice(message, message))
+            it.copy(error = error, notice = PresentationNotice(message))
         }
     }
 

@@ -40,7 +40,6 @@ fun App(
             missingPermissions = missingPermissions,
             onRequestPermissions = onRequestPermissions,
             settings = settings,
-            english = settings.english(),
             dynamicColorAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
             onSettingsChange = runtime.settings::update,
         )

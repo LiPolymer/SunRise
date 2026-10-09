@@ -73,7 +73,7 @@ internal class HeadsetPresentationController(
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {
-                                notice("发现设备失败：", "Device discovery failed: ", e)
+                                notice("发现设备失败：", e)
                             }
                         } else if (phase == HeadsetPhase.IDLE || phase == HeadsetPhase.READY) {
                             selectionPrompted = false
@@ -154,7 +154,7 @@ internal class HeadsetPresentationController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                notice("发现设备失败：", "Device discovery failed: ", e)
+                notice("发现设备失败：", e)
             }
         }
     }
@@ -221,7 +221,7 @@ internal class HeadsetPresentationController(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    notice("$label：", "$label: ", e)
+                    notice("$label：", e)
                 } finally {
                     update { copy(working = null) }
                 }
@@ -243,8 +243,8 @@ internal class HeadsetPresentationController(
         mutableState.update { it.copy(working = null, chooserOpen = false) }
     }
 
-    private fun notice(chinese: String, english: String, error: Exception) {
-        update { copy(notice = PresentationNotice(chinese, english, error)) }
+    private fun notice(message: String, error: Exception) {
+        update { copy(notice = PresentationNotice(message, error)) }
     }
 
     private inline fun update(crossinline transform: HeadsetPresentationState.() -> HeadsetPresentationState) {

@@ -23,13 +23,17 @@ Android 构建需要 Android SDK 37；运行需要已连接的设备或模拟器
 
 JVM 桌面运行同一新入口，但不注册蓝牙管理器或客户端，显示蓝牙不可用；离线目录仍初始化。设置服务和持久化规则保持不变，新入口尚未提供设置编辑界面。
 
+应用界面固定为中文，不再跟随系统语言，也不提供语言选择。新入口、旧页面、PEQ 和展示层通知直接使用中文文案，已删除 `UiLanguage`、`english` 参数及 `tr` / `t` 双语辅助函数。产品名称、协议术语、上游错误信息和目录 `languageType` 原始元数据保留；目录自动匹配与浏览排序固定优先 `zh-CN`。Android 不再读写旧 `language` 设置键。
+
+中文单语言验收：移除临时入口后 `kotlin.bat build` 成功，覆盖 JVM/Android 生产代码和测试源编译；`kotlin.bat test -m shared -p jvm` 的 177 项测试通过。零蓝牙桌面烟测将 JVM Locale 设为 `en_US`，检查新入口及旧概览、设置、PEQ、目录和诊断页面，应用文案仍为中文，设置页不再显示语言选项。烟测未运行 Android、联网拉取或向真实耳机发送命令；临时入口和截图已清理。
+
 Android `SunRiseApplication` 创建唯一进程级 `SunRiseRuntime`，Activity 只报告权限和附着展示层，销毁/重建不关闭应用耳机资源。`ApplicationBluetoothResources` 是唯一蓝牙 owner，显式关闭时先 `client.close()` 再 `bt.close()`；生产不依赖 `Application.onTerminate`，不增加 Service 或后台保活，系统杀进程不保证优雅清理。Android 12+ 需要 `BLUETOOTH_CONNECT`，扫描还需要 `BLUETOOTH_SCAN`，旧版 LE 扫描需要定位权限；权限由消费者宿主申请。原音频→BLE 关联、经典 RFCOMM EQ 路径与设置键保持不变。
 
 编译说明：共享模块用 `-Xexpect-actual-classes` 确认 Kotlin `BtHost` expect/actual 类仍处于 Beta；Android GATT 为兼容 API 24–32 保留旧版回调及写入分支，弃用抑制局限于旧 API 使用处。Material3 明确固定为与 Compose 1.12.1 对应的 `1.12.0-alpha03`，避免自动推断旧版本导致桌面诊断输入框运行时崩溃。
 
 ## 手动重写 Compose 界面
 
-入口链路：Android `App` / JVM `DesktopApp` → `shared/src/AppEntry.kt` → `shared/src/compose/AppContent.kt`。直接修改新 `AppContent` 的内容即可；无需重新创建 runtime、Koin 容器或后端会话。两平台暂时复用原主题，旧页面布局和交互未修改，旧 `AppContent` 仅更新 PEQ import。
+入口链路：Android `App` / JVM `DesktopApp` → `shared/src/AppEntry.kt` → `shared/src/compose/AppContent.kt`。直接修改新 `AppContent` 的内容即可；无需重新创建 runtime、Koin 容器或后端会话。两平台复用原主题；旧业务页面保留，语言选择及双语文案分支已移除。
 
 新入口显式接收以下接口，不依赖 Compose/Koin 注入：
 
@@ -42,7 +46,7 @@ Android `SunRiseApplication` 创建唯一进程级 `SunRiseRuntime`，Activity �
 | `session.eq` | 按 GAIA 控件引用身份管理编辑器 |
 | `settings` / `onSettingsChange` | 当前设置及写回宿主设置服务 |
 | `missingPermissions` / `onRequestPermissions` | 缺失权限及宿主授权回调 |
-| `english` / `dynamicColorAvailable` | 语言选择及平台动态色能力 |
+| `dynamicColorAvailable` | 平台动态色能力 |
 
 StateFlow 用 `collectAsState()` 订阅。`compose/ParamEqBinding.kt` 的 `rememberParamEqEditor(client, headsetState, session.eq, missingPermissions)` 在根级绑定 EQ：权限不足、连接失效或 GAIA 未就绪时解绑；相同控件复用同一编辑器。把绑定留在导航外，页面只接收 `editor` 和 `editor.state`；不要在页面切换时关闭 editor、session、client 或 Catalog。宿主仍负责释放会话。
 
@@ -120,7 +124,7 @@ Windows / PowerShell 单次对照：
 1. **直接离线使用**：首次启动读取随包快照；之后优先使用有效本地快照。启动、翻页、筛选、查资料和选择参考都不联网。目录先保留所有物理产品，再按原始顺序追加频响库记录；库记录统一投影为 `type = "Response"`，不是蓝牙设备或协议能力声明。无法解析的原文仍保留并显示原因，不画平直替代线。
 2. **选择耳机**：概览默认“仅显示目录设备”，自动候选与手动蓝牙列表仅使用 `type == "BT"` 的目录记录进行同一精确名称匹配；忽略名称大小写、首尾及连续 Unicode 空白，不匹配 `model`、前缀或近似型号。类型不忽略大小写，USB、WIRED 或其他类型的同名记录不会成为蓝牙匹配依据。“显示全部”也包含无名称、改名和未收录设备。列表显示隐藏数量、目录匹配和参考状态；目录匹配不是协议支持证明。改变筛选不会断开当前目标，下一次自动选择才使用新策略。
 3. **浏览目录**：概览或设置进入包含所有类型的离线产品与频响目录，搜索 `name` / `model`，列表和详情保留每个 UUID，显示原类型和库 tags。Response 是本地频响库分类，目标曲线不是设备型号或当前设备实测。芯片、EQ 段数、增益/Q 范围和滤波器类型仅展示源值，缺失显示“未提供”，编辑与写入仍以实际设备探测和读回为准。详情可选择另一 UUID，在同图比较各自以 500 Hz 归一化的两条参考曲线，允许跨产品/频响库来源比较；无曲线或不覆盖 500 Hz 时明确禁用对比，不借用近似型号。
-4. **绑定参考**：均衡器可从所有类型中手选完整产品 UUID、恢复自动匹配。连接时按音频地址保存绑定，不使用 BLE 控制端点地址；未连接/JVM 时仅作页面会话预览。自动选择先用有效手动绑定，再仅在 `type == "BT"` 的同名组中按可解析曲线、界面语言、空语言及 UUID 排序。更新后 UUID 消失会提示并退回自动匹配，不按名称迁移到其他记录。绑定不放宽设备筛选，也不加载 EQ 预设或发送命令。
+4. **绑定参考**：均衡器可从所有类型中手选完整产品 UUID、恢复自动匹配。连接时按音频地址保存绑定，不使用 BLE 控制端点地址；未连接/JVM 时仅作页面会话预览。自动选择先用有效手动绑定，再仅在 `type == "BT"` 的同名组中优先可解析曲线，其后按中文（`zh-CN`）、空语言、其他语言及 UUID 排序。更新后 UUID 消失会提示并退回自动匹配，不按名称迁移到其他记录。绑定不放宽设备筛选，也不加载 EQ 预设或发送命令。
 5. **管理快照**：设置中的“拉取”才会访问不带 `ProductType` 参数的 [官方产品目录](https://cdn-service.moondroplab.tech/api/v1/products/all)、[带标签频响库](https://cdn-service.moondroplab.tech/api/v1/responselib/allwithtag) 与显式选择的中国/海外 CDN；一次下载两来源引用的全部不同频响路径，最多四个并发请求，不重试、不自动切换 CDN。两份元数据和全部原文验证及原子落盘成功后才替换旧快照；第二来源失败、任一资产失败或提交前取消均保留旧数据。导入先预览、确认完整替换，导出原始完整快照字节，不合并、不包含音频地址、绑定、设置或 EQ 草稿。
 
 均衡器在**同一张可交互图**内显示源频响虚线、DSP 预测实线、可选蓝色目标参考虚线及淡化的 EQ 响应；左轴仍编辑 EQ 增益，源/预测/目标共用独立右轴，不把 SPL 当作节点增益。预测使用当前量化草稿和现有 48 kHz RBJ 系数，默认包含写入模型的自动前置增益；关闭该开关只改变预测，不改草稿或设备配置。没有编辑器/草稿时仅显示资料频响，不制造预测线；隐藏或无法解析源频响时保留原 EQ 图及操作。

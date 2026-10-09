@@ -32,7 +32,6 @@ import kotlin.math.round
 internal fun CatalogReferencePlot(
     first: SampledCatalogResponse,
     second: SampledCatalogResponse?,
-    english: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val range = remember(first, second) {
@@ -49,7 +48,7 @@ internal fun CatalogReferencePlot(
         acousticScaleLimits(minimum, maximum)
     }
     if (range == null) {
-        Text(tr(english, "参考数值范围无法显示。", "Reference values exceed the displayable range."), modifier)
+        Text("参考数值范围无法显示。", modifier)
         return
     }
     val textMeasurer = rememberTextMeasurer()
@@ -58,9 +57,7 @@ internal fun CatalogReferencePlot(
     val firstColor = MaterialTheme.colorScheme.onSurface
     val secondColor = MaterialTheme.colorScheme.primary
     Box(modifier.semantics {
-        contentDescription = tr(english,
-            "只读参考频响，横轴为 20 Hz 至 20 kHz 的对数频率；仅绘制资料覆盖范围",
-            "Read-only reference response; logarithmic frequency from 20 Hz to 20 kHz; source coverage only")
+        contentDescription = "只读参考频响，横轴为 20 Hz 至 20 kHz 的对数频率；仅绘制资料覆盖范围"
     }.drawWithCache {
         val top = 12.dp.toPx()
         val height = (size.height - top - 30.dp.toPx()).coerceAtLeast(0f)

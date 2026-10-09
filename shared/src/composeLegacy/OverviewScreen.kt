@@ -43,7 +43,6 @@ internal fun OverviewScreen(
     state: HeadsetState,
     missingPermissions: Set<String>,
     clientAvailable: Boolean,
-    english: Boolean,
     showWind: Boolean,
     catalogOnlyDevices: Boolean,
     catalogLoading: Boolean,
@@ -78,31 +77,31 @@ internal fun OverviewScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            OverviewCard(tr(english, "设备目录", "Device catalogue")) {
+            OverviewCard("设备目录") {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr(english, "仅显示目录设备", "Only catalogue devices"), Modifier.weight(1f))
+                    Text("仅显示目录设备", Modifier.weight(1f))
                     Switch(checked = catalogOnlyDevices, onCheckedChange = onCatalogFilterChange)
                 }
                 Text(
                     when {
-                        catalogLoading -> tr(english, "正在加载本地目录，暂不自动选择设备。", "Loading local catalogue; automatic selection is paused.")
-                        !catalogAvailable -> tr(english, "数据库不可用，可关闭筛选显示全部设备，或在设置中导入／拉取。", "Database unavailable. Disable filtering to show all devices, or import/pull in Settings.")
-                        state.device == null -> tr(english, "名称匹配不代表协议支持；控制能力仍由设备探测决定。", "Name matching does not imply protocol support; controls still depend on device probing.")
-                        catalogMatched -> tr(english, "当前设备：目录匹配", "Current device: catalogue match")
-                        else -> tr(english, "当前设备：未收录名称", "Current device: unlisted name")
+                        catalogLoading -> "正在加载本地目录，暂不自动选择设备。"
+                        !catalogAvailable -> "数据库不可用，可关闭筛选显示全部设备，或在设置中导入／拉取。"
+                        state.device == null -> "名称匹配不代表协议支持；控制能力仍由设备探测决定。"
+                        catalogMatched -> "当前设备：目录匹配"
+                        else -> "当前设备：未收录名称"
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (!catalogAvailable) catalogError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                referenceName?.let { Text(tr(english, "参考型号：$it", "Reference model: $it")) }
+                referenceName?.let { Text("参考型号：$it") }
                 OutlinedButton(onClick = onChooseHeadset,
                     enabled = clientAvailable && missingPermissions.isEmpty() && working == null && !catalogLoading) {
-                    Text(tr(english, "选择耳机", "Choose a headset"))
+                    Text("选择耳机")
                 }
                 OutlinedButton(onClick = onOpenCatalog, enabled = catalogAvailable) {
-                    Text(tr(english, "浏览目录", "Browse catalog"))
+                    Text("浏览目录")
                 }
-                Text(tr(english, "筛选只影响下一次自动选择，不会断开当前连接。", "Filtering affects the next automatic selection; it does not disconnect the current headset."),
+                Text("筛选只影响下一次自动选择，不会断开当前连接。",
                     style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -121,7 +120,7 @@ internal fun OverviewScreen(
                         shape = MaterialTheme.shapes.large,
                     ) {
                         Text(
-                            state.phase.display(english),
+                            state.phase.display(),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                             style = MaterialTheme.typography.labelMedium,
                             color = if (state.phase == HeadsetPhase.READY) MaterialTheme.colorScheme.onPrimary
@@ -131,30 +130,30 @@ internal fun OverviewScreen(
                     Text(
                         state.device?.name?.takeIf { it.isNotBlank() }
                             ?: state.device?.address
-                            ?: tr(english, "等待耳机", "Waiting for headset"),
+                            ?: "等待耳机",
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                     if (!clientAvailable) {
-                        Text(tr(english, "当前平台不支持蓝牙控制", "Bluetooth control is unavailable on this platform"))
+                        Text("当前平台不支持蓝牙控制")
                     } else if (missingPermissions.isNotEmpty()) {
-                        Text(tr(english, "需要蓝牙权限才能发现并连接耳机。", "Bluetooth permission is required to find and connect a headset."))
-                        Button(onClick = onRequestPermissions) { Text(tr(english, "授予权限", "Grant permission")) }
+                        Text("需要蓝牙权限才能发现并连接耳机。")
+                        Button(onClick = onRequestPermissions) { Text("授予权限") }
                     } else if (state.phase != HeadsetPhase.READY) {
                         Text(
                             when (state.phase) {
                                 HeadsetPhase.SELECTION_REQUIRED ->
-                                    tr(english, "发现多台已连接的音频设备。选择你的耳机以继续连接。", "Multiple connected audio devices were found. Choose your headset to continue.")
+                                    "发现多台已连接的音频设备。选择你的耳机以继续连接。"
                                 HeadsetPhase.DISCOVERING, HeadsetPhase.CONNECTING, HeadsetPhase.PROBING, HeadsetPhase.RECONNECTING ->
-                                    tr(english, "正在寻找耳机并检查连接，请稍候。", "Finding your headset and checking the connection…")
+                                    "正在寻找耳机并检查连接，请稍候。"
                                 else ->
-                                    tr(english, "尚未连接耳机。请先在系统蓝牙设置中连接耳机，然后重试。", "No headset connected. Connect it in your device's Bluetooth settings, then retry.")
+                                    "尚未连接耳机。请先在系统蓝牙设置中连接耳机，然后重试。"
                             },
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         if (state.phase == HeadsetPhase.IDLE || state.phase == HeadsetPhase.ERROR) {
                             OutlinedButton(onClick = onRetry, enabled = working == null) {
-                                Text(tr(english, "重新连接", "Reconnect"))
+                                Text("重新连接")
                             }
                         }
                     }
@@ -164,24 +163,24 @@ internal fun OverviewScreen(
         }
 
         item {
-            OverviewCard(tr(english, "电量", "Battery")) {
+            OverviewCard("电量") {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    BatteryCell(tr(english, "左耳", "Left"), controlState.battery.left, Modifier.weight(1f))
-                    BatteryCell(tr(english, "右耳", "Right"), controlState.battery.right, Modifier.weight(1f))
-                    if (controlState.battery.case != null) BatteryCell(tr(english, "充电盒", "Case"), controlState.battery.case, Modifier.weight(1f))
+                    BatteryCell("左耳", controlState.battery.left, Modifier.weight(1f))
+                    BatteryCell("右耳", controlState.battery.right, Modifier.weight(1f))
+                    if (controlState.battery.case != null) BatteryCell("充电盒", controlState.battery.case, Modifier.weight(1f))
                 }
             }
         }
 
         item {
-            OverviewCard(tr(english, "降噪模式", "Noise control")) {
+            OverviewCard("降噪模式") {
                 val modes = if (ready) shownAncModes(controlState, showWind) else emptyList()
                 if (controlState.ancMode == null || controlState.ancMode !in modes) {
                     Text(
-                        controlState.ancMode?.display(english)
-                            ?: if (ready && modes.isEmpty()) tr(english, "未检测到可用降噪模式。", "No available noise-control modes were detected.")
-                            else if (ready) tr(english, "当前模式未知，请刷新重试", "Current mode unknown; refresh to retry")
-                            else tr(english, "连接后可用", "Available after connecting"),
+                        controlState.ancMode?.display()
+                            ?: if (ready && modes.isEmpty()) "未检测到可用降噪模式。"
+                            else if (ready) "当前模式未知，请刷新重试"
+                            else "连接后可用",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -192,7 +191,7 @@ internal fun OverviewScreen(
                             FilterChip(
                                 selected = controlState.ancMode == mode,
                                 onClick = { onAnc(mode) },
-                                label = { Text(mode.display(english)) },
+                                label = { Text(mode.display()) },
                                 enabled = enabled,
                             )
                         }
@@ -201,15 +200,14 @@ internal fun OverviewScreen(
             }
         }
         item {
-            OverviewCard(tr(english, "音频编码", "Audio codecs")) {
+            OverviewCard("音频编码") {
                 Text(
-                    tr(english, "这些开关控制耳机端编码选项；实际音频编码由系统协商。",
-                        "These switches control headset codec options; the system negotiates the actual audio codec."),
+                    "这些开关控制耳机端编码选项；实际音频编码由系统协商。",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 val available = ready && (GaiaIds.CODEC_TYPE in controlState.capabilities.gaiaFeatures ||
                     !controlState.capabilities.complete)
-                if (!available) Text(tr(english, "当前会话不支持音频编码控制", "Codec control unavailable in this session"))
+                if (!available) Text("当前会话不支持音频编码控制")
                 AudioCodec.entries.forEach { codec ->
                     val actual = controlState.codecStates[codec]
                     Row(
@@ -220,8 +218,8 @@ internal fun OverviewScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(codec.name, style = MaterialTheme.typography.titleSmall)
                             Text(
-                                actual?.let { if (it) tr(english, "开启", "On") else tr(english, "关闭", "Off") }
-                                    ?: tr(english, "未知", "Unknown"),
+                                actual?.let { if (it) "开启" else "关闭" }
+                                    ?: "未知",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -233,7 +231,7 @@ internal fun OverviewScreen(
                     }
                 }
                 Text(
-                    tr(english, "LHDC 支持取决于耳机型号和固件。", "LHDC support depends on the headset model and firmware."),
+                    "LHDC 支持取决于耳机型号和固件。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -241,16 +239,16 @@ internal fun OverviewScreen(
         }
         if (controls.isNotEmpty()) {
             item {
-                OverviewCard(tr(english, "扩展控制", "More controls")) {
+                OverviewCard("扩展控制") {
                     if (OverviewControl.GAIN in controls) {
-                        Text(tr(english, "增益", "Gain"), style = MaterialTheme.typography.titleSmall)
-                        if (controlState.gain == null) UnknownValue(english)
+                        Text("增益", style = MaterialTheme.typography.titleSmall)
+                        if (controlState.gain == null) UnknownValue()
                         ChipRow {
                             GainLevel.entries.forEach { gain ->
                                 FilterChip(
                                     selected = controlState.gain == gain,
                                     onClick = { onGain(gain) },
-                                    label = { Text(gain.display(english)) },
+                                    label = { Text(gain.display()) },
                                     enabled = enabled && controlState.gain != null,
                                 )
                             }
@@ -258,26 +256,26 @@ internal fun OverviewScreen(
                     }
                     if (OverviewControl.SPATIAL in controls) {
                         ControlSwitch(
-                            tr(english, "空间音频", "Spatial audio"), controlState.spatialOn,
-                            enabled && controlState.spatialOn != null, english, onSpatial,
+                            "空间音频", controlState.spatialOn,
+                            enabled && controlState.spatialOn != null, onSpatial,
                         )
                     }
                     if (OverviewControl.HEAD_TRACKING in controls) {
-                        Text(tr(english, "头部追踪", "Head tracking"), style = MaterialTheme.typography.titleSmall)
-                        if (controlState.headTracking == null) UnknownValue(english)
+                        Text("头部追踪", style = MaterialTheme.typography.titleSmall)
+                        if (controlState.headTracking == null) UnknownValue()
                         ChipRow {
                             HeadTrackingMode.entries.forEach { mode ->
                                 FilterChip(
                                     selected = controlState.headTracking == mode,
                                     onClick = { onTracking(mode) },
-                                    label = { Text(mode.display(english)) },
+                                    label = { Text(mode.display()) },
                                     enabled = enabled && controlState.spatialOn == true && controlState.headTracking != null,
                                 )
                             }
                         }
                     }
                     if (OverviewControl.LED in controls) {
-                        ControlSwitch("LED", controlState.ledOn, enabled && controlState.ledOn != null, english, onLed)
+                        ControlSwitch("LED", controlState.ledOn, enabled && controlState.ledOn != null, onLed)
                     }
                 }
             }
@@ -295,24 +293,24 @@ internal fun OverviewScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text(tr(english, "连接详情", "Connection details"), style = MaterialTheme.typography.titleMedium)
+                        Text("连接详情", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            if (connectionDetailsExpanded) tr(english, "收起", "Hide") else tr(english, "展开", "Show"),
+                            if (connectionDetailsExpanded) "收起" else "展开",
                             color = MaterialTheme.colorScheme.primary,
                             style = MaterialTheme.typography.labelLarge,
                         )
                     }
                     if (connectionDetailsExpanded) {
-                        InfoLine(tr(english, "地址", "Address"), state.device?.address ?: "—")
+                        InfoLine("地址", state.device?.address ?: "—")
                         InfoLine(
-                            tr(english, "控制协议", "Control protocol"),
+                            "控制协议",
                             controlState.protocols.joinToString(" · ") { it.display() }.ifEmpty { "—" },
                         )
                         if (!controlState.capabilities.complete &&
                             state.phase == HeadsetPhase.READY && controlState.phase == DropPhase.READY
                         ) {
                             Text(
-                                tr(english, "部分能力尚未确认；可在高级诊断中测试。", "Some capabilities are unconfirmed; test them in diagnostics."),
+                                "部分能力尚未确认；可在高级诊断中测试。",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -324,7 +322,7 @@ internal fun OverviewScreen(
 
         item {
             Text(
-                tr(english, "控制结果以耳机读回状态为准。", "Controls reflect the state read back from the headset."),
+                "控制结果以耳机读回状态为准。",
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -379,8 +377,8 @@ private fun ChipRow(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun UnknownValue(english: Boolean) {
-    Text(tr(english, "状态尚未读取，可点右上角刷新。", "State not read yet; tap Refresh."),
+private fun UnknownValue() {
+    Text("状态尚未读取，可点右上角刷新。",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
@@ -389,15 +387,14 @@ private fun ControlSwitch(
     label: String,
     value: Boolean?,
     enabled: Boolean,
-    english: Boolean,
     onChange: (Boolean) -> Unit,
 ) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Column {
             Text(label, style = MaterialTheme.typography.titleSmall)
             Text(
-                value?.let { if (it) tr(english, "开启", "On") else tr(english, "关闭", "Off") }
-                    ?: tr(english, "未读取", "Not read"),
+                value?.let { if (it) "开启" else "关闭" }
+                    ?: "未读取",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -406,15 +403,15 @@ private fun ControlSwitch(
     }
 }
 
-private fun HeadsetPhase.display(english: Boolean): String = when (this) {
-    HeadsetPhase.IDLE -> tr(english, "等待连接", "Waiting")
-    HeadsetPhase.DISCOVERING -> tr(english, "发现设备中", "Finding devices")
-    HeadsetPhase.CONNECTING -> tr(english, "连接中", "Connecting")
-    HeadsetPhase.PROBING -> tr(english, "检测能力中", "Checking capabilities")
-    HeadsetPhase.READY -> tr(english, "已连接", "Connected")
-    HeadsetPhase.RECONNECTING -> tr(english, "重新连接中", "Reconnecting")
-    HeadsetPhase.SELECTION_REQUIRED -> tr(english, "请选择设备", "Choose a device")
-    HeadsetPhase.ERROR -> tr(english, "连接错误", "Connection error")
+private fun HeadsetPhase.display(): String = when (this) {
+    HeadsetPhase.IDLE -> "等待连接"
+    HeadsetPhase.DISCOVERING -> "发现设备中"
+    HeadsetPhase.CONNECTING -> "连接中"
+    HeadsetPhase.PROBING -> "检测能力中"
+    HeadsetPhase.READY -> "已连接"
+    HeadsetPhase.RECONNECTING -> "重新连接中"
+    HeadsetPhase.SELECTION_REQUIRED -> "请选择设备"
+    HeadsetPhase.ERROR -> "连接错误"
 }
 
 private fun DropProtocol.display(): String = when (this) {
@@ -422,23 +419,23 @@ private fun DropProtocol.display(): String = when (this) {
     DropProtocol.SOURCE_9ECA -> "9ECA"
 }
 
-internal fun AncMode.display(english: Boolean): String = when (this) {
-    AncMode.OFF -> tr(english, "关闭", "Off")
-    AncMode.NOISE_CANCELLING -> tr(english, "降噪", "Noise cancelling")
-    AncMode.TRANSPARENCY -> tr(english, "通透", "Transparency")
-    AncMode.WIND -> tr(english, "抗风噪", "Wind")
-    AncMode.ADAPTIVE -> tr(english, "自适应", "Adaptive")
+internal fun AncMode.display(): String = when (this) {
+    AncMode.OFF -> "关闭"
+    AncMode.NOISE_CANCELLING -> "降噪"
+    AncMode.TRANSPARENCY -> "通透"
+    AncMode.WIND -> "抗风噪"
+    AncMode.ADAPTIVE -> "自适应"
     AncMode.LIVE -> "Live"
 }
 
-private fun GainLevel.display(english: Boolean): String = when (this) {
-    GainLevel.LOW -> tr(english, "低", "Low")
-    GainLevel.MEDIUM -> tr(english, "中", "Medium")
-    GainLevel.HIGH -> tr(english, "高", "High")
+private fun GainLevel.display(): String = when (this) {
+    GainLevel.LOW -> "低"
+    GainLevel.MEDIUM -> "中"
+    GainLevel.HIGH -> "高"
 }
 
-private fun HeadTrackingMode.display(english: Boolean): String = when (this) {
-    HeadTrackingMode.OFF -> tr(english, "关闭", "Off")
+private fun HeadTrackingMode.display(): String = when (this) {
+    HeadTrackingMode.OFF -> "关闭"
     HeadTrackingMode.THIRTY_DEGREES -> "30°"
-    HeadTrackingMode.SURROUND -> tr(english, "环绕", "Surround")
+    HeadTrackingMode.SURROUND -> "环绕"
 }

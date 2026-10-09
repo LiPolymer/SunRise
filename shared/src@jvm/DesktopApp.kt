@@ -11,10 +11,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import ink.lipoly.app.sunrise.catalog.JvmCatalogDocuments
 import ink.lipoly.app.sunrise.composeLegacy.SunRiseTheme
 import ink.lipoly.app.sunrise.di.SunRiseRuntime
-import ink.lipoly.app.sunrise.settings.usesEnglish
 import ink.lipoly.app.sunrise.settings.isDark
 import java.awt.Frame
-import java.util.Locale
 
 @Composable
 fun DesktopApp(window: Frame, runtime: SunRiseRuntime) {
@@ -38,7 +36,6 @@ fun DesktopApp(window: Frame, runtime: SunRiseRuntime) {
             missingPermissions = emptySet(),
             onRequestPermissions = {},
             settings = settings,
-            english = settings.language.usesEnglish(Locale.getDefault().language),
             dynamicColorAvailable = false,
             onSettingsChange = runtime.settings::update,
         )

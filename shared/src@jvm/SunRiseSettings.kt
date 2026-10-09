@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.prefs.Preferences
 
-/** Only catalog choices persist; appearance and language retain their process-local behavior. */
+/** Only catalog choices persist; appearance retains its process-local behavior. */
 internal class JvmUiSettingsStore(
     private val preferences: Preferences = Preferences.userRoot().node("ink/lipoly/app/sunrise/catalog"),
 ) : UiSettingsStore {

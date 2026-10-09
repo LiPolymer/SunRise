@@ -39,7 +39,7 @@ class CatalogMatchingTest {
         val nonBluetooth = fixtures.snapshot(fixtures.catalogue(physical), responseLibraryBytes = library)
         for (name in listOf("SPACE TRAVEL 2 ULTRA", "Lower case type", "Future model")) {
             assertFalse(matchesCatalogDevice(nonBluetooth, name))
-            assertNull(resolveCatalogReference(nonBluetooth, name, null, true).product)
+            assertNull(resolveCatalogReference(nonBluetooth, name, null).product)
         }
         val files = mapOf(
             fixtures.PATH to fixtures.responseBytes,
@@ -50,11 +50,11 @@ class CatalogMatchingTest {
             files, library,
         )
         assertTrue(matchesCatalogDevice(all, " space   travel 2 ultra "))
-        val automatic = resolveCatalogReference(all, "SPACE TRAVEL 2 ULTRA", null, true)
+        val automatic = resolveCatalogReference(all, "SPACE TRAVEL 2 ULTRA", null)
         assertEquals(bluetoothUuid, automatic.product?.uuid)
         assertIs<CatalogResponse.Unavailable>(automatic.response)
         for (uuid in listOf(usbUuid, responseUuid)) {
-            val manual = resolveCatalogReference(all, "SPACE TRAVEL 2 ULTRA", uuid, true)
+            val manual = resolveCatalogReference(all, "SPACE TRAVEL 2 ULTRA", uuid)
             assertEquals(uuid, manual.product?.uuid)
             val response = assertIs<CatalogResponse.Ready>(manual.response)
             assertContentEquals(doubleArrayOf(40.0, 60.0), response.response.splDb)
@@ -62,7 +62,7 @@ class CatalogMatchingTest {
         }
         assertEquals("Response", all.productsByUuid.getValue(responseUuid).type)
         assertEquals(setOf(usbUuid, bluetoothUuid, responseUuid, lowerUuid, futureUuid),
-            orderedCatalogProducts(all, "SPACE TRAVEL 2 ULTRA", true).map { it.uuid }.toSet())
+            orderedCatalogProducts(all, "SPACE TRAVEL 2 ULTRA").map { it.uuid }.toSet())
     }
 
     @Test fun usableCurveOutranksPreferredLanguageAndNeverBorrowsAnotherName() {
@@ -72,14 +72,14 @@ class CatalogMatchingTest {
         val unrelated = product("d", name = "Ultra Plus", path = "ready")
         val catalogue = snapshot(listOf(englishMissing, chineseBroken, otherReady, unrelated),
             mapOf("ready" to ready, "broken" to unavailable))
-        val selection = resolveCatalogReference(catalogue, "space travel 2 ultra", null, true)
+        val selection = resolveCatalogReference(catalogue, "space travel 2 ultra", null)
         assertSame(otherReady, selection.product)
         assertSame(ready, selection.response)
         assertFalse(selection.invalidManualBinding)
-        assertNull(resolveCatalogReference(catalogue, "Ultra", null, true).product)
+        assertNull(resolveCatalogReference(catalogue, "Ultra", null).product)
     }
 
-    @Test fun languageThenEmptyThenOtherThenUuidBreakTies() {
+    @Test fun chineseThenEmptyThenOtherThenUuidBreakTies() {
         val en = product("f", language = "en-US", path = "ready")
         val zh = product("e", language = "zh-CN", path = "ready")
         val blank = product("d", language = null, path = "ready")
@@ -87,10 +87,9 @@ class CatalogMatchingTest {
         val otherA = product("a", language = "ja-JP", path = "ready")
         val all = listOf(otherB, otherA, blank, zh, en)
         val responses = mapOf("ready" to ready)
-        assertSame(en, resolveCatalogReference(snapshot(all, responses), en.name, null, true).product)
-        assertSame(zh, resolveCatalogReference(snapshot(all, responses), en.name, null, false).product)
-        assertSame(blank, resolveCatalogReference(snapshot(all.take(3), responses), en.name, null, true).product)
-        assertSame(otherA, resolveCatalogReference(snapshot(all.take(2), responses), en.name, null, true).product)
+        assertSame(zh, resolveCatalogReference(snapshot(all, responses), en.name, null).product)
+        assertSame(blank, resolveCatalogReference(snapshot(all.take(3), responses), en.name, null).product)
+        assertSame(otherA, resolveCatalogReference(snapshot(all.take(2), responses), en.name, null).product)
     }
 
     @Test fun explicitUuidOverridesNameLanguageAndCurveAvailabilityWithoutChangingFilter() {
@@ -98,12 +97,12 @@ class CatalogMatchingTest {
         val manual = product("b", name = "Garden", language = "zh-CN", path = "broken")
         val noCurve = product("c", name = "Garden")
         val catalogue = snapshot(listOf(auto, manual, noCurve), mapOf("ready" to ready, "broken" to unavailable))
-        val selected = resolveCatalogReference(catalogue, "Renamed headphones", manual.uuid, true)
+        val selected = resolveCatalogReference(catalogue, "Renamed headphones", manual.uuid)
         assertSame(manual, selected.product)
         assertSame(unavailable, selected.response)
         assertFalse(selected.invalidManualBinding)
         assertFalse(matchesCatalogDevice(catalogue, "Renamed headphones"))
-        val missingCurve = resolveCatalogReference(catalogue, auto.name, noCurve.uuid, true)
+        val missingCurve = resolveCatalogReference(catalogue, auto.name, noCurve.uuid)
         assertSame(noCurve, missingCurve.product)
         assertNull(missingCurve.response)
     }
@@ -112,26 +111,28 @@ class CatalogMatchingTest {
         val prior = product("old", language = "zh-CN", path = "broken")
         val replacement = product("new", language = "en-US", path = "ready")
         val before = snapshot(listOf(prior, replacement), mapOf("ready" to ready, "broken" to unavailable))
-        assertSame(prior, resolveCatalogReference(before, prior.name, prior.uuid, true).product)
+        assertSame(prior, resolveCatalogReference(before, prior.name, prior.uuid).product)
         val after = snapshot(listOf(replacement), mapOf("ready" to ready))
-        val fallback = resolveCatalogReference(after, prior.name, prior.uuid, true)
+        val fallback = resolveCatalogReference(after, prior.name, prior.uuid)
         assertSame(replacement, fallback.product)
         assertSame(ready, fallback.response)
         assertTrue(fallback.invalidManualBinding)
-        val noMatch = resolveCatalogReference(after, "Renamed", prior.uuid, true)
+        val noMatch = resolveCatalogReference(after, "Renamed", prior.uuid)
         assertNull(noMatch.product)
         assertTrue(noMatch.invalidManualBinding)
-        assertFalse(resolveCatalogReference(null, prior.name, prior.uuid, true).invalidManualBinding)
+        assertFalse(resolveCatalogReference(null, prior.name, prior.uuid).invalidManualBinding)
     }
 
     @Test fun unavailableCurveAndNoCurveRemainRealMetadataSelections() {
         val broken = product("b", language = "zh-CN", path = "broken")
         val missing = product("a", language = "en-US")
         val catalogue = snapshot(listOf(broken, missing), mapOf("broken" to unavailable))
-        assertSame(missing, resolveCatalogReference(catalogue, missing.name, null, true).product)
-        val chinese = resolveCatalogReference(catalogue, missing.name, null, false)
-        assertSame(broken, chinese.product)
-        assertSame(unavailable, chinese.response)
+        val selection = resolveCatalogReference(catalogue, missing.name, null)
+        assertSame(broken, selection.product)
+        assertSame(unavailable, selection.response)
+        val manual = resolveCatalogReference(catalogue, missing.name, missing.uuid)
+        assertSame(missing, manual.product)
+        assertNull(manual.response)
     }
 
     @Test fun selectorRetainsEveryRecordAndOrdersCurrentNameThenNameLanguageUuid() {
@@ -149,13 +150,10 @@ class CatalogMatchingTest {
         val catalogue = snapshot(products, mapOf("ready" to ready, "broken" to unavailable))
         assertEquals(products.size, catalogue.products.size)
         assertEquals(6, catalogue.productsByNormalizedName.getValue("space travel 2 ultra").size)
-        val english = orderedCatalogProducts(catalogue, " space   travel 2 ultra ", true)
-        assertEquals(listOf("ultra-en-a", "ultra-en-b", "ultra-null", "ultra-other-a", "ultra-other-b", "ultra-zh",
-            "alpha-en", "alpha-zh", "z"), english.map { it.uuid })
-        assertEquals(products.map { it.uuid }.toSet(), english.map { it.uuid }.toSet())
-        val chinese = orderedCatalogProducts(catalogue, "SPACE TRAVEL 2 ULTRA", false)
+        val ordered = orderedCatalogProducts(catalogue, " space   travel 2 ultra ")
         assertEquals(listOf("ultra-zh", "ultra-null", "ultra-en-a", "ultra-en-b", "ultra-other-a", "ultra-other-b",
-            "alpha-zh", "alpha-en", "z"), chinese.map { it.uuid })
-        assertEquals(listOf("alpha-en", "alpha-zh"), orderedCatalogProducts(catalogue, null, true).take(2).map { it.uuid })
+            "alpha-zh", "alpha-en", "z"), ordered.map { it.uuid })
+        assertEquals(products.map { it.uuid }.toSet(), ordered.map { it.uuid }.toSet())
+        assertEquals(listOf("alpha-zh", "alpha-en"), orderedCatalogProducts(catalogue, null).take(2).map { it.uuid })
     }
 }

@@ -8,9 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import ink.lipoly.app.sunrise.settings.UiSettings
 
-internal fun tr(english: Boolean, chinese: String, englishText: String): String =
-    if (english) englishText else chinese
-
 private data class SeedPalette(val light: Color, val dark: Color, val container: Color)
 
 private val seedPalettes = listOf(

@@ -7,18 +7,15 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.edit
 import ink.lipoly.app.sunrise.composeLegacy.SunRiseTheme
 import ink.lipoly.app.sunrise.settings.ThemeMode
-import ink.lipoly.app.sunrise.settings.UiLanguage
 import ink.lipoly.app.sunrise.settings.UiSettings
 import ink.lipoly.app.sunrise.settings.UiSettingsStore
 import ink.lipoly.app.sunrise.settings.decodeReferenceProducts
 import ink.lipoly.app.sunrise.settings.encodeReferenceProducts
 import ink.lipoly.app.sunrise.settings.isDark
-import ink.lipoly.app.sunrise.settings.usesEnglish
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,7 +29,6 @@ internal class AndroidUiSettingsStore(private val preferences: SharedPreferences
             dynamicColor = preferences.getBoolean("dynamic_color", true),
             amoled = preferences.getBoolean("amoled", false),
             seedIndex = preferences.getInt("seed", 0).coerceIn(0, 4),
-            language = enumAt(preferences.getInt("language", 0), UiLanguage.entries),
             showWind = preferences.getBoolean("show_wind", true),
             catalogOnlyDevices = preferences.getBoolean("catalog_only_devices", true),
             showReferenceResponse = preferences.getBoolean("show_reference_response", true),
@@ -51,7 +47,6 @@ internal class AndroidUiSettingsStore(private val preferences: SharedPreferences
             putBoolean("dynamic_color", next.dynamicColor)
             putBoolean("amoled", next.amoled)
             putInt("seed", next.seedIndex)
-            putInt("language", next.language.ordinal)
             putBoolean("show_wind", next.showWind)
             putBoolean("catalog_only_devices", next.catalogOnlyDevices)
             putBoolean("show_reference_response", next.showReferenceResponse)
@@ -66,11 +61,6 @@ internal class AndroidUiSettingsStore(private val preferences: SharedPreferences
 
 private fun <T> enumAt(index: Int, values: List<T>): T = values.getOrElse(index) { values.first() }
 
-@Composable
-internal fun UiSettings.english(): Boolean {
-    val configuration = LocalConfiguration.current
-    return language.usesEnglish(configuration.locales[0]?.language ?: "en")
-}
 
 @Composable
 internal fun AndroidSunRiseTheme(settings: UiSettings, content: @Composable () -> Unit) {

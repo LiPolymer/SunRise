@@ -15,7 +15,6 @@ internal fun AppEntry(
     missingPermissions: Set<String>,
     onRequestPermissions: () -> Unit,
     settings: UiSettings,
-    english: Boolean,
     dynamicColorAvailable: Boolean,
     onSettingsChange: (UiSettings) -> Unit,
 ) {
@@ -26,7 +25,6 @@ internal fun AppEntry(
         missingPermissions = missingPermissions,
         onRequestPermissions = onRequestPermissions,
         settings = settings,
-        english = english,
         dynamicColorAvailable = dynamicColorAvailable,
         onSettingsChange = onSettingsChange,
     )

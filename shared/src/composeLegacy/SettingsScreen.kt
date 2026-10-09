@@ -36,13 +36,11 @@ import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.catalog.CatalogCdn
 import ink.lipoly.app.sunrise.catalog.CatalogState
 import ink.lipoly.app.sunrise.settings.ThemeMode
-import ink.lipoly.app.sunrise.settings.UiLanguage
 import ink.lipoly.app.sunrise.settings.UiSettings
 
 @Composable
 internal fun SettingsScreen(
     settings: UiSettings,
-    english: Boolean,
     dynamicAvailable: Boolean,
     catalogState: CatalogState,
     canCancelPull: Boolean,
@@ -64,12 +62,12 @@ internal fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            CatalogDatabaseCard(catalogState, english, canCancelPull, onPull, onCancelPull, onImport, onExport, onOpenCatalog)
+            CatalogDatabaseCard(catalogState, canCancelPull, onPull, onCancelPull, onImport, onExport, onOpenCatalog)
         }
-        item { SettingsSectionHeading(tr(english, "外观", "Appearance")) }
+        item { SettingsSectionHeading("外观") }
         item {
             SettingsCard {
-                Text(tr(english, "主题模式", "Theme mode"), style = MaterialTheme.typography.titleSmall)
+                Text("主题模式", style = MaterialTheme.typography.titleSmall)
                 SelectionRow {
                     ThemeMode.entries.forEach { mode ->
                         FilterChip(
@@ -77,19 +75,19 @@ internal fun SettingsScreen(
                             selected = settings.themeMode == mode,
                             onClick = { onChange(settings.copy(themeMode = mode)) },
                             label = { Text(when (mode) {
-                                ThemeMode.SYSTEM -> tr(english, "跟随系统", "System")
-                                ThemeMode.LIGHT -> tr(english, "浅色", "Light")
-                                ThemeMode.DARK -> tr(english, "深色", "Dark")
+                                ThemeMode.SYSTEM -> "跟随系统"
+                                ThemeMode.LIGHT -> "浅色"
+                                ThemeMode.DARK -> "深色"
                             }) },
                         )
                     }
                 }
                 HorizontalDivider()
                 SettingSwitchRow(
-                    title = tr(english, "动态取色", "Dynamic color"),
+                    title = "动态取色",
                     subtitle = if (dynamicAvailable)
-                        tr(english, "跟随系统壁纸配色", "Use colors from your wallpaper")
-                    else tr(english, "需要 Android 12 或更高版本", "Requires Android 12 or later"),
+                        "跟随系统壁纸配色"
+                    else "需要 Android 12 或更高版本",
                     checked = settings.dynamicColor && dynamicAvailable,
                     enabled = dynamicAvailable,
                     onChange = { onChange(settings.copy(dynamicColor = it)) },
@@ -97,14 +95,14 @@ internal fun SettingsScreen(
                 HorizontalDivider()
                 SettingSwitchRow(
                     title = "AMOLED",
-                    subtitle = tr(english, "在深色模式中使用纯黑背景", "Use a pure-black background in dark mode"),
+                    subtitle = "在深色模式中使用纯黑背景",
                     checked = settings.amoled,
                     enabled = true,
                     onChange = { onChange(settings.copy(amoled = it)) },
                 )
                 if (!settings.dynamicColor || !dynamicAvailable) {
                     HorizontalDivider()
-                    Text(tr(english, "种子颜色", "Seed color"), style = MaterialTheme.typography.titleSmall)
+                    Text("种子颜色", style = MaterialTheme.typography.titleSmall)
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).selectableGroup(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -118,7 +116,7 @@ internal fun SettingsScreen(
                                         role = Role.RadioButton,
                                         onClick = { onChange(settings.copy(seedIndex = index, dynamicColor = false)) },
                                     )
-                                    .semantics { contentDescription = tr(english, "种子颜色 ${index + 1}", "Seed color ${index + 1}") },
+                                    .semantics { contentDescription = "种子颜色 ${index + 1}" },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Box(
@@ -140,34 +138,13 @@ internal fun SettingsScreen(
             }
         }
 
-        item { SettingsSectionHeading(tr(english, "通用与控制", "General & controls")) }
+        item { SettingsSectionHeading("通用与控制") }
         item {
             SettingsCard {
-                Text(tr(english, "语言", "Language"), style = MaterialTheme.typography.titleSmall)
-                Text(tr(english, "应用显示语言", "App display language"), style = MaterialTheme.typography.bodyMedium)
-                SelectionRow {
-                    UiLanguage.entries.forEach { language ->
-                        FilterChip(
-                            modifier = Modifier.heightIn(min = 48.dp),
-                            selected = settings.language == language,
-                            onClick = { onChange(settings.copy(language = language)) },
-                            label = { Text(when (language) {
-                                UiLanguage.SYSTEM -> tr(english, "跟随系统", "System")
-                                UiLanguage.CHINESE -> "中文"
-                                UiLanguage.ENGLISH -> "English"
-                            }) },
-                        )
-                    }
-                }
-                HorizontalDivider()
-                Text(tr(english, "控制", "Controls"), style = MaterialTheme.typography.titleSmall)
+                Text("控制", style = MaterialTheme.typography.titleSmall)
                 SettingSwitchRow(
-                    title = tr(english, "显示抗风噪按钮", "Show wind-noise button"),
-                    subtitle = tr(
-                        english,
-                        "只影响概览按钮，不会改变耳机模式或映射。",
-                        "Only changes the Overview button; it does not alter the headset mode or mapping.",
-                    ),
+                    title = "显示抗风噪按钮",
+                    subtitle = "只影响概览按钮，不会改变耳机模式或映射。",
                     checked = settings.showWind,
                     enabled = true,
                     onChange = { onChange(settings.copy(showWind = it)) },
@@ -177,60 +154,55 @@ internal fun SettingsScreen(
         item {
             SettingsCard {
                 SettingSwitchRow(
-                    tr(english, "仅显示目录设备", "Show catalogue devices only"),
-                    tr(english, "仅按完整产品名称过滤；目录匹配不代表协议支持。显示全部可选择改名或未收录设备。",
-                        "Filters by the complete product name only; a catalogue match does not imply protocol support. Show all to choose renamed or unlisted devices."),
+                    "仅显示目录设备",
+                    "仅按完整产品名称过滤；目录匹配不代表协议支持。显示全部可选择改名或未收录设备。",
                     settings.catalogOnlyDevices, true,
                 ) { onChange(settings.copy(catalogOnlyDevices = it)) }
                 SettingSwitchRow(
-                    tr(english, "显示参考频响", "Show reference response"),
-                    tr(english, "产品目录与频响库资料，非当前耳机实测", "Product catalog and response-library data, not a measurement of the connected headset"),
+                    "显示参考频响",
+                    "产品目录与频响库资料，非当前耳机实测",
                     settings.showReferenceResponse, true,
                 ) { onChange(settings.copy(showReferenceResponse = it)) }
                 SettingSwitchRow(
-                    tr(english, "预测包含自动前置增益", "Include automatic pregain in prediction"),
-                    tr(english, "只改变图形预测，不改变耳机参数或发送方式", "Changes only the plotted prediction, not headset parameters or submission"),
+                    "预测包含自动前置增益",
+                    "只改变图形预测，不改变耳机参数或发送方式",
                     settings.includeResponsePreGain, true,
                 ) { onChange(settings.copy(includeResponsePreGain = it)) }
             }
         }
 
-        item { SettingsSectionHeading(tr(english, "权限与诊断", "Permissions & diagnostics")) }
+        item { SettingsSectionHeading("权限与诊断") }
         item {
             SettingsCard {
-                Text(tr(english, "蓝牙权限状态", "Bluetooth permission status"), style = MaterialTheme.typography.titleSmall)
+                Text("蓝牙权限状态", style = MaterialTheme.typography.titleSmall)
                 if (!clientAvailable) {
                     Text(
-                        tr(english, "当前平台不支持蓝牙控制", "Bluetooth control is unavailable on this platform"),
+                        "当前平台不支持蓝牙控制",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 } else {
                     Text(
                         if (missingPermissions.isEmpty())
-                            tr(english, "蓝牙权限已授予", "Bluetooth permissions granted")
-                        else tr(english, "缺少权限：", "Missing permissions: ") +
+                            "蓝牙权限已授予"
+                        else "缺少权限：" +
                             missingPermissions.joinToString { it.substringAfterLast('.') },
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
                 if (clientAvailable && missingPermissions.isNotEmpty()) {
                     Button(onClick = onRequestPermissions, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text(tr(english, "请求权限", "Request permissions"))
+                        Text("请求权限")
                     }
                 }
                 HorizontalDivider()
-                Text(tr(english, "高级诊断", "Advanced diagnostics"), style = MaterialTheme.typography.titleSmall)
+                Text("高级诊断", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    tr(
-                        english,
-                        "查看协议能力、最近通知及 GAIA 与 9ECA 测试控件。",
-                        "View protocol capabilities, recent notifications, and GAIA and 9ECA test controls.",
-                    ),
+                    "查看协议能力、最近通知及 GAIA 与 9ECA 测试控件。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Button(onClick = onOpenDiagnostics, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(tr(english, "打开高级诊断", "Open advanced diagnostics"))
+                    Text("打开高级诊断")
                 }
             }
         }
