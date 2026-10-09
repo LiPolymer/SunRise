@@ -49,7 +49,7 @@
 
 通讯包名是 `ink.lipoly.app.sunrise.blueConnector`；`Bt*`、`Gatt*` 与 `createBtManager` 仍使用原类型/工厂名，没有新的 `BlueConnectorManager` 等替代名称。
 
-仅复制 `drop` 即可独立消费源码模块；消费者的 `module.yaml` 声明 `../drop` 依赖，Android 宿主仍自行声明/申请蓝牙权限。库配置为 Kotlin 2.4.20、Android compileSdk 37/minSdk 24，不开启 Compose，也不配置 Maven 发布。模块随附原文 [LICENSE](../../LICENSE) 与 [NOTICE](../../NOTICE)；仍适用 PolyForm Noncommercial 1.0.0 及 Required Notice，不因拆库变为任意商业使用许可。
+`drop` 可独立消费源码模块；消费者的 `module.yaml` 声明 `../drop` 依赖，Android 宿主仍自行声明/申请蓝牙权限。库配置为 Kotlin 2.4.20、Android compileSdk 37/minSdk 24，不开启 Compose，也不配置 Maven 发布。许可与署名统一位于仓库根目录的 [LICENSE](../../../LICENSE) 与 [NOTICE](../../../NOTICE)，独立复制或分发模块时应同时携带这些文件；仍适用 PolyForm Noncommercial 1.0.0 及 Required Notice，不因拆库变为任意商业使用许可。
 
 ## 公开参数与 EQ 数学 API
 

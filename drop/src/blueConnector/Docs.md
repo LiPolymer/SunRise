@@ -50,7 +50,7 @@
 | [AndroidBtRfcomm.kt](../../src@android/blueConnector/AndroidBtRfcomm.kt) | 现有经典通道的打开、字节写入、串行关闭与管理器资源所有权 |
 | [BtPlatform.jvm.kt](../../src@jvm/blueConnector/BtPlatform.jvm.kt) | 桌面明确抛不可用异常 |
 
-协议行为证据入口：[GAIA 设备 fixture](../../test/drop/GaiaGattDeviceFixture.kt)、[经典 EQ 测试](../../test/drop/GaiaClassicEqTest.kt)、[参数 EQ 测试](../../test/drop/GaiaParamEqTest.kt)。当前仓库没有独立操作队列/JVM 工厂测试文件；这些协议测试不证明 Android 无线或实体设备兼容性，fixture 不属于生产后端。独立模块随附原文 [LICENSE](../../LICENSE) 与 Required Notice 的 [NOTICE](../../NOTICE)，不更改许可或配置 Maven 发布。
+协议行为证据入口：[GAIA 设备 fixture](../../test/drop/GaiaGattDeviceFixture.kt)、[经典 EQ 测试](../../test/drop/GaiaClassicEqTest.kt)、[参数 EQ 测试](../../test/drop/GaiaParamEqTest.kt)。当前仓库没有独立操作队列/JVM 工厂测试文件；这些协议测试不证明 Android 无线或实体设备兼容性，fixture 不属于生产后端。许可与 Required Notice 统一位于仓库根目录的 [LICENSE](../../../LICENSE) 与 [NOTICE](../../../NOTICE)；独立复制或分发模块时应同时携带这些文件，不更改许可或配置 Maven 发布。
 
 ## 平台入口与 Android 权限
 
@@ -151,7 +151,7 @@ Android 实现用系统栈完成 SDP 查询、RFCOMM 组帧、流控与校验，
 
 写入使用 `WRITE_TYPE_DEFAULT`（带响应）。入队前复制调用方负载，入队前和开始执行时均检查 MTU−3。API 33+ 使用显式 byte array 的写入/描述符 API 和状态码判断；API 24–32 使用旧 value/writeType 加 Boolean API。读与通知兼容旧回调和 API 33+ 传值回调，复制平台可能复用的数组。本包不自动把长包切片，也不把 GATT 层写成功解释为某个设备设置已经生效。
 
-Android 调试跟踪可用 `adb shell setprop log.tag.SunRiseGatt DEBUG` 开启，默认关闭；`adb shell setprop log.tag.SunRiseGatt INFO` 关闭。`SunRiseGatt` 的 `tx-start` 记录队列实际启动原生写入的完整 PDU、实际 MTU、特征 UUID，`tx-return` 记录 API 33+ 状态码或旧版 Boolean 接纳结果，`tx-complete` 记录当前会话/特征匹配后的原生回调状态。`sid` 与 `wid` 关联进程内会话和写入，`tNs` 为单调纳秒时间；另有 MTU 请求/返回/回调及会话终止记录。不开启时不构造日志消息/hex；不增加无线命令，也不记录 MAC/设备名。原始 PDU 仍可能敏感，分享前检查。日志是平台调用证据，不是 HCI/空口抓包或应用协议/DSP 确认；EQ 的使用步骤见 [README 发送诊断](../../../README.md#eq-发送诊断)。
+Android 调试跟踪可用 `adb shell setprop log.tag.SunRiseGatt DEBUG` 开启，默认关闭；`adb shell setprop log.tag.SunRiseGatt INFO` 关闭。`SunRiseGatt` 的 `tx-start` 记录队列实际启动原生写入的完整 PDU、实际 MTU、特征 UUID，`tx-return` 记录 API 33+ 状态码或旧版 Boolean 接纳结果，`tx-complete` 记录当前会话/特征匹配后的原生回调状态。`sid` 与 `wid` 关联进程内会话和写入，`tNs` 为单调纳秒时间；另有 MTU 请求/返回/回调及会话终止记录。不开启时不构造日志消息/hex；不增加无线命令，也不记录 MAC/设备名。原始 PDU 仍可能敏感，分享前检查。日志是平台调用证据，不是 HCI/空口抓包或应用协议/DSP 确认；EQ 的使用步骤见 [发送诊断与实机安全](../../../AGENTS.md#发送诊断与实机安全)。
 
 ## 状态与事件
 
