@@ -41,11 +41,11 @@
 | [HeadsetPlatform.android.kt](../../src@android/headset/HeadsetPlatform.android.kt) | Android 工厂及已有 SharedPreferences 数据语义 |
 | [MainActivity.kt](../../../android-app/src/MainActivity.kt) | 取得 Application runtime、权限请求和 onResume 复核 |
 | [Android App.kt](../../src@android/App.kt) | 接收 runtime，建立宿主展示会话、主题与文档选择器 |
-| [AppContent.kt](../composeLegacy/AppContent.kt) | 显式 catalog/session 参数、候选列表、参考/目标选择与页面布局 |
+| [AppContent.kt](../compose/AppContent.kt) | 显式 catalog/session 参数、候选列表、参考/目标选择与 Navigation3 页面布局 |
 | [ConnectionCoordinator.kt](../presentation/ConnectionCoordinator.kt) | 应用级权限门槛、目录 predicate 与自动连接启动边界 |
 | [HeadsetPresentationController.kt](../presentation/HeadsetPresentationController.kt) | 宿主级候选、事件、能力读回与动作状态，不拥有 facade |
 | [PresentationSession.kt](../presentation/PresentationSession.kt) | 控制器及 EQ owner 的释放顺序与宿主子 scope |
-| [DropDiagnostics.kt](../composeLegacy/DropDiagnostics.kt) | 分开显示应用连接/控制状态、实际异常和 ANC 确认失败 |
+| [DiagnosticsEntry.kt](../compose/entries/DiagnosticsEntry.kt) | 分开显示应用连接/控制状态、实际异常和 ANC 确认失败 |
 | [HeadsetAutoFilterTest.kt](../../test/headset/HeadsetAutoFilterTest.kt) | 生产自动循环的筛选、手动选择与 READY epoch 保留；计数 GATT 包装复用真实字节 GAIA fixture |
 
 包名使用 `blueConnector`，但公共 `Bt*`、`Gatt*` 与 `createBtManager` 名称不变。`HeadsetClient` 的 common 构造器是 **internal**；外部 Android 调用方使用 `createHeadsetClient(context, bt, options)`，不能把测试中的直接构造写成公共 common 用法。
@@ -237,7 +237,7 @@ suspend fun readSelectedBattery(
 - 地址/枚举/直接连接失败保留 `BtException`，例如 `InvalidDevice`、`MissingPermission`、`Timeout`。工厂和 `verified` 标记不能绕过权限。
 - 控制探测和功能操作遵循 `DropException`。控制层封装底层错误的具体映射见 [drop 异常参考](../../../drop/src/drop/Docs.md)；facade 不再统一改写异常。
 - 端点全部失败时，返回最后记录的真实非 UnsupportedDevice 异常；没有这类失败才返回候选的 `UnsupportedDevice`，若没有任何记录则回退 `Disconnected`。因此一次普通连接超时不能被展示成“确定协议不支持”。扫描 MissingPermission 被特意跳过，历史缓存的 InvalidDevice 被忽略，并不成为端点支持证明。
-- `DropException.Unverified` 表示 ANC 已发送但读回无法确认，控制状态 `ancMode` 为未知；`AncModeMismatch` 保留 requested/observed，状态保留实际观察模式。不要显示成成功，也不要丢失专属异常载荷。当前 [诊断页](../composeLegacy/DropDiagnostics.kt) 单独展示这两类情况。
+- `DropException.Unverified` 表示 ANC 已发送但读回无法确认，控制状态 `ancMode` 为未知；`AncModeMismatch` 保留 requested/observed，状态保留实际观察模式。不要显示成成功，也不要丢失专属异常载荷。当前 [诊断页](../compose/entries/DiagnosticsEntry.kt) 单独展示这两类情况。
 - 普通控件异常直接抛给操作调用方，不保证更新 `state.error` 或发 `HeadsetEvent.Error`。初读/轮询失败不会自动弹出错误通知。UI 应按操作返回/异常给反馈，而非把 ERROR 当作所有失败的唯一入口。
 - 状态流是当前事实而非不可变成功承诺：读 snapshot 后可能立即断连，后续 getter/操作仍可能失败。重连/切换清空协议功能值；UI 必须同时检查应用阶段，不能在 RECONNECTING 时根据旧 READY 控件数据放行。
 
@@ -253,6 +253,6 @@ suspend fun readSelectedBattery(
 - **缓存控件跨重连使用**：旧引用按旧绑定失败，不会动态转向新会话；重新取 getter。
 - **把事件流当可靠日志或协议回复**：它是有限缓冲的尽力通知，snapshot 和操作结果才是界面事实来源。
 
-本指南依据当前生产实现、宿主调用和 [现有 fixture 测试源码](../../test/headset/HeadsetClientTest.kt) 描述契约。fixture 覆盖原始 0/1/多候选、不同品牌保留、音频/BLE 身份分离、初次手动失败、取消未返回的连接、切换/旧帧隔离、重连、名称快照与其他设备不受 close 影响；它不代表 Android 无线或 SharedPreferences 落盘时序的实体证明。
+本指南依据当前生产实现、宿主调用、[自动连接与筛选测试](../../test/headset/HeadsetAutoFilterTest.kt) 和 [字节级 fixture](../../test/headset/HeadsetAutoLoopFixture.kt) 描述契约。现有 fixture 测试覆盖 0/1/多候选、默认保留不同品牌、目录精确匹配与类型筛选、显式手动选择不受自动筛选限制，以及筛选变化不替换当前连接 epoch 和控件绑定；它不代表 Android 无线或 SharedPreferences 落盘时序的实体证明。
 
 Android 真正枚举、授权、扫描、GATT、系统音频事实，以及真实耳机协议/电量/ANC 需要相应硬件与权限验证。本包的 Android 工厂没有 JVM 同等工厂；桌面 `createBtManager` 明确不可用，现有桌面/Preview 使用可空客户端路径而不创建假蓝牙后端。阅读或编辑文档不能声称完成这些硬件验证。

@@ -9,7 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import ink.lipoly.app.sunrise.catalog.JvmCatalogDocuments
-import ink.lipoly.app.sunrise.composeLegacy.SunRiseTheme
+import ink.lipoly.app.sunrise.compose.SunRiseTheme
 import ink.lipoly.app.sunrise.di.SunRiseRuntime
 import ink.lipoly.app.sunrise.settings.isDark
 import java.awt.Frame

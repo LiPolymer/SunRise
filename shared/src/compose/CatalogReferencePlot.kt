@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.composeLegacy
+package ink.lipoly.app.sunrise.compose
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme

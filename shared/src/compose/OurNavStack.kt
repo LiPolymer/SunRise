@@ -67,6 +67,12 @@ object OurNavStack {
             override val index: Int
                 get() = 3
         }
+
+        @Serializable
+        data object Catalog : Route
+
+        @Serializable
+        data object Diagnostics : Route
     }
 
     @OptIn(ExperimentalSerializationApi::class)

@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.composeLegacy
+package ink.lipoly.app.sunrise.compose
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -27,8 +27,8 @@ internal fun CatalogDatabaseCard(
     var cdn by remember { mutableStateOf(CatalogCdn.CHINA) }
     val inspectionMode = LocalInspectionMode.current
     val idle = !state.loading && !state.busy && !inspectionMode
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ListItemCard {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("产品与频响目录", style = MaterialTheme.typography.titleLarge)
             Text(when {
                 state.loading -> "正在加载本地数据库"

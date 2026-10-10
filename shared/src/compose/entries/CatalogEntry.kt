@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.composeLegacy
+package ink.lipoly.app.sunrise.compose.entries
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,6 +15,9 @@ import ink.lipoly.app.sunrise.catalog.*
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
+import ink.lipoly.app.sunrise.compose.CatalogSnapshotDetails
+import ink.lipoly.app.sunrise.compose.CatalogReferencePlot
+import ink.lipoly.app.sunrise.compose.ListItemCard
 
 private fun catalogMetadata(product: CatalogProduct, key: String): String {
     val text = when (val value = product.raw[key]) {
@@ -88,7 +91,7 @@ internal fun CatalogProductSelector(
 }
 
 @Composable
-internal fun ProductCatalogScreen(
+internal fun CatalogEntry(
     snapshot: CatalogSnapshot?,
     deviceName: String?,
     deviceEqBands: Int?,
@@ -100,26 +103,33 @@ internal fun ProductCatalogScreen(
     val ordered = remember(snapshot, deviceName) { snapshot?.let { orderedCatalogProducts(it, deviceName) }.orEmpty() }
     val products = remember(ordered, query) { searchCatalogProducts(ordered, query) }
     val selected = selectedUuid?.let { snapshot?.productsByUuid?.get(it) }
+    LaunchedEffect(snapshot, selectedUuid) {
+        if (selectedUuid != null && selected == null) selectedUuid = null
+    }
     if (snapshot != null && selected != null) {
         CatalogProductDetail(snapshot, selected, deviceName, deviceEqBands, onUseReference, { selectedUuid = null }, modifier)
         return
     }
-    LazyColumn(modifier, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(modifier) {
         item {
-            Text("产品与频响目录", style = MaterialTheme.typography.titleLarge)
-            Text("按完整产品与频响记录浏览。搜索仅查询 name / model，不改变精确名称设备筛选。目录资料不代表已验证的设备控制能力。", style = MaterialTheme.typography.bodySmall)
-        }
-        if (snapshot == null) item { Text("没有可用的离线数据库；可在设置导入或显式拉取。") }
-        else {
-            item { CatalogSnapshotDetails(snapshot) }
-            item {
-                OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    label = { Text("搜索名称 / 型号") })
-                Text("${products.size} / ${snapshot.products.size} 条记录（不合并同名 UUID）")
+            Column(Modifier.padding(16.dp)) {
+                Text("产品与频响目录", style = MaterialTheme.typography.titleLarge)
+                Text("按完整产品与频响记录浏览。搜索仅查询 name / model，不改变精确名称设备筛选。目录资料不代表已验证的设备控制能力。", style = MaterialTheme.typography.bodySmall)
             }
-            if (products.isEmpty()) item { Text("没有匹配的名称或型号") }
+        }
+        if (snapshot == null) item { Text("没有可用的离线数据库；可在设置导入或显式拉取。", Modifier.padding(16.dp)) }
+        else {
+            item { ListItemCard { Column(Modifier.padding(16.dp)) { CatalogSnapshotDetails(snapshot) } } }
+            item {
+                Column(Modifier.padding(16.dp)) {
+                    OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                        label = { Text("搜索名称 / 型号") })
+                    Text("${products.size} / ${snapshot.products.size} 条记录（不合并同名 UUID）")
+                }
+            }
+            if (products.isEmpty()) item { Text("没有匹配的名称或型号", Modifier.padding(16.dp)) }
             items(products, key = { it.uuid }) { product ->
-                Card(Modifier.fillMaxWidth()) { CatalogProductRow(snapshot, product) { selectedUuid = product.uuid } }
+                ListItemCard { CatalogProductRow(snapshot, product) { selectedUuid = product.uuid } }
             }
         }
     }
@@ -153,14 +163,16 @@ private fun CatalogProductDetail(
     }
     val comparisonEnabled = comparison != null && firstReason == null && secondReason == null
     val directoryBands = (product.raw["eqBands"] as? JsonPrimitive)?.intOrNull
-    LazyColumn(modifier, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(modifier) {
         item {
-            TextButton(onClick = onBack) { Text("返回目录列表") }
-            Text(product.name, style = MaterialTheme.typography.headlineSmall)
-            Text("UUID: ${product.uuid}", style = MaterialTheme.typography.bodySmall)
+            Column(Modifier.padding(16.dp)) {
+                TextButton(onClick = onBack) { Text("返回目录列表") }
+                Text(product.name, style = MaterialTheme.typography.headlineSmall)
+                Text("UUID: ${product.uuid}", style = MaterialTheme.typography.bodySmall)
+            }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            ListItemCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     for ((key, label) in listOf(
                         "model" to "型号",
@@ -191,34 +203,46 @@ private fun CatalogProductDetail(
             }
         }
         item {
-            Button(onClick = { onUseReference(product) }) { Text("用作参考频响") }
-            Text("只选择参考 UUID，不联网、不发送蓝牙命令，也不加载 EQ 预设。", style = MaterialTheme.typography.bodySmall)
-        }
-        item {
-            Text("参考频响", style = MaterialTheme.typography.titleMedium)
-            if (sampled == null) Text(catalogResponseStatus(snapshot, product))
-            else if (sampled.frequencyHz.isEmpty()) Text("没有可显示频段：原始资料与 20 Hz–20 kHz 无交集。")
-            else {
-                Text(if (sampled.normalizationHz == null) "原始 SPL dB · 未归一化（不覆盖 500 Hz）"
-                    else "参考 dB · 500 Hz = 0（SunRise 显示归一化）", style = MaterialTheme.typography.labelMedium)
-                ReferenceLegend(product, MaterialTheme.colorScheme.onSurface, false)
-                if (comparisonEnabled) ReferenceLegend(comparison, MaterialTheme.colorScheme.primary, true)
-                CatalogReferencePlot(sampled, if (comparisonEnabled) otherSampled else null, Modifier.fillMaxWidth().height(260.dp))
-                Text("只画各曲线自身覆盖范围，不外推；测量曲线的条件未知，不代表佩戴、ANC 或音量状态一致，目标曲线并非设备实测。", style = MaterialTheme.typography.bodySmall)
+            ListItemCard {
+                Column(Modifier.padding(16.dp)) {
+                    Button(onClick = { onUseReference(product) }) { Text("用作参考频响") }
+                    Text("只选择参考 UUID，不联网、不发送蓝牙命令，也不加载 EQ 预设。", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
         item {
-            OutlinedButton(onClick = { chooseComparison = true }, enabled = firstReason == null) {
-                Text("选择第二条参考频响作双曲线对比")
+            ListItemCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("参考频响", style = MaterialTheme.typography.titleMedium)
+                    if (sampled == null) Text(catalogResponseStatus(snapshot, product))
+                    else if (sampled.frequencyHz.isEmpty()) Text("没有可显示频段：原始资料与 20 Hz–20 kHz 无交集。")
+                    else {
+                        Text(if (sampled.normalizationHz == null) "原始 SPL dB · 未归一化（不覆盖 500 Hz）"
+                            else "参考 dB · 500 Hz = 0（SunRise 显示归一化）", style = MaterialTheme.typography.labelMedium)
+                        ReferenceLegend(product, MaterialTheme.colorScheme.onSurface, false)
+                        if (comparisonEnabled) ReferenceLegend(comparison, MaterialTheme.colorScheme.primary, true)
+                        CatalogReferencePlot(sampled, if (comparisonEnabled) otherSampled else null, Modifier.fillMaxWidth().height(260.dp))
+                        Text("只画各曲线自身覆盖范围，不外推；测量曲线的条件未知，不代表佩戴、ANC 或音量状态一致，目标曲线并非设备实测。", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
-            firstReason?.let { Text("双曲线对比不可用：$it", style = MaterialTheme.typography.bodySmall) }
-            comparison?.let { other ->
-                Text("第二条参考频响: ${other.name}")
-                Text("语言: ${catalogMetadata(other, "languageType")} · UUID: ${other.uuid}", style = MaterialTheme.typography.bodySmall)
-                Text(catalogResponseStatus(snapshot, other), style = MaterialTheme.typography.bodySmall)
-                secondReason?.let { Text("双曲线对比不可用：$it", style = MaterialTheme.typography.bodySmall) }
-                if (comparisonEnabled) Text("双曲线共用 dB 轴；各自以 500 Hz 归一化，仅对比形状。", style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { comparisonUuid = null }) { Text("清除对比") }
+        }
+        item {
+            ListItemCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { chooseComparison = true }, enabled = firstReason == null) {
+                        Text("选择第二条参考频响作双曲线对比")
+                    }
+                    firstReason?.let { Text("双曲线对比不可用：$it", style = MaterialTheme.typography.bodySmall) }
+                    comparison?.let { other ->
+                        Text("第二条参考频响: ${other.name}")
+                        Text("语言: ${catalogMetadata(other, "languageType")} · UUID: ${other.uuid}", style = MaterialTheme.typography.bodySmall)
+                        Text(catalogResponseStatus(snapshot, other), style = MaterialTheme.typography.bodySmall)
+                        secondReason?.let { Text("双曲线对比不可用：$it", style = MaterialTheme.typography.bodySmall) }
+                        if (comparisonEnabled) Text("双曲线共用 dB 轴；各自以 500 Hz 归一化，仅对比形状。", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { comparisonUuid = null }) { Text("清除对比") }
+                    }
+                }
             }
         }
     }

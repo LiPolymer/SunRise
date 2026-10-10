@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.composeLegacy
+package ink.lipoly.app.sunrise.compose.entries
 
 
 import androidx.compose.foundation.horizontalScroll
@@ -9,9 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -24,8 +23,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import ink.lipoly.app.sunrise.compose.ListItemCard
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropEvent
 import ink.lipoly.app.sunrise.drop.DropException
@@ -43,76 +44,81 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
-fun DropDiagnosticsScreen(
+internal fun DiagnosticsEntry(
     client: HeadsetClient? = null,
     missingPermissions: Set<String> = emptySet(),
     onRequestPermissions: () -> Unit = {},
     modifier: Modifier = Modifier,
     recentEvents: List<HeadsetEvent> = emptyList(),
 ) {
-        val headsetState = client?.state?.collectAsState()?.value ?: HeadsetState()
-        val state = headsetState.controls
-        val scope = rememberCoroutineScope()
-        var busy by remember(client) { mutableStateOf(false) }
-        var message by remember(client) { mutableStateOf("选择设备或启动自动连接") }
-        var address by remember { mutableStateOf("") }
-        var sourceIdText by remember { mutableStateOf("") }
-        var devices by remember(client) { mutableStateOf<List<HeadsetDevice>>(emptyList()) }
-        var sourceCapability by remember(client, headsetState.device?.device, headsetState.phase, state.phase) {
-            mutableStateOf<SourceCapability?>(null)
+    val headsetState = client?.state?.collectAsState()?.value ?: HeadsetState()
+    val state = headsetState.controls
+    val scope = rememberCoroutineScope()
+    var busy by remember(client) { mutableStateOf(false) }
+    var message by remember(client) { mutableStateOf("选择设备或启动自动连接") }
+    var address by remember { mutableStateOf("") }
+    var sourceIdText by remember { mutableStateOf("") }
+    var devices by remember(client) { mutableStateOf<List<HeadsetDevice>>(emptyList()) }
+    var sourceCapability by remember(client, headsetState.device?.device, headsetState.phase, state.phase) {
+        mutableStateOf<SourceCapability?>(null)
+    }
+    LaunchedEffect(client, headsetState.phase, missingPermissions) {
+        if (client != null && missingPermissions.isEmpty() && headsetState.phase == HeadsetPhase.SELECTION_REQUIRED) {
+            try {
+                devices = client.discoverConnectedDevices()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                message = "发现设备失败：" + (e.message ?: e::class.simpleName)
+            }
         }
-        LaunchedEffect(client, headsetState.phase, missingPermissions) {
-            if (client != null && missingPermissions.isEmpty() && headsetState.phase == HeadsetPhase.SELECTION_REQUIRED) {
-                try {
-                    devices = client.discoverConnectedDevices()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    message = "发现设备失败：" + (e.message ?: e::class.simpleName)
+    }
+
+    fun runAction(label: String, protocol: DropProtocol? = null, action: suspend HeadsetClient.() -> String) {
+        val activeClient = client ?: return
+        if (busy || missingPermissions.isNotEmpty()) return
+        if (protocol != null && !activeClient.state.value.hasReadyControls(protocol)) return
+        busy = true
+        message = "$label：进行中…"
+        scope.launch {
+            try {
+                if (protocol != null && !activeClient.state.value.hasReadyControls(protocol)) throw DropException.NotReady()
+                message = "$label：${activeClient.action()}"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: DropException.Unverified) {
+                message = "$label：已发送但未能验证，当前状态未知；请刷新。"
+            } catch (e: DropException.AncModeMismatch) {
+                message = "$label：读回不一致，目标 ${e.requested.label()}，实际 ${e.observed.label()}"
+            } catch (e: Exception) {
+                message = "$label 失败：${e.message ?: e::class.simpleName}"
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    val available = client != null && missingPermissions.isEmpty() && !busy
+    val gaiaReady = available && headsetState.hasReadyControls(DropProtocol.GAIA_BLE)
+    val sourceReady = available && headsetState.hasReadyControls(DropProtocol.SOURCE_9ECA)
+
+    LazyColumn(modifier = modifier.fillMaxSize()) {
+        item(key = "heading") {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("设备诊断", style = MaterialTheme.typography.headlineSmall)
+                if (client == null) {
+                    Text("未提供耳机客户端。")
+                } else if (missingPermissions.isNotEmpty()) {
+                    Text("需要蓝牙权限：" + missingPermissions.joinToString { it.substringAfterLast('.') })
+                    Button(onClick = onRequestPermissions) { Text("授予权限") }
                 }
             }
         }
 
-        fun runAction(label: String, protocol: DropProtocol? = null, action: suspend HeadsetClient.() -> String) {
-            val activeClient = client ?: return
-            if (busy || missingPermissions.isNotEmpty()) return
-            if (protocol != null && !activeClient.state.value.hasReadyControls(protocol)) return
-            busy = true
-            message = "$label：进行中…"
-            scope.launch {
-                try {
-                    if (protocol != null && !activeClient.state.value.hasReadyControls(protocol)) throw DropException.NotReady()
-                    message = "$label：${activeClient.action()}"
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: DropException.Unverified) {
-                    message = "$label：已发送但未能验证，当前状态未知；请刷新。"
-                } catch (e: DropException.AncModeMismatch) {
-                    message = "$label：读回不一致，目标 ${e.requested.label()}，实际 ${e.observed.label()}"
-                } catch (e: Exception) {
-                    message = "$label 失败：${e.message ?: e::class.simpleName}"
-                } finally {
-                    busy = false
-                }
-            }
-        }
-
-        val available = client != null && missingPermissions.isEmpty() && !busy
-        val gaiaReady = available && headsetState.hasReadyControls(DropProtocol.GAIA_BLE)
-        val sourceReady = available && headsetState.hasReadyControls(DropProtocol.SOURCE_9ECA)
-
-        Column(
-            modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("设备诊断", style = MaterialTheme.typography.headlineSmall)
-            if (client == null) {
-                Text("未提供耳机客户端。")
-            } else if (missingPermissions.isNotEmpty()) {
-                Text("需要蓝牙权限：" + missingPermissions.joinToString { it.substringAfterLast('.') })
-                Button(onClick = onRequestPermissions) { Text("授予权限") }
-            }
-
+        item(key = "connection") {
             TestSection("连接状态") {
                 Text(headsetState.phase.label(), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                 Text(headsetState.device?.name?.takeIf { it.isNotBlank() } ?: headsetState.device?.address ?: "未连接设备",
@@ -122,7 +128,9 @@ fun DropDiagnosticsScreen(
                 headsetState.error?.let { Text("连接错误：" + (it.message ?: it::class.simpleName), color = MaterialTheme.colorScheme.error) }
                 Text(message, color = MaterialTheme.colorScheme.primary)
             }
+        }
 
+        item(key = "controls") {
             TestSection("控制状态") {
                 Text(state.phase.label(), style = MaterialTheme.typography.titleMedium)
                 state.error?.let { Text("控制错误：" + (it.message ?: it::class.simpleName), color = MaterialTheme.colorScheme.error) }
@@ -130,7 +138,9 @@ fun DropDiagnosticsScreen(
                 Text("能力：" +
                     if (state.capabilities.complete) "探测完成" else "探测未完成")
             }
+        }
 
+        item(key = "device") {
             TestSection("设备") {
                 Button(
                     onClick = { runAction("自动连接") { startAutoConnect(); "已启动" } },
@@ -180,7 +190,9 @@ fun DropDiagnosticsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("断开") }
             }
+        }
 
+        item(key = "gaia") {
             TestSection("GAIA 控制", collapsible = true) {
                 Text("GAIA ${state.capabilities.gaiaFeatures.sorted()}")
                 Text("电量：左 " + state.battery.left.percent() +
@@ -233,7 +245,9 @@ fun DropDiagnosticsScreen(
                     onClick = { mode -> runAction("设置头部追踪", DropProtocol.GAIA_BLE) { gaia.setHeadTracking(mode).label() } },
                 )
             }
+        }
 
+        item(key = "source") {
             TestSection("9ECA 音源", collapsible = true) {
                 Text("9ECA ${state.capabilities.sourceFeatures}")
                 Text("当前音源 ID：" + (state.sourceStatus?.currentSource?.toString() ?: "未读取"))
@@ -294,12 +308,15 @@ fun DropDiagnosticsScreen(
                     }, enabled = sourceReady) { Text("读麦克风增益") }
                 }
             }
+        }
 
+        item(key = "events") {
             TestSection("最近通知", collapsible = true) {
                 if (recentEvents.isEmpty()) Text("暂无通知")
                 recentEvents.asReversed().forEach { Text(it.describe(), style = MaterialTheme.typography.bodySmall) }
             }
         }
+    }
 }
 
 @Composable
@@ -308,8 +325,8 @@ private fun TestSection(
     collapsible: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(!collapsible) }
-    Card(modifier = Modifier.fillMaxWidth()) {
+    var expanded by rememberSaveable { mutableStateOf(!collapsible) }
+    ListItemCard {
         Column(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),

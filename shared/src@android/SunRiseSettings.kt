@@ -9,7 +9,7 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.edit
-import ink.lipoly.app.sunrise.composeLegacy.SunRiseTheme
+import ink.lipoly.app.sunrise.compose.SunRiseTheme
 import ink.lipoly.app.sunrise.settings.ThemeMode
 import ink.lipoly.app.sunrise.settings.UiSettings
 import ink.lipoly.app.sunrise.settings.UiSettingsStore
