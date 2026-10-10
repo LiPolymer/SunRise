@@ -30,6 +30,7 @@ internal fun AppContent(
     onSettingsChange: (UiSettings) -> Unit,
 ) {
     val headsetState = client?.state?.collectAsState()?.value ?: HeadsetState()
+    val headsetPresentationState by session.headset.state.collectAsState()
     val catalogState by catalog.state.collectAsState()
     val eqEditor = rememberParamEqEditor(client, headsetState, session.eq, missingPermissions)
     val eqState = eqEditor?.state?.collectAsState()?.value
@@ -40,7 +41,7 @@ internal fun AppContent(
         Scaffold(
             bottomBar = {
                 NavigationBar(windowInsets = NavigationBarDefaults.windowInsets) {
-                    OurNavStack.navigatableNodes.createNavigationBarItems(
+                    OurNavStack.navigableNodes.createNavigationBarItems(
                         navStack.activeNode
                     ) { navStack.add(it) }
                 }
@@ -54,7 +55,11 @@ internal fun AppContent(
                         OverviewEntry(
                             headsetState,
                             catalogState,
-                            navStack
+                            navStack,
+                            missingPermissions,
+                            onRequestPermissions,
+                            session,
+                            headsetPresentationState
                         )
                     }
                     entry<OurNavStack.Route.Equalizer> {

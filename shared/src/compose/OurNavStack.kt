@@ -83,7 +83,7 @@ object OurNavStack {
     }
 
     @OptIn(ExperimentalSerializationApi::class)
-    val navigatableNodes: List<INavNode> by lazy {
+    val navigableNodes: List<INavNode> by lazy {
         val serializer = PolymorphicSerializer(NavKey::class)
         routeModule
             .getPolymorphicDescriptors(serializer.descriptor)
