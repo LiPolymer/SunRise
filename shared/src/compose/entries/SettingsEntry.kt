@@ -6,6 +6,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -20,14 +21,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -40,10 +48,12 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.catalog.CatalogCdn
+import ink.lipoly.app.sunrise.catalog.CatalogOrigin
+import ink.lipoly.app.sunrise.catalog.CatalogResponse
+import ink.lipoly.app.sunrise.catalog.CatalogSnapshot
 import ink.lipoly.app.sunrise.catalog.CatalogState
 import ink.lipoly.app.sunrise.settings.ThemeMode
 import ink.lipoly.app.sunrise.settings.UiSettings
-import ink.lipoly.app.sunrise.compose.CatalogDatabaseCard
 import ink.lipoly.app.sunrise.compose.ListItemCard
 import ink.lipoly.app.sunrise.compose.seedSwatches
 
@@ -69,7 +79,43 @@ internal fun SettingsEntry(
     val linkColor = MaterialTheme.colorScheme.primary
     LazyColumn(modifier = modifier) {
         item {
-            CatalogDatabaseCard(catalogState, canCancelPull, onPull, onCancelPull, onImport, onExport, onOpenCatalog)
+            var cdn by remember { mutableStateOf(CatalogCdn.CHINA) }
+            val inspectionMode = LocalInspectionMode.current
+            val idle = !catalogState.loading && !catalogState.busy && !inspectionMode
+            ListItemCard {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("产品与频响目录", style = MaterialTheme.typography.titleLarge)
+                    Text(when {
+                        catalogState.loading -> "正在加载本地数据库"
+                        catalogState.origin == CatalogOrigin.BUNDLED -> "来源：内置快照"
+                        catalogState.origin == CatalogOrigin.LOCAL -> "来源：本地快照"
+                        catalogState.origin == CatalogOrigin.PULL -> "来源：本次拉取"
+                        catalogState.origin == CatalogOrigin.IMPORT -> "来源：本次导入（来源信息由文件提供）"
+                        else -> "没有可用数据库；可导入或显式拉取，也可显示全部设备"
+                    })
+                    catalogState.snapshot?.let { CatalogSnapshotDetails(it) }
+                    Text("完整离线快照；应用不会自动联网。仅“拉取”访问官方服务。", style = MaterialTheme.typography.bodySmall)
+                    catalogState.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    catalogState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (catalogState.busy) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Text("进行中：${catalogState.completedFiles}/${catalogState.totalFiles} 个频响文件")
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (option in CatalogCdn.entries) FilterChip(
+                            selected = option == cdn, onClick = { cdn = option }, enabled = idle,
+                            label = { Text(if (option == CatalogCdn.CHINA) "中国 CDN" else "海外 CDN") },
+                        )
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { onPull(cdn) }, enabled = idle) { Text("拉取") }
+                        OutlinedButton(onClick = onImport, enabled = idle) { Text("导入") }
+                        OutlinedButton(onClick = onExport, enabled = idle && catalogState.snapshot != null) { Text("导出") }
+                        if (canCancelPull) TextButton(onClick = onCancelPull) { Text("取消") }
+                    }
+                    OutlinedButton(onClick = onOpenCatalog, enabled = catalogState.snapshot != null) { Text("浏览目录") }
+                }
+            }
         }
         item { SettingsSectionHeading("外观") }
         item {
@@ -312,4 +358,15 @@ private fun SettingSwitchRow(
         }
         Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
+}
+
+@Composable
+internal fun CatalogSnapshotDetails(snapshot: CatalogSnapshot) {
+    Text("快照时间: ${snapshot.retrievedAt}")
+    Text("${snapshot.products.size} 条目录记录 · ${snapshot.productsByNormalizedName.size} 个不同名称")
+    val ready = snapshot.responsesByPath.values.count { it is CatalogResponse.Ready }
+    Text("下载频响 ${snapshot.responsesByPath.size} 份 · 可解析 $ready 份")
+    Text("产品目录来源: ${snapshot.catalogueUrl}", style = MaterialTheme.typography.bodySmall)
+    Text("频响库来源: ${snapshot.responseLibraryUrl}", style = MaterialTheme.typography.bodySmall)
+    Text("CDN: ${snapshot.cdnBaseUrl}", style = MaterialTheme.typography.bodySmall)
 }

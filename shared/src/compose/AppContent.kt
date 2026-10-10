@@ -255,8 +255,15 @@ internal fun AppContent(
         }
     }
     if (referenceChooserOpen && snapshot != null) CatalogProductSelector(
-        snapshot, headsetState.device?.name, ::chooseReference, { referenceChooserOpen = false },
-    )
+        snapshot,
+        headsetState.device?.name,
+        ::chooseReference,
+        {
+            referenceChooserOpen = false
+        },
+    ) {
+
+    }
     if (targetChooserOpen && snapshot != null) CatalogProductSelector(
         snapshot, headsetState.device?.name, ::chooseTarget, { targetChooserOpen = false }, "选择目标频响",
     )

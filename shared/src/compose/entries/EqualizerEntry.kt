@@ -46,7 +46,6 @@ import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqCurve
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditPhase
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditState
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditor
-import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqSubmitMode
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.PeqParameter
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqFlatten
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqFrequencyAt
@@ -100,7 +99,6 @@ internal fun EqualizerEntry(
     var sheet by remember(editor) { mutableStateOf<PeqSheet?>(null) }
     var flattenDialog by remember(editor) { mutableStateOf(false) }
     var returnFocus by remember(editor) { mutableStateOf<FocusRequester?>(null) }
-    var showReferenceDetails by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val bands = if (editor != null) state?.draft.orEmpty() else emptyList()
@@ -137,11 +135,13 @@ internal fun EqualizerEntry(
     }
     val editable = editor != null && enabled && canEdit(state)
     val maySelect = editable && state?.isEditing != true
-    val manual = state?.submitMode == ParamEqSubmitMode.MANUAL
     val idle = state?.isEditing != true &&
-        (state?.phase != ParamEqEditPhase.PENDING || manual) &&
+        state?.phase != ParamEqEditPhase.PENDING &&
         state?.phase != ParamEqEditPhase.WRITING && state?.phase != ParamEqEditPhase.LOADING
     val selected = bands.firstOrNull { it.index == selectedIndex }
+
+    var isResponseCardExpanded by mutableStateOf(false)
+
     LaunchedEffect(editor, bands.size) {
         // A reload temporarily has no draft; retain the selected index until its new band count is known.
         if (bands.isNotEmpty() && bands.none { it.index == selectedIndex }) selectedIndex = bands.first().index
@@ -184,61 +184,74 @@ internal fun EqualizerEntry(
         ) {
             item {
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("源频响", style = MaterialTheme.typography.titleMedium)
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(referenceProduct?.let { "${it.name} · ${it.languageType ?: "语言未提供"}" }
-                                ?: "未选择参考频响", Modifier.weight(1f))
-                            TextButton(onClick = { showReferenceDetails = !showReferenceDetails }) {
-                                Text("资料")
+                    if (isResponseCardExpanded) {
+                        Column(Modifier.padding(12.dp, 0.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.padding(0.dp,12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("源频响", style = MaterialTheme.typography.titleMedium)
+                                    TextButton(
+                                        onClick = {
+                                            isResponseCardExpanded = false
+                                        }
+                                    ) {
+                                        Text("收起")
+                                    }
+                                }
+                                Text(referenceProduct?.name ?: "未选择参考频响", Modifier.weight(1f))
+                                if (referenceResponse !is CatalogResponse.Ready) Text(
+                                    when (referenceResponse) {
+                                        is CatalogResponse.Unavailable -> "参考频响无法解析：${referenceResponse.reason}"
+                                        else -> "目录未提供参考频响"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = onChooseReference) { Text("选择参考频响") }
+                                    TextButton(onClick = onResetReference) { Text("恢复自动匹配") }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("显示源频响", Modifier.weight(1f))
+                                    Switch(checked = showReferenceResponse, onCheckedChange = onReferenceResponseChange)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("预测含自动前置增益", Modifier.weight(1f))
+                                    Switch(checked = includeResponsePreGain, onCheckedChange = onResponsePreGainChange)
+                                }
+                            }
+                            Column(Modifier.padding(0.dp,12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("目标参考频响", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    targetProduct?.name ?:
+                                    if (targetProductUuid != null) "所选目标不可用"
+                                    else "未选择目标频响"
+                                )
+                                targetProductUuid?.let { Text("UUID: $it", style = MaterialTheme.typography.bodySmall) }
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = onChooseTarget) { Text("选择目标频响") }
+                                    TextButton(onClick = onClearTarget, enabled = targetProductUuid != null) { Text("清除目标") }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("显示目标频响", Modifier.weight(1f))
+                                    Switch(checked = showTargetResponse, onCheckedChange = onTargetResponseChange)
+                                }
+                                targetUnavailableReason?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                             }
                         }
-                        if (showReferenceDetails) {
-                            referenceProduct?.let { Text("UUID: ${it.uuid}", style = MaterialTheme.typography.bodySmall) }
-                            referenceSource?.let { Text("资料来源：$it", style = MaterialTheme.typography.bodySmall) }
-                            referenceRetrievedAt?.let { Text("快照时间：$it", style = MaterialTheme.typography.bodySmall) }
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Text("频响参考设定", style = MaterialTheme.typography.titleMedium)
+                            TextButton(
+                                onClick = {
+                                    isResponseCardExpanded = true
+                                }
+                            ) {
+                                Text("展开")
+                            }
                         }
-                        if (referenceResponse !is CatalogResponse.Ready) Text(
-                            when (referenceResponse) {
-                                is CatalogResponse.Unavailable -> "参考频响无法解析：${referenceResponse.reason}"
-                                else -> "目录未提供参考频响"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = onChooseReference) { Text("选择参考频响") }
-                            TextButton(onClick = onResetReference) { Text("恢复自动匹配") }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("显示源频响", Modifier.weight(1f))
-                            Switch(checked = showReferenceResponse, onCheckedChange = onReferenceResponseChange)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("预测含自动前置增益", Modifier.weight(1f))
-                            Switch(checked = includeResponsePreGain, onCheckedChange = onResponsePreGainChange)
-                        }
-                    }
-                }
-            }
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("目标参考频响", style = MaterialTheme.typography.titleMedium)
-                        Text(targetProduct?.let { "${it.name} · ${it.languageType ?: "语言未提供"}" }
-                            ?: if (targetProductUuid != null) "所选目标不可用"
-                            else "未选择目标频响")
-                        targetProductUuid?.let { Text("UUID: $it", style = MaterialTheme.typography.bodySmall) }
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = onChooseTarget) { Text("选择目标频响") }
-                            TextButton(onClick = onClearTarget, enabled = targetProductUuid != null) { Text("清除目标") }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("显示目标频响", Modifier.weight(1f))
-                            Switch(checked = showTargetResponse, onCheckedChange = onTargetResponseChange)
-                        }
-                        targetUnavailableReason?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                        Text("仅供手动调音参照，不自动匹配 EQ，不改变耳机配置。",
-                            style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -251,37 +264,12 @@ internal fun EqualizerEntry(
                             ParamEqEditPhase.LOADING -> "正在读取"
                             ParamEqEditPhase.READY -> "已读取设备配置"
                             ParamEqEditPhase.SENT -> "已发送"
-                            ParamEqEditPhase.PENDING -> if (manual) "草稿，尚未发送" else "待下发"
+                            ParamEqEditPhase.PENDING -> "待下发"
                             ParamEqEditPhase.WRITING -> "正在发送"
                             ParamEqEditPhase.FAILED -> "操作失败：需要重新读取"
                             else -> "不可用"
                         }
                     }, style = MaterialTheme.typography.titleMedium)
-                    if (editor != null && state != null) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("手动提交（诊断）", Modifier.weight(1f))
-                            Switch(
-                                checked = manual,
-                                onCheckedChange = { editor.setSubmitMode(if (it) ParamEqSubmitMode.MANUAL else ParamEqSubmitMode.REALTIME) },
-                                enabled = enabled && state.canChangeSubmitMode,
-                                modifier = Modifier.semantics { contentDescription = "手动提交（诊断）" },
-                            )
-                        }
-                        Text(
-                            if (manual) "编辑只保留草稿，松手不会发送。点击后提交一次完整配置，可能按 MTU 分包。"
-                            else "当前实时发送：编辑会自动写入耳机。",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        if (manual && !state.canChangeSubmitMode && state.phase == ParamEqEditPhase.PENDING && !state.isEditing) {
-                            Text("先提交或重新读取草稿，再切换发送方式。", style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (manual) Button(
-                            onClick = { editor.submit() },
-                            enabled = enabled && state.canSubmit,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                        ) { Text("提交一次") }
-                    }
                     if (bands.isNotEmpty()) {
                         if (preGainRaw != null) {
                             val db = (preGainRaw / 60.0 * 100).roundToInt() / 100.0
@@ -295,63 +283,55 @@ internal fun EqualizerEntry(
                         }
                     }
                     if (state?.confirmed?.currentPreset != null && state.confirmed.currentPreset != 63) {
-                        Text(if (manual) "提交将切换至用户 EQ" else "编辑将切换至用户 EQ", style = MaterialTheme.typography.bodyMedium)
+                        Text("编辑将切换至用户 EQ", style = MaterialTheme.typography.bodyMedium)
                     }
-                    if (editor == null || state == null) Text("仅显示参考频响资料；连接支持 GAIA Bluetrum 参数 EQ 的设备后才能编辑。", style = MaterialTheme.typography.bodySmall)
-                    else if (state.phase == ParamEqEditPhase.UNAVAILABLE && state.error == null) Text("设备未提供可编辑的 Bluetrum 用户 EQ")
+                    if (editor != null && state != null && state.phase == ParamEqEditPhase.UNAVAILABLE
+                        && state.error == null) Text("设备未提供可编辑的 Bluetrum 用户 EQ")
                 }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (hasOverlay) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (overlay != null) ResponseLegend("源频响", 0.65f, 1.5.dp, dashed = true)
-                            if (overlay?.predictedDb != null) ResponseLegend("DSP 预测", 1f, 2.dp)
-                            if (target != null) ResponseLegend("目标参考", 1f, 2.dp, dashed = true, lineColor = targetResponseColor)
-                            if (bands.isNotEmpty()) ResponseLegend("EQ 响应", 0.30f, 2.5.dp)
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (overlay != null) ResponseLegend(
+                                referenceProduct?.name ?: "源频响", 0.65f, 1.5.dp, dashed = true
+                            )
+                            if (overlay?.predictedDb != null) ResponseLegend(
+                                "DSP后", 1f, 2.dp
+                            )
+                            if (target != null) ResponseLegend(
+                                targetProduct?.name ?: "目标频响", 1f, 2.dp, dashed = true,
+                                lineColor = targetResponseColor
+                            )
+                            if (bands.isNotEmpty()) ResponseLegend(
+                                "EQ 响应", 0.30f, 2.5.dp
+                            )
                         }
                     }
                     if (selected != null) Text(
-                        "第 ${selected.index + 1} 段 · ${parameterValue(selected, PeqParameter.Q)}",
+                        "${selected.index + 1} ${
+                            parameterValue(
+                                selected, 
+                                PeqParameter.GAIN
+                            )}@${
+                            parameterValue(
+                                selected,
+                                PeqParameter.FREQUENCY
+                            )} ${parameterValue(
+                            selected, 
+                            PeqParameter.Q
+                            )}",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     ParamEqCurve(bands, selectedIndex, editor, editable, compact,
                         onSelect = { if (maySelect && !editor.state.value.isEditing) selectedIndex = it },
                         modifier = Modifier.fillMaxWidth().height(curveHeight), overlay = overlay, target = target, responseScale = responseScale)
-                    if (editable && bands.isNotEmpty()) Text(
-                        "先选频段；单指拖动调频率/增益，双指横向张开调宽、合拢调窄（Q）。",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    if (target != null) {
-                        Text("源频响与目标各自以 500 Hz=0 dB 归一化；源频响、预测和目标共用右轴，仅对比调音形状，各自只画资料覆盖范围。",
-                            style = MaterialTheme.typography.bodySmall)
-                        Text("测量条件、佩戴与音量可能不同，曲线接近不保证听感相同。比较形状时可关闭“预测含自动前置增益”，避免整体音量偏移干扰。",
-                            style = MaterialTheme.typography.bodySmall)
-                        if (!hasOverlay) Text("目标及其他频响数值超出可显示范围。",
-                            style = MaterialTheme.typography.bodySmall)
-                    }
-                    if (overlay != null) {
-                        if (!hasOverlay) Text(
-                            if (overlay.frequencyHz.isEmpty()) "参考在 20–20000 Hz 内没有可显示频段。"
-                            else "参考及预测数值超出可显示范围。",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        else {
-                            Text(
-                                if (overlay.normalizationHz != null)
-                                    "SunRise 显示归一化：500 Hz=0 dB；仅绘制资料覆盖范围，左轴用于 EQ 编辑，右轴用于参考。"
-                                else "资料不覆盖 500 Hz：显示未归一化原始 SPL；仅绘制资料覆盖范围，左轴用于 EQ 编辑，右轴用于参考。",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        overlay.predictionError?.let { Text("预测不可用：$it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                        if (overlay.predictedDb != null) Text(
-                            "参考 + 当前 EQ（48 kHz RBJ，默认含自动前置增益）；${if (includeResponsePreGain) "当前前置增益 ${overlay.includedPreGainRaw?.div(60.0)} dB" else "当前已关闭前置增益"}。这是当前草稿的写入模型预测，已发送不等于已应用或实测。",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    if (referenceProduct != null) Text(
-                        "参考频响来自产品目录或频响库，测量资料可能已含调音，目标曲线并非设备实测；不代表当前耳机实测，不保证不同 ANC、佩戴或音量状态一致，不能作为绝对声压。",
+                    if (overlay != null && !hasOverlay) Text(
+                        if (overlay.frequencyHz.isEmpty()) "参考在 20–20000 Hz 内没有可显示频段。"
+                        else "参考及预测数值超出可显示范围。",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -386,7 +366,7 @@ internal fun EqualizerEntry(
                     }
                     OutlinedButton(onClick = { editor.refresh() }, enabled = enabled && idle,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text(if (manual && state.phase == ParamEqEditPhase.PENDING) "重新读取（丢弃草稿）" else "重新读取")
+                        Text("重新读取")
                     }
                     OutlinedButton(onClick = { editor.undo() }, enabled = editable && state?.canUndo == true && !state.isEditing,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("撤销") }
@@ -420,18 +400,11 @@ internal fun EqualizerEntry(
                     }
                 }
             }
-            item {
-                if (bands.isNotEmpty()) Text("左轴 EQ 曲线为 48 kHz 参数响应估算，不含自动前置衰减，非耳机实测。", style = MaterialTheme.typography.bodySmall)
-                if (bands.isNotEmpty()) Text("Bluetrum 验证模式：固定峰值，写入类型码 0。", style = MaterialTheme.typography.bodySmall)
-                if (!compact && bands.isNotEmpty()) Text("鼠标：拖节点；Shift 锁轴；Q 手柄 / 滚轮；双击重置。方向键细调，Shift 大步、Ctrl 精细。", style = MaterialTheme.typography.bodySmall)
-            }
         }
     }
     if (flattenDialog) {
         AlertDialog(onDismissRequest = { flattenDialog = false }, title = { Text("平直所有频段？") },
-            text = { Text(if (manual)
-                "将所有频段草稿设为平直，不发送到耳机；需要点击“提交一次”。这不是恢复出厂或保存到 Flash。"
-                else "将所有频段设为平直并发送到耳机。这不是恢复出厂或保存到 Flash。") },
+            text = { Text("将所有频段设为平直并发送到耳机。这不是恢复出厂或保存到 Flash。") },
             confirmButton = { TextButton(enabled = maySelect, onClick = {
                 flattenDialog = false
                 if (maySelect) {
@@ -521,8 +494,7 @@ private fun parameterValue(band: GaiaPeqBand, parameter: PeqParameter): String =
 }
 private fun bandSummary(band: GaiaPeqBand): String = "${band.frequencyHz} Hz · ${parameterValue(band, PeqParameter.GAIN)} · ${parameterValue(band, PeqParameter.Q)} · ${filterName(band.filter)}"
 private fun canEdit(state: ParamEqEditState?): Boolean = when (state?.phase) {
-    ParamEqEditPhase.READY, ParamEqEditPhase.SENT, ParamEqEditPhase.PENDING -> true
-    ParamEqEditPhase.WRITING -> state.submitMode != ParamEqSubmitMode.MANUAL
+    ParamEqEditPhase.READY, ParamEqEditPhase.SENT, ParamEqEditPhase.PENDING, ParamEqEditPhase.WRITING -> true
     else -> false
 }
 

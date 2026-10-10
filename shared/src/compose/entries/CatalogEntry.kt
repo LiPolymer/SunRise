@@ -15,7 +15,6 @@ import ink.lipoly.app.sunrise.catalog.*
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
-import ink.lipoly.app.sunrise.compose.CatalogSnapshotDetails
 import ink.lipoly.app.sunrise.compose.CatalogReferencePlot
 import ink.lipoly.app.sunrise.compose.ListItemCard
 
@@ -64,6 +63,7 @@ internal fun CatalogProductSelector(
     onSelect: (CatalogProduct) -> Unit,
     onDismiss: () -> Unit,
     title: String = "选择参考频响",
+    header: @Composable () -> Unit = {}
 ) {
     var query by remember { mutableStateOf("") }
     val ordered = remember(snapshot, deviceName) { snapshot?.let { orderedCatalogProducts(it, deviceName) }.orEmpty() }
@@ -72,7 +72,7 @@ internal fun CatalogProductSelector(
         Surface(Modifier.padding(16.dp).widthIn(max = 720.dp).fillMaxWidth().fillMaxHeight(0.9f), shape = MaterialTheme.shapes.large) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(title, style = MaterialTheme.typography.titleLarge)
-                Text("列出所有 UUID（包括无曲线记录）；当前设备同名记录置顶。仅离线选择参考，不改变设备筛选或发送 EQ。", style = MaterialTheme.typography.bodySmall)
+                header()
                 OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                     label = { Text("搜索名称 / 型号") })
                 Text("${products.size} 条记录", style = MaterialTheme.typography.labelMedium)
@@ -186,29 +186,23 @@ private fun CatalogProductDetail(
                     )) Text("$label: ${catalogMetadata(product, key)}")
                     if (product.uuid in snapshot.responseLibraryUuids) {
                         Text("原始标签: ${product.raw["tags"]}", style = MaterialTheme.typography.bodySmall)
-                        Text("此记录来自频响库，是频响或目标记录，而非设备型号。", style = MaterialTheme.typography.bodySmall)
                     }
-                    Text("Response 为本地频响库分类，其他资料保留源值；不表示设备或协议能力，也不用于推断参数限制或开放控制能力。", style = MaterialTheme.typography.bodySmall)
                     if (deviceEqBands != null) {
                         Text("当前设备读回 EQ 段数：$deviceEqBands（${deviceName ?: "未提供名称"}）")
-                        if (directoryBands != null && directoryBands != deviceEqBands) Text("目录标称 $directoryBands 段 / 设备读回 $deviceEqBands 段；编辑与写入以设备读回为准。", color = MaterialTheme.colorScheme.error)
                     }
                     Text(catalogResponseStatus(snapshot, product))
                     Text("参考资产路径: ${catalogMetadata(product, "freqResponse")}", style = MaterialTheme.typography.bodySmall)
-                    Text("来源 UTC: ${snapshot.retrievedAt}", style = MaterialTheme.typography.bodySmall)
+                    Text("存档时间: ${snapshot.retrievedAt}", style = MaterialTheme.typography.bodySmall)
                     Text("资料来源: ${catalogSourceUrl(snapshot, product)}", style = MaterialTheme.typography.bodySmall)
                     Text("CDN: ${snapshot.cdnBaseUrl}", style = MaterialTheme.typography.bodySmall)
-                    Text("来源信息来自快照文件；参考频响或目标资料并非当前设备的实测频响。", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         item {
-            ListItemCard {
-                Column(Modifier.padding(16.dp)) {
-                    Button(onClick = { onUseReference(product) }) { Text("用作参考频响") }
-                    Text("只选择参考 UUID，不联网、不发送蓝牙命令，也不加载 EQ 预设。", style = MaterialTheme.typography.bodySmall)
-                }
-            }
+            Button(
+                onClick = { onUseReference(product) },
+                modifier = Modifier.padding(16.dp)
+            ) { Text("用作参考频响") }
         }
         item {
             ListItemCard {
@@ -222,7 +216,6 @@ private fun CatalogProductDetail(
                         ReferenceLegend(product, MaterialTheme.colorScheme.onSurface, false)
                         if (comparisonEnabled) ReferenceLegend(comparison, MaterialTheme.colorScheme.primary, true)
                         CatalogReferencePlot(sampled, if (comparisonEnabled) otherSampled else null, Modifier.fillMaxWidth().height(260.dp))
-                        Text("只画各曲线自身覆盖范围，不外推；测量曲线的条件未知，不代表佩戴、ANC 或音量状态一致，目标曲线并非设备实测。", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -239,7 +232,6 @@ private fun CatalogProductDetail(
                         Text("语言: ${catalogMetadata(other, "languageType")} · UUID: ${other.uuid}", style = MaterialTheme.typography.bodySmall)
                         Text(catalogResponseStatus(snapshot, other), style = MaterialTheme.typography.bodySmall)
                         secondReason?.let { Text("双曲线对比不可用：$it", style = MaterialTheme.typography.bodySmall) }
-                        if (comparisonEnabled) Text("双曲线共用 dB 轴；各自以 500 Hz 归一化，仅对比形状。", style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { comparisonUuid = null }) { Text("清除对比") }
                     }
                 }

@@ -100,6 +100,10 @@ StateFlow 用 `collectAsState()` 订阅。`compose/ParamEqBinding.kt` 的 `remem
 
 `EqualizerEntry` 复用 `FancyEqualizer.ParamEqCurve`；编辑器、编辑状态、发送方式和数值工具均属于 `FancyEqualizer`，成员 API 保持 internal，不另建完整 PEQ 屏幕、旧包兼容转发或别名。对象只组织声明，不持有全局编辑器或设备会话；每个 `ParamEqEditor` 保持独立状态和串行 worker。正式应用文案固定中文，不恢复语言选择、`UiLanguage`、`english` 参数或 `tr` / `t` 双语函数；产品名、协议术语、上游错误及目录 `languageType` 保留原值，目录匹配与排序优先 `zh-CN`。
 
+正式均衡器页面固定使用编辑器默认的实时自动发送，不提供方式切换或手动提交入口；页面状态、重读门控和平直确认只按自动发送语义处理。`FancyEqualizer` 内部的手动提交 API 不由页面调用。
+
+目录数据库卡片直接实现在 `entries/SettingsEntry.kt` 的列表项内；同文件的 `CatalogSnapshotDetails` 供设置、目录页及根级导入确认共用，不另建卡片文件或转发入口。
+
 ## 蓝牙与控制边界
 
 - `BtManager` 按规范地址保存稳定 `BtDevice`，每台设备独立管理 GATT。`OnDiscovered` 只表示枚举/扫描观测，不证明连接、品牌匹配或协议可用。
