@@ -1,5 +1,9 @@
 package ink.lipoly.app.sunrise.compose
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -163,6 +167,18 @@ internal fun AppContent(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 backStack = navStack,
                 onBack = { navStack.back() },
+                transitionSpec = {
+                    slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(250)) togetherWith
+                        slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(250))
+                },
+                popTransitionSpec = {
+                    slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(250)) togetherWith
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(250))
+                },
+                predictivePopTransitionSpec = {
+                    slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(250)) togetherWith
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(250))
+                },
                 entryProvider = entryProvider {
                     entry<OurNavStack.Route.Overview> {
                         OverviewEntry(
