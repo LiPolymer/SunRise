@@ -13,8 +13,6 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import ink.lipoly.app.sunrise.catalog.CatalogState
-import ink.lipoly.app.sunrise.catalog.matchesCatalogDevice
-import ink.lipoly.app.sunrise.compose.OurNavStack
 import ink.lipoly.app.sunrise.compose.errorMessage
 import ink.lipoly.app.sunrise.compose.BatteryCell
 import ink.lipoly.app.sunrise.compose.ListItemCard
@@ -154,68 +152,34 @@ internal fun OverviewEntry(
                 }
             }
         }
-        item {
-            ListItemCard {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("设备目录", style = MaterialTheme.typography.titleMedium)
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("仅显示目录设备", Modifier.weight(1f))
-                        Switch(
-                            checked = settings.catalogOnlyDevices,
-                            onCheckedChange = { onSettingsChange(settings.copy(catalogOnlyDevices = it)) },
-                        )
-                    }
-                    Text(when {
-                        catalogState.loading -> "正在加载本地目录，暂不自动选择设备。"
-                        catalogState.snapshot == null -> "数据库不可用，可关闭筛选显示全部设备，或在设置中导入／拉取。"
-                        headsetState.device == null -> "名称匹配不代表协议支持；控制能力仍由设备探测决定。"
-                        matchesCatalogDevice(catalogState.snapshot, headsetState.device.name) -> "当前设备：目录匹配"
-                        else -> "当前设备：未收录名称"
-                    }, style = MaterialTheme.typography.bodySmall)
-                    if (catalogState.snapshot == null) catalogState.error?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error)
-                    }
-                    referenceName?.let { Text("参考型号：$it") }
-                    OutlinedButton(
-                        onClick = session.headset::chooseHeadset,
-                        enabled = clientAvailable && missingPermissions.isEmpty() &&
-                            headsetPresentationState.working == null && !catalogState.loading,
-                    ) { Text("选择耳机") }
-                    OutlinedButton(
-                        onClick = { navStack.add(OurNavStack.Route.Catalog) },
-                        enabled = catalogState.snapshot != null,
-                    ) { Text("浏览目录") }
-                    Text("筛选只影响下一次自动选择，不会断开当前连接。", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        item {
+        val codecAvailable = ready && (GaiaIds.CODEC_TYPE in controlState.capabilities.gaiaFeatures ||
+                !controlState.capabilities.complete)
+        if (codecAvailable) item {
             ListItemCard {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("音频编码", style = MaterialTheme.typography.titleMedium)
-                    Text("这些开关控制耳机端编码选项；实际音频编码由系统协商。", style = MaterialTheme.typography.bodySmall)
-                    val available = ready && (GaiaIds.CODEC_TYPE in controlState.capabilities.gaiaFeatures ||
-                        !controlState.capabilities.complete)
-                    if (!available) Text("当前会话不支持音频编码控制")
+
                     AudioCodec.entries.forEach { codec ->
                         val actual = controlState.codecStates[codec]
-                        Row(
+                        if (actual != null) Row(
                             Modifier.fillMaxWidth().heightIn(min = 56.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(codec.name, style = MaterialTheme.typography.titleSmall)
-                                Text(actual?.let { if (it) "开启" else "关闭" } ?: "未知", style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    if (actual) "开启" else "关闭",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
-                            if (actual != null) Switch(
+                            Switch(
                                 checked = actual,
                                 onCheckedChange = { onCodec(codec, it) },
-                                enabled = available && usable && !codecBlocked,
+                                enabled = usable && !codecBlocked,
                             )
                         }
                     }
-                    Text("LHDC 支持取决于耳机型号和固件。", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -284,10 +248,6 @@ internal fun OverviewEntry(
                     }
                 }
             }
-        }
-        item {
-            Text("控制结果以耳机读回状态为准。", Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

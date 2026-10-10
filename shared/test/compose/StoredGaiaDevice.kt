@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.controls.peq
+package ink.lipoly.app.sunrise.compose
 
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.AudioCodec

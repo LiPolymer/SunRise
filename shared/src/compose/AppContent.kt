@@ -15,7 +15,7 @@ import ink.lipoly.app.sunrise.compose.OurNavStack.activeNode
 import ink.lipoly.app.sunrise.compose.OurNavStack.back
 import ink.lipoly.app.sunrise.compose.OurNavStack.createNavigationBarItems
 import ink.lipoly.app.sunrise.compose.entries.*
-import ink.lipoly.app.sunrise.controls.peq.ParamEqEditPhase
+import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditPhase
 import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.headset.HeadsetPhase

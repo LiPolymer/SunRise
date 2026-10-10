@@ -2,7 +2,7 @@ package ink.lipoly.app.sunrise.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import ink.lipoly.app.sunrise.controls.peq.ParamEqEditor
+import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditor
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol

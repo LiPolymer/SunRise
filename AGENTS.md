@@ -28,7 +28,7 @@
 - **`shared/src/compose/` 是用户正在手写的正式界面，不是可随意替换的临时入口。** 包括 `AppContent.kt`、`OurNavStack.kt`、`entries/` 及现有绑定代码。
 - 未被当前任务明确涉及时，不修改该目录；涉及时只做必要的局部修改，保留用户的导航、页面结构、命名、布局和进行中的代码。不要借修复、整理或烟测之名重写整页、补齐未要求的页面、批量格式化或清理用户的占位内容。
 - 默认入口保持 Android `App` / JVM `DesktopApp` → `shared/src/AppEntry.kt` → `shared/src/compose/AppContent.kt`。不建立旧入口 fallback、旧导航或整页双份实现。
-- `compose/entries` 承接页面业务，`controls/peq` 保持独立可复用；迁移或补功能必须融入手写框架，不覆盖原导航与总览卡片结构。
+- `compose/entries` 承接页面业务，均衡器页面直接实现在 `entries/EqualizerEntry.kt` 内；曲线、编辑器和数值工具统一收在 `compose/FancyEqualizer.kt` 的 `FancyEqualizer` 对象内。迁移或补功能必须融入手写框架，不覆盖原导航与总览卡片结构。
 - UI 改动不得重新创建 runtime、Koin 容器或后端会话，不得改变宿主的权限和资源所有权。
 
 ## 项目与目录
@@ -46,7 +46,7 @@ Kotlin Toolchain 0.12.2 / Kotlin 2.4.20 的 Android + JVM Compose Multiplatform 
 | `shared/src/presentation` | 宿主展示会话、连接协调器、目录操作及 EQ 会话所有权 |
 | `shared/src/catalog` / `settings` | 离线目录、频响计算及共同设置契约 |
 | `shared/src/compose` | 用户手写的正式界面、Navigation3 导航、主题与目录绘图，修改边界见上 |
-| `shared/src/controls/peq` | 可复用 PEQ 屏幕、曲线、编辑器和数值工具 |
+| `shared/src/compose/FancyEqualizer.kt` | `FancyEqualizer` 对象内的 PEQ 曲线、编辑器和数值工具；完整页面位于 `compose/entries/EqualizerEntry.kt` |
 
 `drop` 可独立消费，仅导出 coroutines，不依赖应用、Compose 或 Koin；`shared` 将它导出给宿主。不建立旧目录副本、兼容转发或别名。公开参数 API 为 `GaiaPeqParameters`，纯数学 API 为 `PeqBiquad` / `PeqHeadroom`，协议 binding 和 payload codec 保持 internal。保留 PolyForm Noncommercial 1.0.0 的 `LICENSE` / `NOTICE`；没有 Maven 发布配置。
 
@@ -96,9 +96,9 @@ kotlin.bat run -m android-app
 
 StateFlow 用 `collectAsState()` 订阅。`compose/ParamEqBinding.kt` 的 `rememberParamEqEditor(client, headsetState, session.eq, missingPermissions)` 留在导航外的根级：权限不足、断连或 GAIA 未 READY 时解绑，相同控件复用编辑器。页面接收 `editor` 和 `editor.state`；页面切换不关闭 editor、session、client 或 Catalog，宿主负责释放会话。
 
-`OurNavStack.Route` 的 Overview / Equalizer / Settings 是底栏主路由；Catalog / Diagnostics 是非 `INavNode` 子路由，诊断隐藏底栏。Scaffold padding 只施加于 NavDisplay。通知、导入确认、候选与源/目标选择留在根级；目录“用作参考”先出栈再进入 EQ，不留下完成的目录路由。`EqualizerEntry` 只映射参考资料与设置到独立控件，不拥有 editor。总览控制规则位于 `presentation/OverviewRules.kt`，后端不依赖 UI 包。
+`OurNavStack.Route` 的 Overview / Equalizer / Settings 是底栏主路由；Catalog / Diagnostics 是非 `INavNode` 子路由，诊断隐藏底栏。Scaffold padding 只施加于 NavDisplay。通知、导入确认、候选与源/目标选择留在根级；目录“用作参考”先出栈再进入 EQ，不留下完成的目录路由。`EqualizerEntry` 直接实现均衡器页面及页面私有控件，映射参考资料与设置，不拥有 editor。`EqSessionOwner` 引用 `FancyEqualizer.ParamEqEditor`，仍按 GAIA controls 身份管理编辑器生命周期；总览控制规则保留在 `presentation/OverviewRules.kt`，不依赖页面。
 
-复用 `ink.lipoly.app.sunrise.controls.peq` 的 `ParamEqScreen` / `ParamEqCurve`，编辑状态与数值工具在 `ParamEqEditor.kt` / `ParamEqValues.kt`，API 保持 internal。正式应用文案固定中文，不恢复语言选择、`UiLanguage`、`english` 参数或 `tr` / `t` 双语函数；产品名、协议术语、上游错误及目录 `languageType` 保留原值，目录匹配与排序优先 `zh-CN`。
+`EqualizerEntry` 复用 `FancyEqualizer.ParamEqCurve`；编辑器、编辑状态、发送方式和数值工具均属于 `FancyEqualizer`，成员 API 保持 internal，不另建完整 PEQ 屏幕、旧包兼容转发或别名。对象只组织声明，不持有全局编辑器或设备会话；每个 `ParamEqEditor` 保持独立状态和串行 worker。正式应用文案固定中文，不恢复语言选择、`UiLanguage`、`english` 参数或 `tr` / `t` 双语函数；产品名、协议术语、上游错误及目录 `languageType` 保留原值，目录匹配与排序优先 `zh-CN`。
 
 ## 蓝牙与控制边界
 

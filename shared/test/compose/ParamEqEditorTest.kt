@@ -1,5 +1,8 @@
-package ink.lipoly.app.sunrise.controls.peq
+package ink.lipoly.app.sunrise.compose
 
+import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditPhase
+import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditor
+import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqSubmitMode
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.GaiaParamEqState
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
