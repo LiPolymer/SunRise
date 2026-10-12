@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -137,19 +140,24 @@ internal fun AppContent(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(title) },
+                    title = { Text(title, style = MaterialTheme.typography.titleLargeEmphasized) },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    ),
                     navigationIcon = {
                         if (route == OurNavStack.Route.Catalog || route == OurNavStack.Route.Diagnostics) {
-                            TextButton(onClick = { navStack.back() }) { Text("返回") }
+                            IconButton(onClick = { navStack.back() }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                            }
                         }
                     },
                     actions = {
                         if (route == OurNavStack.Route.Overview) {
-                            TextButton(
+                            IconButton(
                                 onClick = { session.headset.refresh("刷新") },
                                 enabled = client != null && missingPermissions.isEmpty() && working == null &&
                                     (headsetState.phase != HeadsetPhase.READY || headsetState.controls.hasReadyGaia()),
-                            ) { Text("刷新") }
+                            ) { Icon(Icons.Filled.Refresh, contentDescription = "刷新") }
                         }
                     },
                 )
@@ -183,16 +191,12 @@ internal fun AppContent(
                     entry<OurNavStack.Route.Overview> {
                         OverviewEntry(
                             headsetState,
-                            catalogState,
-                            navStack,
                             missingPermissions,
                             onRequestPermissions,
                             session,
                             headsetPresentationState,
                             settings,
-                            onSettingsChange,
                             client != null,
-                            reference.product?.name,
                             codecBlocked,
                             ::setCodec,
                             Modifier.fillMaxSize(),

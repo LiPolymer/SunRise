@@ -1,21 +1,20 @@
 package ink.lipoly.app.sunrise.compose.entries
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.navigation3.runtime.NavBackStack
-import androidx.navigation3.runtime.NavKey
-import ink.lipoly.app.sunrise.catalog.CatalogState
 import ink.lipoly.app.sunrise.compose.errorMessage
 import ink.lipoly.app.sunrise.compose.BatteryCell
+import ink.lipoly.app.sunrise.compose.Expander
 import ink.lipoly.app.sunrise.compose.ListItemCard
+import ink.lipoly.app.sunrise.compose.SingleChoiceButtons
 import ink.lipoly.app.sunrise.compose.display
 import ink.lipoly.app.sunrise.presentation.*
 import ink.lipoly.app.sunrise.drop.*
@@ -23,19 +22,16 @@ import ink.lipoly.app.sunrise.settings.UiSettings
 import ink.lipoly.app.sunrise.headset.HeadsetPhase
 import ink.lipoly.app.sunrise.headset.HeadsetState
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun OverviewEntry(
     headsetState: HeadsetState,
-    catalogState: CatalogState,
-    navStack: NavBackStack<NavKey>,
     missingPermissions: Set<String>,
     onRequestPermissions: () -> Unit,
     session: PresentationSession,
     headsetPresentationState: HeadsetPresentationState,
     settings: UiSettings,
-    onSettingsChange: (UiSettings) -> Unit,
     clientAvailable: Boolean,
-    referenceName: String?,
     codecBlocked: Boolean,
     onCodec: (AudioCodec, Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -44,18 +40,20 @@ internal fun OverviewEntry(
     val ready = headsetState.phase == HeadsetPhase.READY && controlState.hasReadyGaia()
     val usable = ready && headsetPresentationState.working == null && missingPermissions.isEmpty()
     val controls = if (ready) confirmedOverviewControls(controlState, headsetPresentationState.confirmedReads) else emptySet()
-    var connectionDetailsExpanded by remember { mutableStateOf(false) }
+    var connectionDetailsExpanded by rememberSaveable { mutableStateOf(false) }
 
     LazyColumn(modifier) {
         item { // DeviceOverview
             ListItemCard {
                 Column(
                     modifier = Modifier
-                        .padding(16.dp)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Surface(
                         color = if (headsetState.phase == HeadsetPhase.READY) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                        else if (headsetState.phase == HeadsetPhase.ERROR) MaterialTheme.colorScheme.errorContainer
+                        else MaterialTheme.colorScheme.secondaryContainer,
                         shape = MaterialTheme.shapes.large,
                     ) {
                         Text(
@@ -64,10 +62,11 @@ internal fun OverviewEntry(
                             style = MaterialTheme.typography.labelMedium,
                             color = if (headsetState.phase == HeadsetPhase.READY)
                                 MaterialTheme.colorScheme.onPrimary else
-                                MaterialTheme.colorScheme.onSurface,
+                                if (headsetState.phase == HeadsetPhase.ERROR) MaterialTheme.colorScheme.onErrorContainer
+                                else MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                     }
-                    Text(headsetState.device?.name ?: "等待设备", fontSize = 30.sp)
+                    Text(headsetState.device?.name ?: "等待设备", style = MaterialTheme.typography.headlineLargeEmphasized)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -93,7 +92,7 @@ internal fun OverviewEntry(
                         Text("当前平台不支持蓝牙控制")
                     } else if (missingPermissions.isNotEmpty()) {
                         Text("需要蓝牙权限才能发现并连接耳机。")
-                        Button(onClick = onRequestPermissions) { Text("授予权限") }
+                        Button(onClick = onRequestPermissions, shapes = ButtonDefaults.shapes()) { Text("授予权限") }
                     } else if (headsetState.phase != HeadsetPhase.READY) {
                         Text(when (headsetState.phase) {
                             HeadsetPhase.SELECTION_REQUIRED -> "发现多台已连接的音频设备。选择你的耳机以继续连接。"
@@ -108,13 +107,17 @@ internal fun OverviewEntry(
                             ) { Text("重新连接") }
                         }
                     }
+                    if (headsetState.phase in listOf(HeadsetPhase.DISCOVERING, HeadsetPhase.CONNECTING,
+                            HeadsetPhase.PROBING, HeadsetPhase.RECONNECTING)) {
+                        LoadingIndicator(Modifier.semantics { contentDescription = "正在连接耳机" })
+                    }
                     headsetState.error?.let { Text(errorMessage(it), color = MaterialTheme.colorScheme.error) }
                 }
             }
         }
         item {
             ListItemCard {
-                Row(
+                Column(
                     modifier = Modifier
                         .padding(16.dp)
                 ) {
@@ -130,24 +133,13 @@ internal fun OverviewEntry(
                         )
                     }
                     if (modes.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            modes.forEach { mode ->
-                                FilterChip(
-                                    selected = controlState.ancMode == mode,
-                                    onClick = {
-                                        session.headset.runAction("设置降噪", control = true) {
-                                            gaia.setAncMode(mode)
-                                        }
-                                    },
-                                    label = { Text(mode.display()) },
-                                    enabled = usable,
-                                )
-                            }
-                        }
+                        SingleChoiceButtons(
+                            options = modes, selected = controlState.ancMode, label = { it.display() },
+                            enabled = usable,
+                            onSelect = { mode ->
+                                session.headset.runAction("设置降噪", control = true) { gaia.setAncMode(mode) }
+                            },
+                        )
                     }
                 }
             }
@@ -190,16 +182,11 @@ internal fun OverviewEntry(
                     if (OverviewControl.GAIN in controls) {
                         Text("增益", style = MaterialTheme.typography.titleSmall)
                         if (controlState.gain == null) Text("状态尚未读取，可点右上角刷新。")
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GainLevel.entries.forEach { gain ->
-                                FilterChip(
-                                    selected = controlState.gain == gain,
-                                    onClick = { session.headset.runAction("设置增益", control = true) { gaia.setGain(gain) } },
-                                    label = { Text(gain.display()) },
-                                    enabled = usable && controlState.gain != null,
-                                )
-                            }
-                        }
+                        SingleChoiceButtons(
+                            options = GainLevel.entries, selected = controlState.gain, label = { it.display() },
+                            enabled = usable && controlState.gain != null,
+                            onSelect = { gain -> session.headset.runAction("设置增益", control = true) { gaia.setGain(gain) } },
+                        )
                     }
                     if (OverviewControl.SPATIAL in controls) ControlSwitch(
                         "空间音频", controlState.spatialOn, usable && controlState.spatialOn != null,
@@ -207,16 +194,11 @@ internal fun OverviewEntry(
                     if (OverviewControl.HEAD_TRACKING in controls) {
                         Text("头部追踪", style = MaterialTheme.typography.titleSmall)
                         if (controlState.headTracking == null) Text("状态尚未读取，可点右上角刷新。")
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HeadTrackingMode.entries.forEach { mode ->
-                                FilterChip(
-                                    selected = controlState.headTracking == mode,
-                                    onClick = { session.headset.runAction("头部追踪", control = true) { gaia.setHeadTracking(mode) } },
-                                    label = { Text(mode.display()) },
-                                    enabled = usable && controlState.spatialOn == true && controlState.headTracking != null,
-                                )
-                            }
-                        }
+                        SingleChoiceButtons(
+                            options = HeadTrackingMode.entries, selected = controlState.headTracking, label = { it.display() },
+                            enabled = usable && controlState.spatialOn == true && controlState.headTracking != null,
+                            onSelect = { mode -> session.headset.runAction("头部追踪", control = true) { gaia.setHeadTracking(mode) } },
+                        )
                     }
                     if (OverviewControl.LED in controls) ControlSwitch(
                         "LED", controlState.ledOn, usable && controlState.ledOn != null,
@@ -226,25 +208,21 @@ internal fun OverviewEntry(
         }
         item {
             ListItemCard {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("连接详情", style = MaterialTheme.typography.titleMedium)
-                        TextButton(onClick = { connectionDetailsExpanded = !connectionDetailsExpanded }) {
-                            Text(if (connectionDetailsExpanded) "收起" else "展开")
+                Expander(
+                    title = "连接详情",
+                    expanded = connectionDetailsExpanded,
+                    onExpandedChange = { connectionDetailsExpanded = it },
+                ) {
+                    Text("地址：${headsetState.device?.address ?: "—"}")
+                    Text("控制协议：" + controlState.protocols.joinToString(" · ") {
+                        when (it) {
+                            DropProtocol.GAIA_BLE -> "GAIA BLE"
+                            DropProtocol.SOURCE_9ECA -> "9ECA"
                         }
-                    }
-                    if (connectionDetailsExpanded) {
-                        Text("地址：${headsetState.device?.address ?: "—"}")
-                        Text("控制协议：" + controlState.protocols.joinToString(" · ") {
-                            when (it) {
-                                DropProtocol.GAIA_BLE -> "GAIA BLE"
-                                DropProtocol.SOURCE_9ECA -> "9ECA"
-                            }
-                        }.ifEmpty { "—" })
-                        if (!controlState.capabilities.complete && headsetState.phase == HeadsetPhase.READY &&
-                            controlState.phase == DropPhase.READY) {
-                            Text("部分能力尚未确认；可在高级诊断中测试。", style = MaterialTheme.typography.bodySmall)
-                        }
+                    }.ifEmpty { "—" })
+                    if (!controlState.capabilities.complete && headsetState.phase == HeadsetPhase.READY &&
+                        controlState.phase == DropPhase.READY) {
+                        Text("部分能力尚未确认；可在高级诊断中测试。", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

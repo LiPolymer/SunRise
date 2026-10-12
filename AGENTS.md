@@ -83,6 +83,22 @@ kotlin.bat run -m android-app
 
 ## Compose 接入契约
 
+### Material 3 Expressive 界面
+
+界面统一由 `SunRiseTheme` 的 `MaterialExpressiveTheme` 和 `MotionScheme.expressive()` 提供色彩、字阶、形状和组件动效，不在页面内创建第二套主题或设置入口。优先使用当前固定依赖已支持的 Expressive API；导航栏、开关、滑杆、输入框、目录下载进度及其余普通操作继续使用同一主题下的标准 Material3 组件，不自行仿制未支持的组件，不为视觉更新升级或降级依赖。动态取色、五种种子色和 AMOLED 沿用原设置契约。
+
+- **色彩与容器**：普通卡片使用 `surfaceContainerLow`，嵌套电量容器使用 `surfaceContainerHigh`，顶栏使用 `surfaceContainer`；内容配对使用相应 `on*` 角色。五种静态种子色均提供完整的主色、次色、第三色、中性表面和固定角色，底栏选中背景与页面容器随同一种子色更新，明暗层次按角色区分。色板由官方 Material Color Utilities `0.3.0` 离线生成，主色保留原种子的色相与彩度，其余色板采用 `SchemeTonalSpot`，浅色容器内容使用 Expressive 的 tone 30。动态取色直接使用平台完整色板，错误色保留标准红色；AMOLED 保留纯黑背景和可区分的容器层级。
+- **形状与字阶**：卡片、目录选择对话框采用主题的 `extraLarge`，电量容器采用 `large`。设备名、页面标题、分节标题和电量使用主题的强调字阶，说明与密集参数使用 body / label 字阶。
+- **选择与反馈**：主题模式、CDN、ANC、增益、头部追踪和 EQ 频段采用连接 `ToggleButton`，使用官方首、中、尾按钮形状。选择来源是已确认设备状态或现有页面状态，不引入乐观设备写入；已选选项不重复触发动作。单选组提供 RadioButton / selected 语义，至少 48 dp 点击高度，长标签与大字体允许横向滚动；EQ 频段自动滚动到所选项。
+- **加载与动作**：连接、EQ 读取与发送使用 `LoadingIndicator`；权限主操作和目录拉取使用官方按钮按压形状。顶栏返回、刷新使用带可访问名称的图标按钮；底栏文字已提供名称，图标不重复播报。
+- **展开卡**：总览连接详情、均衡器频响参考设定和诊断页折叠分区共用 `Expander`。整行标题可点击并支持键盘操作，箭头旋转与顶部展开/收起、淡入淡出共用状态转换；空间与透明度分别采用主题的 spatial / effects 动效。展开状态由页面保存，业务控件留在独立内容区域，点击控件不触发折叠。
+
+设计依据：[M3 Expressive 概述](https://m3.material.io/get-started)、[Compose Material 3](https://developer.android.com/develop/ui/compose/designsystems/material3)、[MaterialExpressiveTheme](https://developer.android.com/reference/kotlin/androidx/compose/material3/MaterialExpressiveTheme.composable)；色彩依据：[Material 色彩角色](https://m3.material.io/styles/color/the-color-system)、[Material Color Utilities](https://github.com/material-foundation/material-color-utilities/blob/main/dev_guide/creating_color_scheme.md)；组件与动画依据：[ButtonGroupDefaults](https://developer.android.com/reference/kotlin/androidx/compose/material3/ButtonGroupDefaults)、[LoadingIndicator](https://developer.android.com/reference/kotlin/androidx/compose/material3/LoadingIndicator.composable)、[Compose 动画组件](https://developer.android.com/develop/ui/compose/animation/composables-modifiers)、[App bars](https://m3.material.io/components/app-bars/)。在线 API 文档可能晚于项目固定版本，具体调用签名以该版本 Android / JVM 源码和实际编译为准。
+
+### 页面与业务绑定
+
+保留手写页面的导航、卡片分区和业务绑定。图形的数学、坐标、设备会话、编辑器生命周期与 EQ 自动发送策略不属于视觉主题的职责；页面导航仍遵守下方的固定动效契约。
+
 `AppContent` 显式接收后端接口，不在页面中做 Compose/Koin 注入：
 
 | 参数 | 用途 |

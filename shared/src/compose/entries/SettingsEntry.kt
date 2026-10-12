@@ -19,7 +19,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -55,8 +56,10 @@ import ink.lipoly.app.sunrise.catalog.CatalogState
 import ink.lipoly.app.sunrise.settings.ThemeMode
 import ink.lipoly.app.sunrise.settings.UiSettings
 import ink.lipoly.app.sunrise.compose.ListItemCard
+import ink.lipoly.app.sunrise.compose.SingleChoiceButtons
 import ink.lipoly.app.sunrise.compose.seedSwatches
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun SettingsEntry(
     settings: UiSettings,
@@ -86,20 +89,16 @@ internal fun SettingsEntry(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text("主题模式", style = MaterialTheme.typography.titleSmall)
-                    SelectionRow {
-                        ThemeMode.entries.forEach { mode ->
-                            FilterChip(
-                                modifier = Modifier.heightIn(min = 48.dp),
-                                selected = settings.themeMode == mode,
-                                onClick = { onChange(settings.copy(themeMode = mode)) },
-                                label = { Text(when (mode) {
-                                    ThemeMode.SYSTEM -> "跟随系统"
-                                    ThemeMode.LIGHT -> "浅色"
-                                    ThemeMode.DARK -> "深色"
-                                }) },
-                            )
-                        }
-                    }
+                    SingleChoiceButtons(
+                        options = ThemeMode.entries,
+                        selected = settings.themeMode,
+                        onSelect = { onChange(settings.copy(themeMode = it)) },
+                        label = { mode -> when (mode) {
+                            ThemeMode.SYSTEM -> "跟随系统"
+                            ThemeMode.LIGHT -> "浅色"
+                            ThemeMode.DARK -> "深色"
+                        } },
+                    )
                     HorizontalDivider()
                     SettingSwitchRow(
                         title = "动态取色",
@@ -221,14 +220,12 @@ internal fun SettingsEntry(
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         Text("进行中：${catalogState.completedFiles}/${catalogState.totalFiles} 个频响文件")
                     }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (option in CatalogCdn.entries) FilterChip(
-                            selected = option == cdn, onClick = { cdn = option }, enabled = idle,
-                            label = { Text(if (option == CatalogCdn.CHINA) "中国 CDN" else "海外 CDN") },
-                        )
-                    }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { onPull(cdn) }, enabled = idle) { Text("拉取") }
+                    SingleChoiceButtons(
+                        options = CatalogCdn.entries, selected = cdn, onSelect = { cdn = it },
+                        label = { if (it == CatalogCdn.CHINA) "中国 CDN" else "海外 CDN" }, enabled = idle,
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { onPull(cdn) }, shapes = ButtonDefaults.shapes(), enabled = idle) { Text("拉取") }
                         OutlinedButton(onClick = onImport, enabled = idle) { Text("导入") }
                         OutlinedButton(onClick = onExport, enabled = idle && catalogState.snapshot != null) { Text("导出") }
                         if (canCancelPull) TextButton(onClick = onCancelPull) { Text("取消") }
@@ -322,18 +319,10 @@ internal fun SettingsEntry(
 private fun SettingsSectionHeading(title: String) {
     Text(
         title,
-        modifier = Modifier.padding(start = 26.dp, end = 26.dp, top = 12.dp, bottom = 2.dp),
-        style = MaterialTheme.typography.titleLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 32.dp, end = 32.dp, top = 20.dp, bottom = 6.dp),
+        style = MaterialTheme.typography.titleLargeEmphasized,
+        color = MaterialTheme.colorScheme.onSurface,
     )
-}
-
-@Composable
-private fun SelectionRow(content: @Composable () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) { content() }
 }
 
 @Composable

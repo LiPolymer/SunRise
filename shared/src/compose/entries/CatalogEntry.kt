@@ -46,7 +46,8 @@ private fun searchCatalogProducts(products: List<CatalogProduct>, query: String)
 private fun CatalogProductRow(snapshot: CatalogSnapshot, product: CatalogProduct, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(product.name, style = MaterialTheme.typography.titleMedium)
-        Text("型号: ${catalogMetadata(product, "model")} · 类型: ${product.type}")
+        Text("型号: ${catalogMetadata(product, "model")} · 类型: ${product.type}",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("语言: ${catalogMetadata(product, "languageType")} · 芯片（目录）: ${catalogMetadata(product, "chipType")}", style = MaterialTheme.typography.bodySmall)
         Text("目录标称 EQ 段数: ${catalogMetadata(product, "eqBands")}", style = MaterialTheme.typography.bodySmall)
         Text("UUID: ${product.uuid}", style = MaterialTheme.typography.bodySmall)
@@ -68,9 +69,13 @@ internal fun CatalogProductSelector(
     val ordered = remember(snapshot, deviceName) { snapshot?.let { orderedCatalogProducts(it, deviceName) }.orEmpty() }
     val products = remember(ordered, query) { searchCatalogProducts(ordered, query) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.padding(16.dp).widthIn(max = 720.dp).fillMaxWidth().fillMaxHeight(0.9f), shape = MaterialTheme.shapes.large) {
+        Surface(
+            Modifier.padding(16.dp).widthIn(max = 720.dp).fillMaxWidth().fillMaxHeight(0.9f),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(title, style = MaterialTheme.typography.titleLarge)
+                Text(title, style = MaterialTheme.typography.headlineSmallEmphasized)
                 header()
                 OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                     label = { Text("搜索名称 / 型号") })
@@ -111,7 +116,7 @@ internal fun CatalogEntry(
     LazyColumn(modifier) {
         item {
             Column(Modifier.padding(16.dp)) {
-                Text("产品与频响目录", style = MaterialTheme.typography.titleLarge)
+                Text("产品与频响目录", style = MaterialTheme.typography.titleLargeEmphasized)
             }
         }
         if (snapshot == null) item { Text("没有可用的离线数据库；可在设置导入或拉取。", Modifier.padding(16.dp)) }

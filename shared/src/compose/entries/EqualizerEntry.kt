@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -29,6 +30,8 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -42,6 +45,7 @@ import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropException
 import kotlin.math.roundToInt
 import ink.lipoly.app.sunrise.settings.UiSettings
+import ink.lipoly.app.sunrise.compose.Expander
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqCurve
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditPhase
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditState
@@ -64,7 +68,7 @@ import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqSliderInRange
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqWithRaw
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.targetResponseColor
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun EqualizerEntry(
     editor: ParamEqEditor?,
@@ -82,8 +86,6 @@ internal fun EqualizerEntry(
 ) {
     val referenceProduct = reference.product
     val referenceResponse = reference.response
-    val referenceSource = snapshot?.let { current -> reference.product?.let { catalogSourceUrl(current, it) } }
-    val referenceRetrievedAt = snapshot?.retrievedAt
     val referenceResponseHash = reference.product?.freqResponse?.let { snapshot?.responseHashesByPath?.get(it) }
     val showReferenceResponse = settings.showReferenceResponse
     val includeResponsePreGain = settings.includeResponsePreGain
@@ -140,7 +142,7 @@ internal fun EqualizerEntry(
         state?.phase != ParamEqEditPhase.WRITING && state?.phase != ParamEqEditPhase.LOADING
     val selected = bands.firstOrNull { it.index == selectedIndex }
 
-    var isResponseCardExpanded by mutableStateOf(false)
+    var isResponseCardExpanded by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(editor, bands.size) {
         // A reload temporarily has no draft; retain the selected index until its new band count is known.
@@ -183,93 +185,80 @@ internal fun EqualizerEntry(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Card(Modifier.fillMaxWidth()) {
-                    if (isResponseCardExpanded) {
-                        Column(Modifier.padding(12.dp, 0.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Column(Modifier.padding(0.dp,12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("源频响", style = MaterialTheme.typography.titleMedium)
-                                    TextButton(
-                                        onClick = {
-                                            isResponseCardExpanded = false
-                                        }
-                                    ) {
-                                        Text("收起")
-                                    }
-                                }
-                                Text(referenceProduct?.name ?: "未选择参考频响", Modifier.weight(1f))
-                                if (referenceResponse !is CatalogResponse.Ready) Text(
-                                    when (referenceResponse) {
-                                        is CatalogResponse.Unavailable -> "参考频响无法解析：${referenceResponse.reason}"
-                                        else -> "目录未提供参考频响"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(onClick = onChooseReference) { Text("选择参考频响") }
-                                    TextButton(onClick = onResetReference) { Text("恢复自动匹配") }
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("显示源频响", Modifier.weight(1f))
-                                    Switch(checked = showReferenceResponse, onCheckedChange = onReferenceResponseChange)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("预测含自动前置增益", Modifier.weight(1f))
-                                    Switch(checked = includeResponsePreGain, onCheckedChange = onResponsePreGainChange)
-                                }
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                ) {
+                    Expander(
+                        title = "频响参考设定",
+                        expanded = isResponseCardExpanded,
+                        onExpandedChange = { isResponseCardExpanded = it },
+                    ) {
+                        Column(Modifier.padding(0.dp,12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("源频响", style = MaterialTheme.typography.titleMedium)
+                            Text(referenceProduct?.name ?: "未选择参考频响")
+                            if (referenceResponse !is CatalogResponse.Ready) Text(
+                                when (referenceResponse) {
+                                    is CatalogResponse.Unavailable -> "参考频响无法解析：${referenceResponse.reason}"
+                                    else -> "目录未提供参考频响"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = onChooseReference) { Text("选择参考频响") }
+                                TextButton(onClick = onResetReference) { Text("恢复自动匹配") }
                             }
-                            Column(Modifier.padding(0.dp,12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("目标参考频响", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    targetProduct?.name ?:
-                                    if (targetProductUuid != null) "所选目标不可用"
-                                    else "未选择目标频响"
-                                )
-                                targetProductUuid?.let { Text("UUID: $it", style = MaterialTheme.typography.bodySmall) }
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(onClick = onChooseTarget) { Text("选择目标频响") }
-                                    TextButton(onClick = onClearTarget, enabled = targetProductUuid != null) { Text("清除目标") }
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("显示目标频响", Modifier.weight(1f))
-                                    Switch(checked = showTargetResponse, onCheckedChange = onTargetResponseChange)
-                                }
-                                targetUnavailableReason?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("显示源频响", Modifier.weight(1f))
+                                Switch(checked = showReferenceResponse, onCheckedChange = onReferenceResponseChange)
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("预测含自动前置增益", Modifier.weight(1f))
+                                Switch(checked = includeResponsePreGain, onCheckedChange = onResponsePreGainChange)
                             }
                         }
-                    } else {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(12.dp)
-                        ) {
-                            Text("频响参考设定", style = MaterialTheme.typography.titleMedium)
-                            TextButton(
-                                onClick = {
-                                    isResponseCardExpanded = true
-                                }
-                            ) {
-                                Text("展开")
+                        Column(Modifier.padding(0.dp,12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("目标参考频响", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                targetProduct?.name ?:
+                                if (targetProductUuid != null) "所选目标不可用"
+                                else "未选择目标频响"
+                            )
+                            targetProductUuid?.let { Text("UUID: $it", style = MaterialTheme.typography.bodySmall) }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = onChooseTarget) { Text("选择目标频响") }
+                                TextButton(onClick = onClearTarget, enabled = targetProductUuid != null) { Text("清除目标") }
                             }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("显示目标频响", Modifier.weight(1f))
+                                Switch(checked = showTargetResponse, onCheckedChange = onTargetResponseChange)
+                            }
+                            targetUnavailableReason?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                         }
                     }
                 }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(when {
-                        editor == null || state == null -> "离线参考 · 不可编辑"
-                        state.isEditing -> "调整中"
-                        else -> when (state.phase) {
-                            ParamEqEditPhase.LOADING -> "正在读取"
-                            ParamEqEditPhase.READY -> "已读取设备配置"
-                            ParamEqEditPhase.SENT -> "已发送"
-                            ParamEqEditPhase.PENDING -> "待下发"
-                            ParamEqEditPhase.WRITING -> "正在发送"
-                            ParamEqEditPhase.FAILED -> "操作失败：需要重新读取"
-                            else -> "不可用"
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (state?.phase == ParamEqEditPhase.LOADING || state?.phase == ParamEqEditPhase.WRITING) {
+                            LoadingIndicator(Modifier.size(40.dp))
                         }
-                    }, style = MaterialTheme.typography.titleMedium)
+                        Text(when {
+                            editor == null || state == null -> "离线参考 · 不可编辑"
+                            state.isEditing -> "调整中"
+                            else -> when (state.phase) {
+                                ParamEqEditPhase.LOADING -> "正在读取"
+                                ParamEqEditPhase.READY -> "已读取设备配置"
+                                ParamEqEditPhase.SENT -> "已发送"
+                                ParamEqEditPhase.PENDING -> "待下发"
+                                ParamEqEditPhase.WRITING -> "正在发送"
+                                ParamEqEditPhase.FAILED -> "操作失败：需要重新读取"
+                                else -> "不可用"
+                            }
+                        }, style = MaterialTheme.typography.titleMediumEmphasized, modifier = Modifier.weight(1f))
+                    }
                     if (bands.isNotEmpty()) {
                         if (preGainRaw != null) {
                             val db = (preGainRaw / 60.0 * 100).roundToInt() / 100.0
@@ -380,7 +369,11 @@ internal fun EqualizerEntry(
                 item { Text("全部频段", style = MaterialTheme.typography.titleMedium) }
                 items(bands, key = { it.index }) { band ->
                     // Wide layouts expose every raw-preserving parameter entry, using the same sheets and groups.
-                    Card(Modifier.fillMaxWidth()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    ) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { selectedIndex = band.index }, enabled = maySelect,
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { stateDescription = if (band.index == selectedIndex) "已选中" else "未选中" }) {
@@ -525,18 +518,28 @@ private fun BandSelector(bands: List<GaiaPeqBand>, selectedIndex: Int, enabled: 
         if (left < scroll.value) scroll.animateScrollTo(left.toInt().coerceAtLeast(0))
         else if (right > scroll.value + viewport) scroll.animateScrollTo((right - viewport).toInt().coerceAtLeast(0))
     }
-    Row(Modifier.fillMaxWidth().onGloballyPositioned { viewport = it.size.width.toFloat() }.horizontalScroll(scroll).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        bands.forEach { band ->
-            FilterChip(selected = band.index == selectedIndex, enabled = enabled,
-                onClick = { onSelect(band.index) },
+    Row(Modifier.fillMaxWidth().onGloballyPositioned { viewport = it.size.width.toFloat() }.horizontalScroll(scroll).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
+        bands.forEachIndexed { index, band ->
+            ToggleButton(checked = band.index == selectedIndex, enabled = enabled,
+                onCheckedChange = { if (band.index != selectedIndex) onSelect(band.index) },
+                shapes = when {
+                    bands.size == 1 -> ToggleButtonDefaults.shapes()
+                    index == 0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    index == bands.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                },
                 modifier = Modifier.heightIn(min = 48.dp).onGloballyPositioned {
                     if (band.index == selectedIndex) {
                         val bounds = it.boundsInParent()
                         selectedLeft = bounds.left
                         selectedRight = bounds.right
                     }
-                }.semantics { contentDescription = "第 ${band.index + 1} 段，${band.frequencyHz} Hz" },
-                label = { Text("${band.index + 1} · ${band.frequencyHz} Hz") })
+                }.semantics {
+                    contentDescription = "第 ${band.index + 1} 段，${band.frequencyHz} Hz"
+                    role = Role.RadioButton
+                    selected = band.index == selectedIndex
+                },
+            ) { Text("${band.index + 1} · ${band.frequencyHz} Hz") }
         }
     }
 }
@@ -546,9 +549,13 @@ private fun ParamEqBandCard(
     band: GaiaPeqBand, editor: ParamEqEditor, state: ParamEqEditState?, enabled: Boolean,
     onNumber: (PeqParameter, FocusRequester) -> Unit, onNudge: (PeqParameter, Int) -> Unit,
 ) {
-    Card(Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("第 ${band.index + 1} 段", style = MaterialTheme.typography.titleMedium)
+            Text("第 ${band.index + 1} 段", style = MaterialTheme.typography.titleMediumEmphasized)
             if (band.filter == PeqFilter.BYPASS) Text("旁路：保留原始数值。选择其他滤波器后启用参数。")
             PeqParameter.entries.forEach { parameter ->
                 PeqParameterControl(band, parameter, editor, state, enabled, onNumber, onNudge)

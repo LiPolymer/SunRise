@@ -127,7 +127,7 @@ object OurNavStack {
                 onClick = { if (it != selected) onNavigate(it) },
                 icon = {
                     it.icon?.let { iv ->
-                        Icon(iv, contentDescription = it.displayName)
+                        Icon(iv, contentDescription = null)
                     }
                 },
                 label = {

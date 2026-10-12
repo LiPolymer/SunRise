@@ -27,6 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.compose.ListItemCard
+import ink.lipoly.app.sunrise.compose.Expander
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropEvent
 import ink.lipoly.app.sunrise.drop.DropException
@@ -327,26 +328,16 @@ private fun TestSection(
 ) {
     var expanded by rememberSaveable { mutableStateOf(!collapsible) }
     ListItemCard {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (collapsible) {
-                val actionLabel = if (expanded) {
-                    "收起"
-                } else {
-                    "展开"
-                }
-                OutlinedButton(
-                    onClick = { expanded = !expanded },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("$title · $actionLabel", style = MaterialTheme.typography.titleMedium)
-                }
-            } else {
+        if (collapsible) {
+            Expander(title, expanded, { expanded = it }) { content() }
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
+                content()
             }
-            if (expanded) content()
         }
     }
 }
