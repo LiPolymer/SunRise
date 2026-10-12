@@ -246,7 +246,6 @@ internal fun AppContent(
                         CatalogEntry(
                             snapshot = snapshot,
                             deviceName = headsetState.device?.name,
-                            deviceEqBands = eqState?.confirmed?.bands?.size,
                             onUseReference = {
                                 chooseReference(it)
                                 navStack.back()

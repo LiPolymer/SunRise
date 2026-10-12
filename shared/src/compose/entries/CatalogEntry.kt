@@ -14,7 +14,6 @@ import androidx.compose.ui.window.DialogProperties
 import ink.lipoly.app.sunrise.catalog.*
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.intOrNull
 import ink.lipoly.app.sunrise.compose.CatalogReferencePlot
 import ink.lipoly.app.sunrise.compose.ListItemCard
 
@@ -94,7 +93,6 @@ internal fun CatalogProductSelector(
 internal fun CatalogEntry(
     snapshot: CatalogSnapshot?,
     deviceName: String?,
-    deviceEqBands: Int?,
     onUseReference: (CatalogProduct) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -107,24 +105,23 @@ internal fun CatalogEntry(
         if (selectedUuid != null && selected == null) selectedUuid = null
     }
     if (snapshot != null && selected != null) {
-        CatalogProductDetail(snapshot, selected, deviceName, deviceEqBands, onUseReference, { selectedUuid = null }, modifier)
+        CatalogProductDetail(snapshot, selected, deviceName, onUseReference, { selectedUuid = null }, modifier)
         return
     }
     LazyColumn(modifier) {
         item {
             Column(Modifier.padding(16.dp)) {
                 Text("产品与频响目录", style = MaterialTheme.typography.titleLarge)
-                Text("按完整产品与频响记录浏览。搜索仅查询 name / model，不改变精确名称设备筛选。目录资料不代表已验证的设备控制能力。", style = MaterialTheme.typography.bodySmall)
             }
         }
-        if (snapshot == null) item { Text("没有可用的离线数据库；可在设置导入或显式拉取。", Modifier.padding(16.dp)) }
+        if (snapshot == null) item { Text("没有可用的离线数据库；可在设置导入或拉取。", Modifier.padding(16.dp)) }
         else {
             item { ListItemCard { Column(Modifier.padding(16.dp)) { CatalogSnapshotDetails(snapshot) } } }
             item {
                 Column(Modifier.padding(16.dp)) {
                     OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                         label = { Text("搜索名称 / 型号") })
-                    Text("${products.size} / ${snapshot.products.size} 条记录（不合并同名 UUID）")
+                    Text("${products.size} / ${snapshot.products.size} 条记录")
                 }
             }
             if (products.isEmpty()) item { Text("没有匹配的名称或型号", Modifier.padding(16.dp)) }
@@ -146,7 +143,7 @@ private fun comparisonUnavailableReason(snapshot: CatalogSnapshot, product: Cata
 
 @Composable
 private fun CatalogProductDetail(
-    snapshot: CatalogSnapshot, product: CatalogProduct, deviceName: String?, deviceEqBands: Int?,
+    snapshot: CatalogSnapshot, product: CatalogProduct, deviceName: String?,
     onUseReference: (CatalogProduct) -> Unit, onBack: () -> Unit, modifier: Modifier,
 ) {
     var comparisonUuid by remember(product.uuid) { mutableStateOf<String?>(null) }
@@ -162,7 +159,6 @@ private fun CatalogProductDetail(
         else comparisonUnavailableReason(snapshot, it)
     }
     val comparisonEnabled = comparison != null && firstReason == null && secondReason == null
-    val directoryBands = (product.raw["eqBands"] as? JsonPrimitive)?.intOrNull
     LazyColumn(modifier) {
         item {
             Column(Modifier.padding(16.dp)) {
@@ -187,14 +183,6 @@ private fun CatalogProductDetail(
                     if (product.uuid in snapshot.responseLibraryUuids) {
                         Text("原始标签: ${product.raw["tags"]}", style = MaterialTheme.typography.bodySmall)
                     }
-                    if (deviceEqBands != null) {
-                        Text("当前设备读回 EQ 段数：$deviceEqBands（${deviceName ?: "未提供名称"}）")
-                    }
-                    Text(catalogResponseStatus(snapshot, product))
-                    Text("参考资产路径: ${catalogMetadata(product, "freqResponse")}", style = MaterialTheme.typography.bodySmall)
-                    Text("存档时间: ${snapshot.retrievedAt}", style = MaterialTheme.typography.bodySmall)
-                    Text("资料来源: ${catalogSourceUrl(snapshot, product)}", style = MaterialTheme.typography.bodySmall)
-                    Text("CDN: ${snapshot.cdnBaseUrl}", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
