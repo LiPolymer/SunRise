@@ -13,7 +13,7 @@ fun main() {
         Runtime.getRuntime().addShutdownHook(shutdownHook)
         hookRegistered = true
         application(exitProcessOnExit = false) {
-            Window(onCloseRequest = ::exitApplication, title = "SunRise") {
+            Window(onCloseRequest = ::exitApplication, title = "SunRise · 模拟设备") {
                 DesktopApp(window, runtime)
             }
         }

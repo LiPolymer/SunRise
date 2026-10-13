@@ -1,11 +1,10 @@
 package ink.lipoly.app.sunrise.blueConnector
 
-/** JVM 宿主标记；可由调用方继承，但不意味着存在桌面蓝牙后端。 */
+/** JVM 宿主标记；桌面工厂仅创建进程内模拟设备，不访问系统蓝牙。 */
 actual abstract class BtHost
 /**
- * JVM 桌面明确不提供蓝牙，不创建假设备、模拟连接或空管理器。
- * @param host JVM 宿主标记；不用于创建任何资源。
- * @throws UnsupportedOperationException 始终抛出 `Bluetooth is unavailable on JVM desktop`。
+ * 创建独立的 JVM 模拟管理器，供桌面使用真实协议控制器查看界面。
+ * @param host JVM 宿主标记；不用于创建系统资源。
+ * @return 调用方拥有的模拟管理器，最终必须调用 [BtManager.close]。
  */
-actual fun createBtManager(host: BtHost): BtManager =
-    throw UnsupportedOperationException("Bluetooth is unavailable on JVM desktop")
+actual fun createBtManager(host: BtHost): BtManager = JvmMockBtManager()

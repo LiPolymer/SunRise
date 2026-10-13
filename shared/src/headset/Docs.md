@@ -28,7 +28,7 @@
 | `HeadsetClient` | 单音频身份选择、端点尝试、显式 GATT connect/disconnect、自己的 `DropController`、重试与初读/电量轮询 | 清理自己的尝试端点与观察任务；不清理其他设备 |
 | `DropController` | 当前 GATT 会话中的协议初始化、请求匹配和功能状态 | 客户端关闭其控制器；控制器本身不拥有 GATT 连接 |
 
-本包不做：内置品牌名单或目录依赖、协议候选预筛选、系统音频 profile 强制连接、自动配对、RFCOMM、通用多耳机 UI、伪桌面蓝牙。宿主可提供通用自动候选 predicate；默认接受全部。自动模式依赖设备已经被系统当作音频设备连接；手动连接地址不替用户建立这个系统音频连接。
+本包不做：内置品牌名单或目录依赖、协议候选预筛选、系统音频 profile 强制连接、自动配对、RFCOMM 或通用多耳机 UI。宿主可提供通用自动候选 predicate；默认接受全部。Android 自动模式依赖设备已经被系统当作音频设备连接；手动连接地址不替用户建立这个系统音频连接。桌面宿主注入 JVM actual 的模拟管理器，沿用本客户端的自动选择、控制器与轮询流程，不在 Headset 层伪造 READY 或功能状态。
 
 隔离保证针对**不同设备**。不要让另一个客户端/控制器同时拥有本客户端正在尝试的同一 GATT 端点；通用 `connect()` 可能复用该设备已有会话，本客户端随后 `disconnect()` 会影响共享该端点的使用者。注入同一管理器、操作不同设备则不表示所有资源都归本客户端。
 
@@ -255,4 +255,4 @@ suspend fun readSelectedBattery(
 
 本指南依据当前生产实现、宿主调用、[自动连接与筛选测试](../../test/headset/HeadsetAutoFilterTest.kt) 和 [字节级 fixture](../../test/headset/HeadsetAutoLoopFixture.kt) 描述契约。现有 fixture 测试覆盖 0/1/多候选、默认保留不同品牌、目录精确匹配与类型筛选、显式手动选择不受自动筛选限制，以及筛选变化不替换当前连接 epoch 和控件绑定；它不代表 Android 无线或 SharedPreferences 落盘时序的实体证明。
 
-Android 真正枚举、授权、扫描、GATT、系统音频事实，以及真实耳机协议/电量/ANC 需要相应硬件与权限验证。本包的 Android 工厂没有 JVM 同等工厂；桌面 `createBtManager` 明确不可用，现有桌面/Preview 使用可空客户端路径而不创建假蓝牙后端。阅读或编辑文档不能声称完成这些硬件验证。
+Android 真正枚举、授权、扫描、GATT、系统音频事实，以及真实耳机协议/电量/ANC 需要相应硬件与权限验证。本包的 Android 工厂没有 JVM 同等公共工厂；桌面 DI 在唯一 `ApplicationBluetoothResources` 中创建 JVM 模拟管理器、进程内关联存储与客户端，关闭仍先 client 后 manager；runtime 创建时报告空权限集合，目录加载完成后由同一个协调器自动连接模拟 `MOONDROP MOCA`。Android Preview 保留可空客户端路径。模拟 GAIA 状态在同一 runtime 的重连之间保留，退出后重置，不访问真实蓝牙，也不证明 Android、耳机 DSP 或 Flash 行为。

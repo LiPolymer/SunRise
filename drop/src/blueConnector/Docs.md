@@ -19,7 +19,7 @@
 
 本包提供平台无关的蓝牙契约和 Android 的真实实现：取得设备句柄、枚举系统音频连接/已配对设备、扫描 LE、请求配对、显式建立设备级 GATT、服务发现、原始读写、通知和 MTU 协商，以及现有经典 RFCOMM 字节通道。它不提供协议解码、品牌过滤、自动选择、重连、轮询、偏好持久化或音频地址到 LE 地址的关联。
 
-本包与协议包同属独立 Android/JVM KMP 库 `drop`，包名不变；公共通讯契约只使用 Kotlin/协程 Flow，Android actual 使用系统公开 API。JVM actual 不提供蓝牙后端。库不依赖 shared、Koin、Compose、Ktor 或 serialization，唯一生产外部依赖是导出的 `kotlinx-coroutines-core`；`blueConnector` 不依赖协议包或应用 Headset：
+本包与协议包同属独立 Android/JVM KMP 库 `drop`，包名不变；公共通讯契约只使用 Kotlin/协程 Flow，Android actual 使用系统公开 API。JVM actual 提供进程内模拟后端，不访问真实蓝牙。库不依赖 shared、Koin、Compose、Ktor 或 serialization，唯一生产外部依赖是导出的 `kotlinx-coroutines-core`；共同与 Android 通讯实现不依赖协议包或应用 Headset，JVM 模拟实现使用 JVM 专属 GAIA 外设存储：
 
 | 层 | 职责 | 文档 |
 | --- | --- | --- |
@@ -48,16 +48,19 @@
 | [AndroidBtGatt.kt](../../src@android/blueConnector/AndroidBtGatt.kt) | 共享连接任务、显式断开、旧会话隔离 |
 | [AndroidGattSession.kt](../../src@android/blueConnector/AndroidGattSession.kt) | 服务/句柄、回调匹配、原生期限、通知缓冲 |
 | [AndroidBtRfcomm.kt](../../src@android/blueConnector/AndroidBtRfcomm.kt) | 现有经典通道的打开、字节写入、串行关闭与管理器资源所有权 |
-| [BtPlatform.jvm.kt](../../src@jvm/blueConnector/BtPlatform.jvm.kt) | 桌面明确抛不可用异常 |
+| [BtPlatform.jvm.kt](../../src@jvm/blueConnector/BtPlatform.jvm.kt) / [JvmMockBtManager.kt](../../src@jvm/blueConnector/JvmMockBtManager.kt) | 桌面模拟工厂、发现、会话身份与关闭 |
+| [JvmMockGaiaPeripheral.kt](../../src@jvm/drop/JvmMockGaiaPeripheral.kt) | JVM 专属的内存 GAIA 控件与 PEQ 状态 |
 
-协议行为证据入口：[GAIA 设备 fixture](../../test/drop/GaiaGattDeviceFixture.kt)、[经典 EQ 测试](../../test/drop/GaiaClassicEqTest.kt)、[参数 EQ 测试](../../test/drop/GaiaParamEqTest.kt)。当前仓库没有独立操作队列/JVM 工厂测试文件；这些协议测试不证明 Android 无线或实体设备兼容性，fixture 不属于生产后端。许可与 Required Notice 统一位于仓库根目录的 [LICENSE](../../../LICENSE) 与 [NOTICE](../../../NOTICE)；独立复制或分发模块时应同时携带这些文件，不更改许可或配置 Maven 发布。
+协议行为证据入口：[GAIA 设备 fixture](../../test/drop/GaiaGattDeviceFixture.kt)、[经典 EQ 测试](../../test/drop/GaiaClassicEqTest.kt)、[参数 EQ 测试](../../test/drop/GaiaParamEqTest.kt) 和 [JVM 模拟器测试](../../test@jvm/blueConnector/JvmMockBtManagerTest.kt)。它们不证明 Android 无线或实体设备兼容性；测试 fixture 不属于生产后端。许可与 Required Notice 统一位于仓库根目录的 [LICENSE](../../../LICENSE) 与 [NOTICE](../../../NOTICE)；独立复制或分发模块时应同时携带这些文件，不更改许可或配置 Maven 发布。
 
 ## 平台入口与 Android 权限
 
 公共入口为 `createBtManager(host: BtHost): BtManager`：
 
 - Android：`BtHost` 是 `android.content.Context` 的 actual typealias。工厂使用 `host.applicationContext`，创建管理器和系统广播订阅，不申请权限，不自动连接或扫描。广播注册失败抛 `BtException.Transport`。
-- JVM：`BtHost` 是抽象标记类。即使提供其子类，工厂也始终抛 `UnsupportedOperationException("Bluetooth is unavailable on JVM desktop")`；没有空实现或模拟成功路径。
+- JVM：`BtHost` 是抽象标记类，工厂创建独立内存管理器。模拟音频/LE/已配对设备为 `MOONDROP MOCA`，地址 `02:00:00:00:00:01`，类型 DUAL、配对 BONDED；发现与操作立即完成，无真实扫描等待。已获取的有效未知地址保持未知信息，连接明确失败，不为任意地址模拟成功。
+
+模拟器通过会话专属 GAIA command/response 特征让生产 `DropController` 完成探测和请求匹配。电量固定左 82%、右 76%、盒 64%；支持六种 ANC、三档增益、LC3/LDAC/LHDC 开关、LED、空间音频、头部追踪及五段峰值 PEQ。SET 更新内存存储，后续 GET 返回实际存储值；重连创建新会话和句柄但保留设备参数，重新创建管理器后重置。未实现的命令明确失败，不提供 9ECA、RFCOMM、音频或 Flash 操作。会话关闭、旧/外部句柄、MTU 和属性检查仍有效；模拟器不复现 Android 原生操作延迟、权限或回调竞态。
 
 Android 宿主负责 Manifest 声明、运行时权限请求、授权结果与重新进入前台后的检查。本包的 `BtPermissions.missing(context, scan = true)` **只检查，不弹授权界面**：
 
@@ -229,7 +232,7 @@ Android 使用 `connectGatt(..., autoConnect = false, ..., TRANSPORT_LE)`，连�
 | PacketTooLarge | 长度 > 当前 MTU−3 | 由上层协议决定合法分片，或请求合适 MTU；不能无条件截断 |
 | Transport | message、可选 cause | 原生拒绝/错误状态、扫描失败/缓冲溢出等真实传输失败 |
 
-`operation`/message 是诊断字符串，不是固定机器枚举。`Transport` 可保留原始 cause，不应丢弃。扫描期限非正与 MTU 超范围使用 `IllegalArgumentException`；调用方的 `CancellationException` 原样透传。使用宽泛异常处理时先透传取消，不把取消包装成“蓝牙失败”或成功。JVM 工厂的不可用是 `UnsupportedOperationException`，不是 `BtException`。
+`operation`/message 是诊断字符串，不是固定机器枚举。`Transport` 可保留原始 cause，不应丢弃。扫描期限非正与 MTU 超范围使用 `IllegalArgumentException`；调用方的 `CancellationException` 原样透传。使用宽泛异常处理时先透传取消，不把取消包装成“蓝牙失败”或成功。JVM 模拟器对未知设备、未实现命令和失效会话同样抛出对应 `BtException`。
 
 ## 完整使用示例
 
@@ -372,6 +375,6 @@ suspend fun awaitOneGattNotification(
 7. **扫描超时不是错误、空结果不是存在性证明。** null scanner、profile 代理超时可返回空；真正 onScanFailed/溢出不可伪装为成功。
 8. **SharedFlow 不是历史存储。** 先订阅再开启通知，状态恢复用 StateFlow；慢原始通知处理会导致明确溢出关闭，而不是无限积压。
 9. **关闭不是系统解绑。** session/manager close 只释放所属通讯资源，不关闭系统蓝牙，也不改变配对关系。
-10. **桌面没有生产蓝牙后端。** 不创建 JVM manager 来模拟 Android 成功；测试 fixture 只证明纯协程/协议行为。
+10. **桌面只有模拟后端。** JVM manager 供 UI 检查，不是系统蓝牙、实体耳机或 Android 行为的证明。
 
-本参考从当前源代码契约描述行为，不声明已经验证某款实体外设、厂商系统、无线干扰环境、授权界面或 Android 回调时序。实际 Android 验证必须具备真实适配器、正确授权及目标 GATT 外设；API 24–32/33+ 分支、系统配对结果、音频 profile 可见性、MTU 实际协商和通知流量仍应在对应平台观察。纯 JVM 测试不能替代这些无线路径，本次文档工作也不以虚构后端补足平台边界。
+本参考从当前源代码契约描述行为，不声明已经验证某款实体外设、厂商系统、无线干扰环境、授权界面或 Android 回调时序。实际 Android 验证必须具备真实适配器、正确授权及目标 GATT 外设；API 24–32/33+ 分支、系统配对结果、音频 profile 可见性、MTU 实际协商和通知流量仍应在对应平台观察。JVM 模拟器和纯 JVM 测试不能替代这些无线路径。

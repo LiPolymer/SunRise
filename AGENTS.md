@@ -39,7 +39,7 @@ Kotlin Toolchain 0.12.2 / Kotlin 2.4.20 的 Android + JVM Compose Multiplatform 
 | --- | --- |
 | `android-app` / `jvm-app` | 平台宿主、权限、应用启动与退出 |
 | `drop/src/blueConnector` | 协议无关的蓝牙通讯契约 |
-| `drop/src@android/blueConnector` | Android 蓝牙实现；JVM actual 明确不可用 |
+| `drop/src@android/blueConnector` / `drop/src@jvm` | Android 真实蓝牙；JVM 内存模拟管理器与 GAIA 外设 |
 | `drop/src/drop` | 平台无关的 GAIA / 9ECA 控制器与参数数学 API |
 | `shared/src/headset` | 应用单耳机连接、选择、音频/BLE 关联和电量轮询 |
 | `shared/src/di` | Koin 模块、进程 runtime 和蓝牙资源 owner |
@@ -63,7 +63,7 @@ kotlin.bat run -m jvm-app
 kotlin.bat run -m android-app
 ```
 
-- Android 需要 SDK 37，最低 API 24；运行需可用设备或模拟器。JVM 不注册蓝牙管理器或客户端，但仍初始化离线目录。
+- Android 需要 SDK 37，最低 API 24；运行需可用设备或模拟器。JVM 注册独立模拟蓝牙管理器与 `HeadsetClient`，目录加载完成后自动连接 `MOONDROP MOCA`；窗口标题明确标注模拟设备，不访问真实蓝牙。模拟电量、ANC、增益、编码、LED、空间音频、头部追踪及五段 PEQ 状态可读写，重连保留、runtime 关闭后丢弃；不模拟 9ECA、RFCOMM、音频或 DSP/Flash。Android Preview 仍用 client=null。
 - Compose 1.12.1 对应的 Material3 固定为 `1.12.0-alpha03`，不要自动降回旧版本；旧版本曾导致桌面诊断输入框运行时崩溃。其他依赖与插件版本查 `module.yaml`。
 - `-Xexpect-actual-classes` 用于 expect/actual 类；Android GATT 保留 API 24–32 的旧回调与写入分支，弃用抑制只放在旧 API 使用处。
 - 验证范围与改动一致；只有编译、静态检查或 fixture 时，不能声称真实 UI、Android 设备、耳机 DSP 或 Flash 已验收。用户明确要求仅静态检查时，不运行应用或测试。
@@ -104,7 +104,7 @@ kotlin.bat run -m android-app
 | 参数 | 用途 |
 | --- | --- |
 | `catalog` | `Catalog.state`、产品/频响查询 |
-| `client` | 可空 `HeadsetClient`、状态与协议控件；JVM 为 null |
+| `client` | 可空 `HeadsetClient`、状态与协议控件；JVM 为模拟客户端，Preview 为 null |
 | `session.headset` / `session.catalog` / `session.eq` | 耳机动作、目录操作、EQ 编辑器所有权 |
 | `settings` / `onSettingsChange` | 当前设置及宿主写回 |
 | `missingPermissions` / `onRequestPermissions` | 缺失权限及宿主授权回调 |
@@ -169,7 +169,7 @@ GATT 用 `sid` / `wid` 关联 `tx-start` 的完整 PDU、MTU 与匹配回调状�
 
 - 蓝牙筛选和自动参考仅使用严格 `type == "BT"` 的精确名称匹配，忽略名称大小写及首尾/连续 Unicode 空白，不匹配 model、前缀或近似型号；目录匹配不证明协议支持。筛选变化不断开当前目标。
 - 浏览、手选源参考、目标参考和比较允许全部类型。自动源参考先用有效手动 UUID 绑定，再在同名 BT 中优先可解析曲线，按 `zh-CN`、空语言、其他语言及 UUID 排序。UUID 消失提示并退回自动匹配，不按名称迁移。
-- 源参考绑定按音频地址保存，不用 BLE 端点；未连接/JVM 时仅作会话预览。独立目标 UUID 与显示开关跨设备持久化：隐藏保留选择，清除删除 UUID，丢失提示重新选择；不改源绑定、不自动拟合或发送 EQ。
+- 源参考绑定按音频地址保存，不用 BLE 端点；未连接时仅作会话预览，JVM 已连接时绑定模拟设备地址。独立目标 UUID 与显示开关跨设备持久化：隐藏保留选择，清除删除 UUID，丢失提示重新选择；不改源绑定、不自动拟合或发送 EQ。
 - Android 使用 `filesDir/catalog/active.json` 和 SAF，不申请广泛存储权限；JVM 使用 `${user.home}/.sunrise/catalog/active.json` 和原生文件对话框。`settings` 的 StateFlow 契约、平台 `AndroidUiSettingsStore` / `JvmUiSettingsStore`、原设置键及写入规则保持不变；目录偏好持久化，JVM 原外观设置仍为进程内行为。
 - 维护内置基线只手动运行 `python tools/fetch_moondrop_catalog.py`，海外源加 `--cdn overseas`，不挂到普通构建或启动流程。
 

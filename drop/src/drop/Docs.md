@@ -20,7 +20,7 @@
 
 ## 职责、依赖与源码索引
 
-`blueConnector` 与本协议包合并在独立 Android/JVM KMP 库 `drop` 中，包名保持不变；应用的 `headset` 留在 `shared`，模块依赖为 `shared → drop`，包内调用方向为 `headset → drop → blueConnector`。库不依赖 `shared`、Koin、Compose、Ktor 或 serialization；唯一生产外部依赖是导出的 `kotlinx-coroutines-core`。Android actual 使用真实系统蓝牙 API，JVM 工厂仍明确 unavailable，不提供桌面蓝牙后端。
+`blueConnector` 与本协议包合并在独立 Android/JVM KMP 库 `drop` 中，包名保持不变；应用的 `headset` 留在 `shared`，模块依赖为 `shared → drop`，共同及 Android 代码的包内调用方向为 `headset → drop → blueConnector`。库不依赖 `shared`、Koin、Compose、Ktor 或 serialization；唯一生产外部依赖是导出的 `kotlinx-coroutines-core`。Android actual 使用真实系统蓝牙 API；JVM actual 提供进程内模拟管理器，调用 JVM 专属 GAIA 外设实现供桌面 UI 检查，不访问真实蓝牙。
 
 | 所有者 | 负责 | 不负责 |
 | --- | --- | --- |
@@ -625,5 +625,5 @@ suspend fun observeDrop(
 - 不缓存跨会话控件，不共用旧特征句柄，不依赖 UI 通知完成请求；晚订阅读 StateFlow，不等历史事件。
 - 常规 GAIA SET 多数有 GET，9ECA SET 多数只有响应；sendRaw/powerOff 只有传输完成。不要将所有 setter 的确认等级统一包装成“硬件已应用”。
 - 常规控制使用 GATT；现有经典 RFCOMM EQ 写入不隐式回退到 BLE，也不提供发现前协议/品牌过滤。内置 profile 名称仅是编号映射规则。
-- Drop 的纯 Kotlin 协议/控制逻辑可被注入通讯驱动；这不构成 Android 无线验证。JVM `createBtManager` 真实不可用并抛 UnsupportedOperationException，不创建假桌面蓝牙。平台工厂与硬件条件见 [blueConnector](../blueConnector/Docs.md)。
+- JVM `createBtManager` 创建独立内存模拟器，模拟 GAIA 的状态读写和五段 PEQ，生产 `DropController` 仍处理真实格式的 GATT 字节。它不提供 9ECA 或经典 RFCOMM，也不证明 Android 无线、实体 DSP 或 Flash 行为；模拟范围见 [blueConnector](../blueConnector/Docs.md#平台入口与-android-权限)。
 - 实体 Android 蓝牙、耳机固件行为、具体映射、Q/滤波器/原始 ID/标志等未定义语义必须结合真机与固件资料验证。此参考以当前源码契约为准，不声称已完成实体硬件验证，不包含随时间失效的测试计数或运行日记。
