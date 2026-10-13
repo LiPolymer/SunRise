@@ -4,6 +4,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -39,7 +40,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.drop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.PeqFilter
-import ink.lipoly.app.sunrise.drop.PeqHeadroom
+//import ink.lipoly.app.sunrise.drop.PeqHeadroom
 import ink.lipoly.app.sunrise.catalog.*
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropException
@@ -67,6 +68,7 @@ import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqReset
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqSliderInRange
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqWithRaw
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.targetResponseColor
+import ink.lipoly.app.sunrise.compose.ListItemCard
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -131,10 +133,10 @@ internal fun EqualizerEntry(
         if (target == null) overlay?.scale else acousticScale(overlay, target)
     }
     val hasOverlay = responseScale != null
-    val preGainRaw = remember(bands) {
+    /* val preGainRaw = remember(bands) {
         if (bands.isEmpty()) null
         else try { PeqHeadroom.preGainRaw(bands) } catch (_: IllegalArgumentException) { null }
-    }
+    }*/
     val editable = editor != null && enabled && canEdit(state)
     val maySelect = editable && state?.isEditing != true
     val idle = state?.isEditing != true &&
@@ -265,6 +267,8 @@ internal fun EqualizerEntry(
                             LoadingIndicator(Modifier.size(40.dp))
                         }
                     }
+
+                    /*
                     if (bands.isNotEmpty()) {
                         if (preGainRaw != null) {
                             val db = (preGainRaw / 60.0 * 100).roundToInt() / 100.0
@@ -273,62 +277,77 @@ internal fun EqualizerEntry(
                             else "自动前置增益（下次发送）"
                             Text("$label：$db dB", style = MaterialTheme.typography.bodyMedium)
                         } else {
-                            Text("无法计算可写入的峰值 EQ 前置增益；此配置不会发送。",
+                            Text("无法计算可写入的峰值 EQ 前置增益",
                                 color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                         }
-                    }
+                    }*/ //preGain
+
                     if (state?.confirmed?.currentPreset != null && state.confirmed.currentPreset != 63) {
                         Text("编辑将切换至用户 EQ", style = MaterialTheme.typography.bodyMedium)
                     }
                     if (editor != null && state != null && state.phase == ParamEqEditPhase.UNAVAILABLE
-                        && state.error == null) Text("设备未提供可编辑的 Bluetrum 用户 EQ")
+                        && state.error == null) Text("设备未提供 Bluetrum EQ 功能")
                 }
             }
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (hasOverlay) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            if (overlay != null) ResponseLegend(
-                                referenceProduct?.name ?: "源频响", 0.65f, 1.5.dp, dashed = true
-                            )
-                            if (overlay?.predictedDb != null) ResponseLegend(
-                                "DSP后", 1f, 2.dp
-                            )
-                            if (target != null) ResponseLegend(
-                                targetProduct?.name ?: "目标频响", 1f, 2.dp, dashed = true,
-                                lineColor = targetResponseColor
-                            )
-                            if (bands.isNotEmpty()) ResponseLegend(
-                                "EQ 响应", 0.30f, 2.5.dp
-                            )
+                ListItemCard(overrideModifier = true) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(15.dp)
+                    ) {
+                        if (hasOverlay) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (overlay != null) ResponseLegend(
+                                    referenceProduct?.name ?: "源频响", 0.65f, 1.5.dp, dashed = true
+                                )
+                                if (overlay?.predictedDb != null) ResponseLegend(
+                                    "DSP后", 1f, 2.dp
+                                )
+                                if (target != null) ResponseLegend(
+                                    targetProduct?.name ?: "目标频响", 1f, 2.dp, dashed = true,
+                                    lineColor = targetResponseColor
+                                )
+                                if (bands.isNotEmpty()) ResponseLegend(
+                                    "EQ 响应", 0.30f, 2.5.dp
+                                )
+                            }
                         }
-                    }
-                    if (selected != null) Text(
-                        "${selected.index + 1} ${
-                            parameterValue(
+                        if (selected != null) Text(
+                            "${selected.index + 1} ${
+                                parameterValue(
+                                    selected, 
+                                    PeqParameter.GAIN
+                                )}@${
+                                parameterValue(
+                                    selected,
+                                    PeqParameter.FREQUENCY
+                                )} ${parameterValue(
                                 selected, 
-                                PeqParameter.GAIN
-                            )}@${
-                            parameterValue(
-                                selected,
-                                PeqParameter.FREQUENCY
-                            )} ${parameterValue(
-                            selected, 
-                            PeqParameter.Q
-                            )}",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    ParamEqCurve(bands, selectedIndex, editor, editable, compact,
-                        onSelect = { if (maySelect && !editor.state.value.isEditing) selectedIndex = it },
-                        modifier = Modifier.fillMaxWidth().height(curveHeight), overlay = overlay, target = target, responseScale = responseScale)
-                    if (overlay != null && !hasOverlay) Text(
-                        if (overlay.frequencyHz.isEmpty()) "参考在 20–20000 Hz 内没有可显示频段。"
-                        else "参考及预测数值超出可显示范围。",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                                PeqParameter.Q
+                                )}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        ParamEqCurve(bands, selectedIndex, editor, editable, compact,
+                            onSelect = {
+                                if (maySelect && !editor.state.value.isEditing)
+                                    selectedIndex = it
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .offset(x = 15.dp)
+                                .height(curveHeight),
+                            overlay = overlay,
+                            target = target,
+                            responseScale = responseScale)
+                        if (overlay != null && !hasOverlay) Text(
+                            if (overlay.frequencyHz.isEmpty()) "参考在 20–20000 Hz 内没有可显示频段。"
+                            else "参考及预测数值超出可显示范围。",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
             if (bands.isNotEmpty()) {
@@ -562,7 +581,7 @@ private fun ParamEqBandCard(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("第 ${band.index + 1} 段", style = MaterialTheme.typography.titleMediumEmphasized)
-            if (band.filter == PeqFilter.BYPASS) Text("旁路：保留原始数值。选择其他滤波器后启用参数。")
+            if (band.filter == PeqFilter.BYPASS) Text("旁通")
             PeqParameter.entries.forEach { parameter ->
                 PeqParameterControl(band, parameter, editor, state, enabled, onNumber, onNudge)
             }
@@ -591,9 +610,29 @@ private fun PeqParameterControl(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // A stacked label/value layout remains usable at fontScale 2 without shrinking text.
         Text(name, style = MaterialTheme.typography.labelLarge)
-        OutlinedButton(onClick = { onNumber(parameter, requester) }, enabled = enabled && state?.isEditing != true && (parameter != PeqParameter.GAIN || band.filter !in listOf(PeqFilter.LOW_PASS, PeqFilter.HIGH_PASS)),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).focusRequester(requester).semantics { contentDescription = description; stateDescription = parameterValue(band, parameter) }) {
-            Text(parameterValue(band, parameter))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val opModifier = Modifier
+                .heightIn(min = 48.dp)
+            val amModifier = opModifier
+                .widthIn(max = 80.dp)
+
+            OutlinedButton(onClick = { onNudge(parameter, -1) }, enabled = sliderEnabled && state?.isEditing != true,
+                modifier = amModifier
+                    .semantics {
+                        contentDescription = "$description 减小"
+                    }) { Text("−") }
+            OutlinedButton(onClick = { onNumber(parameter, requester) }, enabled = enabled && state?.isEditing != true && (parameter != PeqParameter.GAIN || band.filter !in listOf(PeqFilter.LOW_PASS, PeqFilter.HIGH_PASS)),
+                modifier = opModifier
+                    .focusRequester(requester)
+                    .weight(1f)
+                    .semantics {
+                        contentDescription = description
+                        stateDescription = parameterValue(band, parameter)
+                    }) { Text(parameterValue(band, parameter)) }
+            OutlinedButton(onClick = { onNudge(parameter, 1) }, enabled = sliderEnabled && state?.isEditing != true,
+                modifier = amModifier.semantics {
+                    contentDescription = "$description 增大"
+                }) { Text("+") }
         }
         if (!inRange && applicable) Text("超出滑杆范围，点数值编辑", style = MaterialTheme.typography.bodySmall)
         val value = when (parameter) {
@@ -632,12 +671,6 @@ private fun PeqParameterControl(
             Text("−12 dB", style = MaterialTheme.typography.bodySmall)
             Text("0 dB", style = MaterialTheme.typography.bodySmall)
             Text("+12 dB", style = MaterialTheme.typography.bodySmall)
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = { onNudge(parameter, -1) }, enabled = sliderEnabled && state?.isEditing != true,
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = "$description 减小" }) { Text("−") }
-            OutlinedButton(onClick = { onNudge(parameter, 1) }, enabled = sliderEnabled && state?.isEditing != true,
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = "$description 增大" }) { Text("+") }
         }
     }
 }

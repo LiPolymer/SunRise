@@ -1,57 +1,37 @@
 package ink.lipoly.app.sunrise.compose
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.updateTransition
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.material3.ButtonGroupDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun ListItemCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun ListItemCard(modifier: Modifier = Modifier,
+                          overrideModifier: Boolean = false,
+                          content: @Composable ColumnScope.() -> Unit) {
     Card(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ),
         shape = MaterialTheme.shapes.extraLarge,
-        modifier = modifier
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .fillMaxWidth(),
+        modifier = if (overrideModifier) modifier
+                    else modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                        .fillMaxWidth(),
         content = content
     )
 }
@@ -122,6 +102,7 @@ internal fun <T> SingleChoiceButtons(
     onSelect: (T) -> Unit,
     label: (T) -> String,
     modifier: Modifier = Modifier,
+    textModifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
     Row(
@@ -144,7 +125,9 @@ internal fun <T> SingleChoiceButtons(
                     role = Role.RadioButton
                     this.selected = checked
                 },
-            ) { Text(label(option)) }
+            ) { Text(label(option),
+                modifier = textModifier,
+                textAlign = TextAlign.Center) }
         }
     }
 }

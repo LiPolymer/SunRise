@@ -186,6 +186,7 @@ internal fun OverviewEntry(
                             options = GainLevel.entries, selected = controlState.gain, label = { it.display() },
                             enabled = usable && controlState.gain != null,
                             onSelect = { gain -> session.headset.runAction("设置增益", control = true) { gaia.setGain(gain) } },
+                            textModifier = Modifier.widthIn(min = 30.dp)
                         )
                     }
                     if (OverviewControl.SPATIAL in controls) ControlSwitch(
