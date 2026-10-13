@@ -45,6 +45,7 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
@@ -163,10 +164,9 @@ internal fun SettingsEntry(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text("控制", style = MaterialTheme.typography.titleSmall)
                     SettingSwitchRow(
                         title = "显示抗风噪按钮",
-                        subtitle = "只影响概览按钮，不会改变耳机模式或映射。",
+                        subtitle = "只影响概览按钮，部分设备不支持该功能",
                         checked = settings.showWind,
                         enabled = true,
                         onChange = { onChange(settings.copy(showWind = it)) },
@@ -182,17 +182,17 @@ internal fun SettingsEntry(
                 ) {
                     SettingSwitchRow(
                         "仅显示目录设备",
-                        "仅按完整产品名称过滤；目录匹配不代表协议支持。显示全部可选择改名或未收录设备。",
+                        "仅按完整产品名称过滤",
                         settings.catalogOnlyDevices, true,
                     ) { onChange(settings.copy(catalogOnlyDevices = it)) }
                     SettingSwitchRow(
                         "显示参考频响",
-                        "产品目录与频响库资料，非当前耳机实测",
+                        "通常根据设备从产品目录与频响库资料自动选择",
                         settings.showReferenceResponse, true,
                     ) { onChange(settings.copy(showReferenceResponse = it)) }
                     SettingSwitchRow(
                         "预测包含自动前置增益",
-                        "只改变图形预测，不改变耳机参数或发送方式",
+                        "只改变预测展示的图线, 便于与参考频响对比",
                         settings.includeResponsePreGain, true,
                     ) { onChange(settings.copy(includeResponsePreGain = it)) }
                 }
@@ -281,36 +281,49 @@ internal fun SettingsEntry(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text("关于与许可证", style = MaterialTheme.typography.titleSmall)
-                    Text("PolyForm Noncommercial License 1.0.0")
-                    TextButton(
-                        onClick = { uriHandler.openUri("https://polyformproject.org/licenses/noncommercial/1.0.0") },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    ) {
-                        Text("查看许可证原文")
+                    Row(horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "PolyForm Noncommercial 1.0.0",
+                            textAlign = TextAlign.Center
+                        )
+                        TextButton(
+                            onClick = { uriHandler.openUri("https://polyformproject.org/licenses/noncommercial/1.0.0") },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Text("查看原文")
+                        }
                     }
-                    Text(
-                        text = buildAnnotatedString {
-                            append("Copyright © 2026 ")
-                            withLink(
-                                LinkAnnotation.Clickable(
-                                    tag = "LiPolymer",
-                                    styles = TextLinkStyles(
-                                        style = SpanStyle(
-                                            color = linkColor,
-                                            textDecoration = TextDecoration.Underline,
-                                        ),
-                                    ),
-                                    linkInteractionListener = { uriHandler.openUri("https://github.com/LiPolymer") },
-                                ),
-                            ) {
-                                append("LiPolymer")
-                            }
-                        },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
                 }
             }
+        }
+        item {
+            Text(
+                text = buildAnnotatedString {
+                    append("Copyright © 2026 ")
+                    withLink(
+                        LinkAnnotation.Clickable(
+                            tag = "LiPolymer",
+                            styles = TextLinkStyles(
+                                style = SpanStyle(
+                                    color = linkColor,
+                                    textDecoration = TextDecoration.Underline,
+                                ),
+                            ),
+                            linkInteractionListener = { uriHandler.openUri("https://github.com/LiPolymer") },
+                        ),
+                    ) {
+                        append("LiPolymer")
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .padding(8.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
