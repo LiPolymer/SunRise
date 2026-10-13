@@ -143,8 +143,17 @@ internal fun BatteryCell(label: String, percent: Int?, modifier: Modifier = Modi
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(percent?.let { "$it%" } ?: "—", style = MaterialTheme.typography.headlineSmallEmphasized)
+            Row(horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+                modifier = Modifier.fillMaxWidth()) {
+                Text(percent?.let { "$it%" } ?: "—",
+                    style = MaterialTheme.typography.headlineSmallEmphasized,
+                )
+                Text(label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             if (percent != null) {
                 LinearProgressIndicator(
                     progress = { percent.coerceIn(0, 100) / 100f },
