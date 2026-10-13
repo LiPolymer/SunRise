@@ -241,10 +241,12 @@ internal fun EqualizerEntry(
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (state?.phase == ParamEqEditPhase.LOADING || state?.phase == ParamEqEditPhase.WRITING) {
-                            LoadingIndicator(Modifier.size(40.dp))
-                        }
+                    // Reserve the indicator height so send-state changes cannot move the curve.
+                    Row(
+                        modifier = Modifier.heightIn(min = 40.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Text(when {
                             editor == null || state == null -> "离线参考 · 不可编辑"
                             state.isEditing -> "调整中"
@@ -257,7 +259,11 @@ internal fun EqualizerEntry(
                                 ParamEqEditPhase.FAILED -> "操作失败：需要重新读取"
                                 else -> "不可用"
                             }
-                        }, style = MaterialTheme.typography.titleMediumEmphasized, modifier = Modifier.weight(1f))
+                        }, style = MaterialTheme.typography.titleMediumEmphasized,
+                        modifier = Modifier.weight(1f))
+                        if (state?.phase == ParamEqEditPhase.LOADING || state?.phase == ParamEqEditPhase.WRITING) {
+                            LoadingIndicator(Modifier.size(40.dp))
+                        }
                     }
                     if (bands.isNotEmpty()) {
                         if (preGainRaw != null) {
