@@ -142,7 +142,7 @@ internal fun AppContent(
                 TopAppBar(
                     title = { Text(title, style = MaterialTheme.typography.titleLargeEmphasized) },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        containerColor = MaterialTheme.colorScheme.background,
                     ),
                     navigationIcon = {
                         if (route == OurNavStack.Route.Catalog || route == OurNavStack.Route.Diagnostics) {
