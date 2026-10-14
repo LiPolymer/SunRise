@@ -6,6 +6,8 @@ build_unsigned_apk:
   image: fabernovel/android:api-33-v1.7.0
   before_script:
     - chmod +x ./kotlin
+    - export ANDROID_SDK_ROOT="$ANDROID_HOME"
+    - (yes || true) | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
   script:
     - ./kotlin build -m android-app -p android -v release --build-dir build/ci
   artifacts:
