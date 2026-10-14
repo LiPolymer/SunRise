@@ -115,6 +115,12 @@ object OurNavStack {
         if (size > 1) removeAt(lastIndex)
     }
 
+    fun NavBackStack<NavKey>.forward(dest: NavKey) {
+        if (lastOrNull() != dest) {
+            add(dest)
+        }
+    }
+
     val NavBackStack<NavKey>.activeNode: INavNode?
         get() = lastOrNull { it is INavNode } as? INavNode
 

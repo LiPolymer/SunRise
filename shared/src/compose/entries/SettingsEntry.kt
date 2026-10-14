@@ -209,8 +209,8 @@ internal fun SettingsEntry(
                         catalogState.loading -> "正在加载本地数据库"
                         catalogState.origin == CatalogOrigin.BUNDLED -> "来源：内置快照"
                         catalogState.origin == CatalogOrigin.LOCAL -> "来源：本地快照"
-                        catalogState.origin == CatalogOrigin.PULL -> "来源：本次拉取"
-                        catalogState.origin == CatalogOrigin.IMPORT -> "来源：本次导入（来源信息由文件提供）"
+                        catalogState.origin == CatalogOrigin.PULL -> "来源：本地快照"
+                        catalogState.origin == CatalogOrigin.IMPORT -> "来源：本地快照"
                         else -> "没有可用数据库；可导入或显式拉取，也可显示全部设备"
                     })
                     catalogState.snapshot?.let { CatalogSnapshotDetails(it) }

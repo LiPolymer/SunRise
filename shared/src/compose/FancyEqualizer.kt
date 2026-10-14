@@ -62,7 +62,11 @@ object FancyEqualizer {
         return "${mantissa.toString().removeSuffix(".0")}e$exponent"
     }
 
-    private val bandColors = listOf(Color(0xffe69f00), Color(0xff56b4e9), Color(0xff009e73), Color(0xffcc79a7), Color(0xffd55e00), Color(0xff0072b2))
+    private val bandColors = listOf(
+        Color(0xffe69f00), Color(0xff56b4e9),
+        Color(0xff009e73), Color(0xffcc79a7),
+        Color(0xffd55e00), Color(0xff0072b2)
+    )
     private fun bandColor(index: Int): Color = bandColors[index % bandColors.size]
     internal val targetResponseColor = Color(0xff0072b2)
 

@@ -114,7 +114,9 @@ StateFlow 用 `collectAsState()` 订阅。`compose/ParamEqBinding.kt` 的 `remem
 
 `OurNavStack.Route` 的 Overview / Equalizer / Settings 是底栏主路由；Catalog / Diagnostics 是非 `INavNode` 子路由，诊断隐藏底栏。Scaffold padding 只施加于 NavDisplay。通知、导入确认、候选与源/目标选择留在根级；目录“用作参考”先出栈再进入 EQ，不留下完成的目录路由。`EqualizerEntry` 直接实现均衡器页面及页面私有控件，映射参考资料与设置，不拥有 editor。`EqSessionOwner` 引用 `FancyEqualizer.ParamEqEditor`，仍按 GAIA controls 身份管理编辑器生命周期；总览控制规则保留在 `presentation/OverviewRules.kt`，不依赖页面。
 
-页面导航动效统一配置在 `AppContent` 的 `NavDisplay`：250 ms 水平滑动，入栈时新页面从右侧进入，出栈及预测性返回时从左侧进入；顶栏和底栏不参与页面滑动。底栏切换仍为入栈，不按主路由 index 自动判断左右方向。
+导航前进统一调用 `OurNavStack.forward(dest)`，由其避免目标与当前栈顶相同时重复入栈；页面不直接调用栈的 `add`，不重复实现栈顶去重。返回仍调用 `back()`，目录“用作参考”保持先 `back()` 再 `forward(Equalizer)`。
+
+页面导航动效统一配置在 `AppContent` 的 `NavDisplay`：250 ms、整页宽度的水平滑动；顶栏和底栏不参与。转场两端均为底栏主路由时，按本次转场起点与终点的 `INavNode.index` 判断方向：目标次序更大从右侧进入，更小从左侧进入；入栈、出栈及预测性返回共用此规则，跨节点不增加距离或经过中间页。涉及 Catalog / Diagnostics 等子路由时，仍为入栈从右侧进入，出栈及预测性返回从左侧进入。底栏切换仍为入栈，不改变导航历史。
 
 `EqualizerEntry` 复用 `FancyEqualizer.ParamEqCurve`；编辑器、编辑状态、发送方式和数值工具均属于 `FancyEqualizer`，成员 API 保持 internal，不另建完整 PEQ 屏幕、旧包兼容转发或别名。对象只组织声明，不持有全局编辑器或设备会话；每个 `ParamEqEditor` 保持独立状态和串行 worker。正式应用文案固定中文，不恢复语言选择、`UiLanguage`、`english` 参数或 `tr` / `t` 双语函数；产品名、协议术语、上游错误及目录 `languageType` 保留原值，目录匹配与排序优先 `zh-CN`。
 

@@ -1,5 +1,7 @@
 package ink.lipoly.app.sunrise.compose
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -15,12 +17,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.navigation3.scene.Scene
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
 import ink.lipoly.app.sunrise.catalog.*
 import ink.lipoly.app.sunrise.compose.OurNavStack.activeNode
 import ink.lipoly.app.sunrise.compose.OurNavStack.back
 import ink.lipoly.app.sunrise.compose.OurNavStack.createNavigationBarItems
+import ink.lipoly.app.sunrise.compose.OurNavStack.forward
 import ink.lipoly.app.sunrise.compose.entries.*
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditPhase
 import ink.lipoly.app.sunrise.drop.AudioCodec
@@ -167,7 +171,7 @@ internal fun AppContent(
                 if (route != OurNavStack.Route.Diagnostics) NavigationBar(windowInsets = NavigationBarDefaults.windowInsets) {
                     OurNavStack.navigableNodes.createNavigationBarItems(
                         navStack.activeNode
-                    ) { navStack.add(it) }
+                    ) { navStack.forward(it) }
                 }
             }
         ) { padding ->
@@ -176,16 +180,13 @@ internal fun AppContent(
                 backStack = navStack,
                 onBack = { navStack.back() },
                 transitionSpec = {
-                    slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(250)) togetherWith
-                        slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(250))
+                    navigationTransition(isPop = false)
                 },
                 popTransitionSpec = {
-                    slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(250)) togetherWith
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(250))
+                    navigationTransition(isPop = true)
                 },
                 predictivePopTransitionSpec = {
-                    slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(250)) togetherWith
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(250))
+                    navigationTransition(isPop = true)
                 },
                 entryProvider = entryProvider {
                     entry<OurNavStack.Route.Overview> {
@@ -199,7 +200,7 @@ internal fun AppContent(
                             client != null,
                             codecBlocked,
                             ::setCodec,
-                            Modifier.fillMaxSize(),
+                            Modifier.fillMaxSize().padding(0.dp,0.dp,0.dp,5.dp),
                         )
                     }
                     entry<OurNavStack.Route.Equalizer> {
@@ -237,13 +238,13 @@ internal fun AppContent(
                             onCancelPull = session.catalog::cancelPull,
                             onImport = session.catalog::prepareImport,
                             onExport = session.catalog::export,
-                            onOpenCatalog = { navStack.add(OurNavStack.Route.Catalog) },
+                            onOpenCatalog = { navStack.forward(OurNavStack.Route.Catalog) },
                             missingPermissions = missingPermissions,
                             clientAvailable = client != null,
                             modifier = Modifier.fillMaxSize(),
                             onChange = onSettingsChange,
                             onRequestPermissions = onRequestPermissions,
-                            onOpenDiagnostics = { navStack.add(OurNavStack.Route.Diagnostics) },
+                            onOpenDiagnostics = { navStack.forward(OurNavStack.Route.Diagnostics) },
                         )
                     }
                     entry<OurNavStack.Route.Catalog> {
@@ -253,9 +254,7 @@ internal fun AppContent(
                             onUseReference = {
                                 chooseReference(it)
                                 navStack.back()
-                                if (navStack.lastOrNull() != OurNavStack.Route.Equalizer) {
-                                    navStack.add(OurNavStack.Route.Equalizer)
-                                }
+                                navStack.forward(OurNavStack.Route.Equalizer)
                             },
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -346,6 +345,24 @@ internal fun AppContent(
             },
         )
     }
+}
+
+private fun <T : Any> AnimatedContentTransitionScope<Scene<T>>.navigationTransition(isPop: Boolean): ContentTransform {
+    // NavEntry 默认以路由的 toString() 作为公开 contentKey，不依赖其私有 key。
+    val from = OurNavStack.navigableNodes.firstOrNull {
+        it.toString() == initialState.entries.lastOrNull()?.contentKey
+    }
+    val to = OurNavStack.navigableNodes.firstOrNull {
+        it.toString() == targetState.entries.lastOrNull()?.contentKey
+    }
+    // 方向取自本次转场的两端，避免快速切换或返回时复用过期的点击状态。
+    val direction = if (from != null && to != null && from.index != to.index) {
+        if (to.index > from.index) 1 else -1
+    } else {
+        if (isPop) -1 else 1
+    }
+    return slideInHorizontally(initialOffsetX = { it * direction }, animationSpec = tween(250)) togetherWith
+        slideOutHorizontally(targetOffsetX = { -it * direction }, animationSpec = tween(250))
 }
 
 /** 保留设备读回失配与无法验证的区别，不把发送成功显示为应用成功。 */
