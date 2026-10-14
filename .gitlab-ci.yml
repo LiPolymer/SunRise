@@ -4,6 +4,8 @@ stages:
 build_unsigned_apk:
   stage: build
   image: fabernovel/android:api-33-v1.7.0
+  before_script:
+    - chmod +x ./kotlin
   script:
     - ./kotlin build -m android-app -p android -v release --build-dir build/ci
   artifacts:
