@@ -7,19 +7,42 @@ build_unsigned_apk:
   variables:
     ANDROID_HOME: "$CI_PROJECT_DIR/.android-sdk"
     ANDROID_SDK_ROOT: "$CI_PROJECT_DIR/.android-sdk"
+    KOTLIN_CLI_BOOTSTRAP_CACHE_DIR: "$CI_PROJECT_DIR/.ci-cache/kotlin-cli"
+    KOTLIN_SHARED_CACHE_DIR: "$CI_PROJECT_DIR/.ci-cache/kotlin"
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.ci-cache/gradle"
+  cache:
+    key:
+      prefix: android-linux-jdk21-cmdline22
+      files:
+        - kotlin
+        - android-app/module.yaml
+    policy: pull-push
+    paths:
+      - .android-sdk/
+      - .ci-cache/kotlin-cli/
+      - .ci-cache/kotlin/
+      - .ci-cache/gradle/caches/
+      - .ci-cache/gradle/wrapper/
   before_script:
     - chmod +x ./kotlin
     - apt-get update && apt-get install -y --no-install-recommends curl unzip
     - |
-      curl --fail --location --output /tmp/android-command-line-tools.zip \
-        https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip
-      mkdir -p "$ANDROID_HOME/cmdline-tools"
-      unzip -q /tmp/android-command-line-tools.zip -d "$ANDROID_HOME/cmdline-tools"
-      mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
-    - (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --install "cmdline-tools;22.0"
+      if [ ! -x "$ANDROID_HOME/cmdline-tools/22.0/bin/sdkmanager" ]; then
+        if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+          curl --fail --location --output /tmp/android-command-line-tools.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          unzip -q /tmp/android-command-line-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+        fi
+        (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --install "cmdline-tools;22.0"
+      fi
     - (yes || true) | "$ANDROID_HOME/cmdline-tools/22.0/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses
   script:
     - ./kotlin build -m android-app -p android -v release --build-dir build/ci
+    - mkdir -p dist
+    - cp build/ci/tasks/_android-app_buildAndroidRelease/*.apk dist/sunrise-release-unsigned.apk
+    - cp LICENSE NOTICE dist/
   artifacts:
     name: "sunrise-unsigned-apk-$CI_COMMIT_SHORT_SHA"
     paths:
