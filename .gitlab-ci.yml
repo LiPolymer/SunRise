@@ -1,0 +1,78 @@
+stages:
+  - build
+
+build_unsigned_apk:
+  stage: build
+  image: eclipse-temurin:21-jdk-noble
+  variables:
+    ANDROID_HOME: "$CI_PROJECT_DIR/.ci-cache/android-sdk"
+    ANDROID_SDK_ROOT: "$CI_PROJECT_DIR/.ci-cache/android-sdk"
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.ci-cache/gradle"
+    KOTLIN_CLI_BOOTSTRAP_CACHE_DIR: "$CI_PROJECT_DIR/.ci-cache/kotlin-cli"
+    KOTLIN_SHARED_CACHE_DIR: "$CI_PROJECT_DIR/.ci-cache/kotlin"
+    KOTLIN_CLI_NO_WELCOME_BANNER: "1"
+    ANDROID_COMMAND_LINE_TOOLS_VERSION: "13114758"
+  cache:
+    key: "android-linux-kotlin-0.12.2-sdk37"
+    paths:
+      - .ci-cache/
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends ca-certificates curl unzip python3-yaml
+    - |
+      if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+        curl --fail --location --output /tmp/android-command-line-tools.zip \
+          "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_COMMAND_LINE_TOOLS_VERSION}_latest.zip"
+        mkdir -p "$ANDROID_HOME/cmdline-tools"
+        unzip -q /tmp/android-command-line-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+        mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+      fi
+    - (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+    - '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-37" "build-tools;37.0.0"'
+  script:
+    # Change only the disposable runner checkout; never load a signing key.
+    - |
+      python3 - <<'PY'
+      from pathlib import Path
+      import yaml
+
+      path = Path("android-app/module.yaml")
+      config = yaml.safe_load(path.read_text(encoding="utf-8"))
+      config["settings"]["android"]["signing"] = {"enabled": False}
+      path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+      PY
+    - sh ./kotlin build -m android-app -p android -v release --build-dir build/ci
+    - |
+      python3 - <<'PY'
+      from pathlib import Path
+      import shutil
+      import zipfile
+
+      apks = list(Path("build/ci/tasks/_android-app_buildAndroidRelease").glob("*.apk"))
+      if len(apks) != 1:
+          raise SystemExit(f"Expected one release APK, found: {apks}")
+      apk = apks[0]
+      with zipfile.ZipFile(apk) as archive:
+          signatures = [name for name in archive.namelist()
+                        if name.upper().startswith("META-INF/")
+                        and name.upper().endswith((".SF", ".RSA", ".DSA", ".EC"))]
+          if signatures:
+              raise SystemExit(f"Unexpected APK v1 signature: {signatures}")
+          with apk.open("rb") as data:
+              data.seek(archive.start_dir - 16)
+              if data.read(16) == b"APK Sig Block 42":
+                  raise SystemExit("Unexpected APK v2/v3 signing block")
+      output = Path("dist")
+      output.mkdir(exist_ok=True)
+      shutil.copy2(apk, output / "sunrise-release-unsigned.apk")
+      for notice in ("LICENSE", "NOTICE"):
+          shutil.copy2(notice, output / notice)
+      print(f"Verified unsigned APK: {apk}")
+      PY
+  artifacts:
+    name: "sunrise-unsigned-apk-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - dist/sunrise-release-unsigned.apk
+      - dist/LICENSE
+      - dist/NOTICE
+    expire_in: 14 days

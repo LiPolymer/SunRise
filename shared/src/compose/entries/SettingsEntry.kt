@@ -60,7 +60,6 @@ import ink.lipoly.app.sunrise.compose.ListItemCard
 import ink.lipoly.app.sunrise.compose.SingleChoiceButtons
 import ink.lipoly.app.sunrise.compose.seedSwatches
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun SettingsEntry(
     settings: UiSettings,
