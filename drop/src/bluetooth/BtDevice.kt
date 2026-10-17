@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 import kotlinx.coroutines.flow.StateFlow
 
@@ -37,7 +37,7 @@ interface BtDevice {
     /** 最近观测的信息状态；获取句柄本身不保证已读取系统名称或配对事实。 */
     val info: StateFlow<BtDeviceInfo>
     /** 该设备唯一的 GATT 生命周期入口，连接和断开均需显式调用。 */
-    val gatt: BtGatt
+    val gatt: GattController
     /**
      * 向系统请求配对，不等待完成，不使用隐藏解绑或强制音频连接 API。
      * @return 系统是否接受本次请求；`true` 不表示已配对，结果观察 [info] 的配对状态。

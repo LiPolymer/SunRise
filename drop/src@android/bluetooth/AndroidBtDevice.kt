@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 import android.bluetooth.BluetoothDevice
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * 管理器缓存的规范地址身份，初始信息未知，实际观测再更新。
  *
- * 每个实例只创建一个 [AndroidBtGatt]；同名不同地址不合并，句柄不自行拥有全局发现策略。
+ * 每个实例只创建一个 [AndroidGattController]；同名不同地址不合并，句柄不自行拥有全局发现策略。
  * @property owner 拥有缓存、权限检查和后台 scope 的管理器。
  * @property nativeDevice 与 address 对应的原生设备句柄。
  * @property address 已通过管理器验证的大写 MAC 地址。
@@ -20,7 +20,7 @@ internal class AndroidBtDevice(
     override val manager: BtManager get() = owner
     private val mutableInfo = MutableStateFlow(BtDeviceInfo())
     override val info = mutableInfo.asStateFlow()
-    override val gatt = AndroidBtGatt(this)
+    override val gatt = AndroidGattController(this)
     /** LE 地址上该句柄通常找不到 SPP 记录；能否连接由打开结果决定，不在此处推断设备类型。 */
     override val rfcomm: RfcommStream = AndroidBtRfcomm(owner, nativeDevice, address)
 

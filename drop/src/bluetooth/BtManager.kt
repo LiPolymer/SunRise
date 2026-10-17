@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -96,7 +96,7 @@ sealed interface BtEvent {
      */
     data class OnBluetoothStateChanged(val availability: BtAvailability, val sender: BtManager) : BtEvent
     /**
-     * 单设备 GATT 状态变化，等价事实以 [BtGatt.state] 为准。
+     * 单设备 GATT 状态变化，等价事实以 [GattController.state] 为准。
      * @property device 发生变化的设备。
      * @property state 发布时的快照。
      * @property sender 设备所属管理器。

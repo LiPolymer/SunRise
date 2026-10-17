@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred

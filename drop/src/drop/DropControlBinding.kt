@@ -1,11 +1,11 @@
 package ink.lipoly.app.sunrise.drop
 
-import ink.lipoly.app.sunrise.blueConnector.BtException
-import ink.lipoly.app.sunrise.blueConnector.RfcommStream
-import ink.lipoly.app.sunrise.blueConnector.GattCharacteristic
-import ink.lipoly.app.sunrise.blueConnector.GattEvent
-import ink.lipoly.app.sunrise.blueConnector.GattProperty
-import ink.lipoly.app.sunrise.blueConnector.GattSession
+import ink.lipoly.app.sunrise.bluetooth.BtException
+import ink.lipoly.app.sunrise.bluetooth.RfcommStream
+import ink.lipoly.app.sunrise.bluetooth.GattCharacteristic
+import ink.lipoly.app.sunrise.bluetooth.GattEvent
+import ink.lipoly.app.sunrise.bluetooth.GattProperty
+import ink.lipoly.app.sunrise.bluetooth.GattSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

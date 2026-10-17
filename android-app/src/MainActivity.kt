@@ -6,7 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateOf
-import ink.lipoly.app.sunrise.blueConnector.BtPermissions
+import ink.lipoly.app.sunrise.bluetooth.BtPermissions
 
 class MainActivity : ComponentActivity() {
     private val missingPermissions = mutableStateOf(emptySet<String>())

@@ -1,6 +1,6 @@
-# blueConnector：通用蓝牙与设备级 GATT 参考
+# bluetooth：通用蓝牙与设备级 GATT 参考
 
-本包的完整包名为 `ink.lipoly.app.sunrise.blueConnector`。公开类型仍叫 `BtManager`、`BtDevice`、`GattSession` 等，工厂仍是 `createBtManager`；包名不是协议名，也不代表任何品牌。
+本包的完整包名为 `ink.lipoly.app.sunrise.bluetooth`。公开类型仍叫 `BtManager`、`BtDevice`、`GattSession` 等，工厂仍是 `createBtManager`；包名不是协议名，也不代表任何品牌。
 
 ## 导航
 
@@ -19,11 +19,11 @@
 
 本包提供平台无关的蓝牙契约和 Android 的真实实现：取得设备句柄、枚举系统音频连接/已配对设备、扫描 LE、请求配对、显式建立设备级 GATT、服务发现、原始读写、通知和 MTU 协商，以及现有经典 RFCOMM 字节通道。它不提供协议解码、品牌过滤、自动选择、重连、轮询、偏好持久化或音频地址到 LE 地址的关联。
 
-本包与协议包同属独立 Android/JVM KMP 库 `drop`，包名不变；公共通讯契约只使用 Kotlin/协程 Flow，Android actual 使用系统公开 API。JVM actual 提供进程内模拟后端，不访问真实蓝牙。库不依赖 shared、Koin、Compose、Ktor 或 serialization，唯一生产外部依赖是导出的 `kotlinx-coroutines-core`；共同与 Android 通讯实现不依赖协议包或应用 Headset，JVM 模拟实现使用 JVM 专属 GAIA 外设存储：
+本包与协议包同属独立 Android/JVM KMP 库 `drop`；公共通讯契约只使用 Kotlin/协程 Flow，Android actual 使用系统公开 API。JVM actual 提供进程内模拟后端，不访问真实蓝牙。库不依赖 shared、Koin、Compose、Ktor 或 serialization，唯一生产外部依赖是导出的 `kotlinx-coroutines-core`；共同与 Android 通讯实现不依赖协议包或应用 Headset，JVM 模拟实现使用 JVM 专属 GAIA 外设存储：
 
 | 层 | 职责 | 文档 |
 | --- | --- | --- |
-| blueConnector | 通用通讯事实与连接资源 | 本页 |
+| bluetooth | 通用通讯事实与连接资源 | 本页 |
 | Drop | 使用既有设备的 GATT 会话，探测并执行控制协议 | [Drop 参考](../drop/Docs.md) |
 | Headset（应用 shared） | 应用自有的单耳机候选、地址关联、显式连接、重试及轮询策略 | [Headset 参考](../../../shared/src/headset/Docs.md) |
 
@@ -43,18 +43,18 @@
 | [RfcommStream.kt](RfcommStream.kt) | 经典 RFCOMM 字节通道契约 |
 | [BtPlatform.kt](BtPlatform.kt) | expect 宿主及工厂 |
 | [GattOperationQueue.kt](GattOperationQueue.kt) | 单 worker、容量 64、等待者取消和关闭竞态 |
-| [BtPlatform.android.kt](../../src@android/blueConnector/BtPlatform.android.kt) | Context actual 与 applicationContext 工厂 |
-| [BtPermissions.kt](../../src@android/blueConnector/BtPermissions.kt) | 按版本和操作类别检查完整权限名 |
-| [AndroidBtManager.kt](../../src@android/blueConnector/AndroidBtManager.kt) | 身份缓存、实际观测、广播、权限与关闭 |
-| [AndroidBtDevice.kt](../../src@android/blueConnector/AndroidBtDevice.kt) | 设备信息和公开配对请求 |
-| [AndroidBtDiscovery.kt](../../src@android/blueConnector/AndroidBtDiscovery.kt) | A2DP/HEADSET、串行扫描、OR 匹配、错误与停止 |
-| [AndroidBtGatt.kt](../../src@android/blueConnector/AndroidBtGatt.kt) | 共享连接任务、显式断开、旧会话隔离 |
-| [AndroidGattSession.kt](../../src@android/blueConnector/AndroidGattSession.kt) | 服务/句柄、回调匹配、原生期限、通知缓冲 |
-| [AndroidBtRfcomm.kt](../../src@android/blueConnector/AndroidBtRfcomm.kt) | 现有经典通道的打开、字节写入、串行关闭与管理器资源所有权 |
-| [BtPlatform.jvm.kt](../../src@jvm/blueConnector/BtPlatform.jvm.kt) / [JvmMockBtManager.kt](../../src@jvm/blueConnector/JvmMockBtManager.kt) | 桌面模拟工厂、发现、会话身份与关闭 |
+| [BtPlatform.android.kt](../../src@android/bluetooth/BtPlatform.android.kt) | Context actual 与 applicationContext 工厂 |
+| [BtPermissions.kt](../../src@android/bluetooth/BtPermissions.kt) | 按版本和操作类别检查完整权限名 |
+| [AndroidBtManager.kt](../../src@android/bluetooth/AndroidBtManager.kt) | 身份缓存、实际观测、广播、权限与关闭 |
+| [AndroidBtDevice.kt](../../src@android/bluetooth/AndroidBtDevice.kt) | 设备信息和公开配对请求 |
+| [AndroidBtDiscovery.kt](../../src@android/bluetooth/AndroidBtDiscovery.kt) | A2DP/HEADSET、串行扫描、OR 匹配、错误与停止 |
+| [AndroidBtGatt.kt](../../src@android/bluetooth/AndroidGattController.kt) | 共享连接任务、显式断开、旧会话隔离 |
+| [AndroidGattSession.kt](../../src@android/bluetooth/AndroidGattSession.kt) | 服务/句柄、回调匹配、原生期限、通知缓冲 |
+| [AndroidBtRfcomm.kt](../../src@android/bluetooth/AndroidBtRfcomm.kt) | 现有经典通道的打开、字节写入、串行关闭与管理器资源所有权 |
+| [BtPlatform.jvm.kt](../../src@jvm/bluetooth/BtPlatform.jvm.kt) / [JvmMockBtManager.kt](../../src@jvm/bluetooth/JvmMockBtManager.kt) | 桌面模拟工厂、发现、会话身份与关闭 |
 | [JvmMockGaiaPeripheral.kt](../../src@jvm/drop/JvmMockGaiaPeripheral.kt) | JVM 专属的内存 GAIA 控件与 PEQ 状态 |
 
-协议行为证据入口：[GAIA 设备 fixture](../../test/drop/GaiaGattDeviceFixture.kt)、[经典 EQ 测试](../../test/drop/GaiaClassicEqTest.kt)、[参数 EQ 测试](../../test/drop/GaiaParamEqTest.kt) 和 [JVM 模拟器测试](../../test@jvm/blueConnector/JvmMockBtManagerTest.kt)。它们不证明 Android 无线或实体设备兼容性；测试 fixture 不属于生产后端。许可与 Required Notice 统一位于仓库根目录的 [LICENSE](../../../LICENSE) 与 [NOTICE](../../../NOTICE)；独立复制或分发模块时应同时携带这些文件，不更改许可或配置 Maven 发布。
+协议行为证据入口：[GAIA 设备 fixture](../../test/drop/GaiaGattDeviceFixture.kt)、[经典 EQ 测试](../../test/drop/GaiaClassicEqTest.kt)、[参数 EQ 测试](../../test/drop/GaiaParamEqTest.kt) 和 [JVM 模拟器测试](../../test@jvm/bluetooth/JvmMockBtManagerTest.kt)。它们不证明 Android 无线或实体设备兼容性；测试 fixture 不属于生产后端。许可与 Required Notice 统一位于仓库根目录的 [LICENSE](../../../LICENSE) 与 [NOTICE](../../../NOTICE)；独立复制或分发模块时应同时携带这些文件，不更改许可或配置 Maven 发布。
 
 ## 平台入口与 Android 权限
 
@@ -247,10 +247,10 @@ Android 使用 `connectGatt(..., autoConnect = false, ..., TRANSPORT_LE)`，连�
 
 ```kotlin
 import android.content.Context
-import ink.lipoly.app.sunrise.blueConnector.BtException
-import ink.lipoly.app.sunrise.blueConnector.BtPermissions
-import ink.lipoly.app.sunrise.blueConnector.GattProperty
-import ink.lipoly.app.sunrise.blueConnector.createBtManager
+import ink.lipoly.app.sunrise.bluetooth.BtException
+import ink.lipoly.app.sunrise.bluetooth.BtPermissions
+import ink.lipoly.app.sunrise.bluetooth.GattProperty
+import ink.lipoly.app.sunrise.bluetooth.createBtManager
 import java.util.UUID
 
 suspend fun readGattValueOnce(
@@ -288,8 +288,8 @@ suspend fun readGattValueOnce(
 完整函数。调用方提供仍存活、已授权扫描的管理器并负责最终关闭它。两过滤值都为空会进行全量 LE 扫描；返回的候选由应用选择，不能据名称推断物理身份。本函数不创建连接，取消时 scanLe 自身负责尽力停止扫描。
 
 ```kotlin
-import ink.lipoly.app.sunrise.blueConnector.BtDevice
-import ink.lipoly.app.sunrise.blueConnector.BtManager
+import ink.lipoly.app.sunrise.bluetooth.BtDevice
+import ink.lipoly.app.sunrise.bluetooth.BtManager
 
 suspend fun discoverTransportCandidates(
     manager: BtManager,
@@ -309,10 +309,10 @@ suspend fun discoverTransportCandidates(
 完整函数，使用外部管理器但拥有目标设备 GATT 的**独占生命周期**。前提：无线/权限已就绪，该设备上没有其他依赖同一会话的组件。它不关闭注入的 manager，只在成功、失败或取消后断开自己拥有的设备连接，因此不得用于共享会话消费者。服务和特征 UUID 从真实外设契约传入；只接收所选句柄的值，不把任意广播当请求回复。
 
 ```kotlin
-import ink.lipoly.app.sunrise.blueConnector.BtException
-import ink.lipoly.app.sunrise.blueConnector.BtManager
-import ink.lipoly.app.sunrise.blueConnector.GattEvent
-import ink.lipoly.app.sunrise.blueConnector.GattProperty
+import ink.lipoly.app.sunrise.bluetooth.BtException
+import ink.lipoly.app.sunrise.bluetooth.BtManager
+import ink.lipoly.app.sunrise.bluetooth.GattEvent
+import ink.lipoly.app.sunrise.bluetooth.GattProperty
 import java.util.UUID
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable

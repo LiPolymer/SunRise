@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.di
 
-import ink.lipoly.app.sunrise.blueConnector.BtManager
+import ink.lipoly.app.sunrise.bluetooth.BtManager
 import ink.lipoly.app.sunrise.headset.HeadsetClient
 import kotlinx.coroutines.flow.MutableStateFlow
 

@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 import android.content.Context
 

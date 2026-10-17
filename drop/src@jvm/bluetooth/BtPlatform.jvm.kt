@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 /** JVM 宿主标记；桌面工厂仅创建进程内模拟设备，不访问系统蓝牙。 */
 actual abstract class BtHost

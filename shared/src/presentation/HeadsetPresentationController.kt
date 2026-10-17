@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.presentation
 
-import ink.lipoly.app.sunrise.blueConnector.BtDevice
+import ink.lipoly.app.sunrise.bluetooth.BtDevice
 import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.GaiaIds

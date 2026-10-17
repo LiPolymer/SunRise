@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +21,7 @@ data class GattState(
     val error: BtException? = null,
 )
 /** 每设备独立的连接入口；[connect] 的等待取消与 [disconnect] 的资源取消不同。 */
-interface BtGatt {
+interface GattController {
     /** 当前连接事实，晚订阅者通过快照取得会话；不以通知事件推断连接生命周期。 */
     val state: StateFlow<GattState>
     /**
@@ -78,7 +78,7 @@ interface GattSession {
     val services: List<GattService>
     /** 当前协商 ATT MTU，单位字节，Android 初始为 23；写入负载上限为此值减 3。 */
     val mtu: StateFlow<Int>
-    /** 无重放的原始特征变化；不做协议解码，也不代替 [BtGatt.state]。 */
+    /** 无重放的原始特征变化；不做协议解码，也不代替 [GattController.state]。 */
     val events: SharedFlow<GattEvent>
     /**
      * 读取具有 [GattProperty.READ] 的本会话特征，返回独立复制的原始字节。

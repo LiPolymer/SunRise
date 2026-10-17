@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
@@ -243,7 +243,7 @@ internal class AndroidGattSession(
 
     /**
      * 显式非 autoConnect 的 LE 连接；连接及服务发现各等 12 秒，完成后冻结服务快照。
-     * 不做协议探测、MTU 请求或订阅；发布 CONNECTED 由 [AndroidBtGatt] 在锁内核对归属后完成。
+     * 不做协议探测、MTU 请求或订阅；发布 CONNECTED 由 [AndroidGattController] 在锁内核对归属后完成。
      */
     internal suspend fun open() {
         device.owner.enforceBluetoothPermission()

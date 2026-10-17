@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.drop
 
-import ink.lipoly.app.sunrise.blueConnector.BtException
+import ink.lipoly.app.sunrise.bluetooth.BtException
 
 /**
  * In-memory GAIA simulation for the desktop UI, not a Bluetooth device or a firmware emulator.

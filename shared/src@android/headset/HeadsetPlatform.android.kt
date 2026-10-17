@@ -2,7 +2,7 @@ package ink.lipoly.app.sunrise.headset
 
 import android.content.Context
 import androidx.core.content.edit
-import ink.lipoly.app.sunrise.blueConnector.BtManager
+import ink.lipoly.app.sunrise.bluetooth.BtManager
 import ink.lipoly.app.sunrise.drop.DropOptions
 
 /**

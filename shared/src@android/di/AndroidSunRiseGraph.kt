@@ -2,8 +2,8 @@ package ink.lipoly.app.sunrise.di
 
 import android.content.Context
 import ink.lipoly.app.sunrise.AndroidUiSettingsStore
-import ink.lipoly.app.sunrise.blueConnector.BtManager
-import ink.lipoly.app.sunrise.blueConnector.createBtManager
+import ink.lipoly.app.sunrise.bluetooth.BtManager
+import ink.lipoly.app.sunrise.bluetooth.createBtManager
 import ink.lipoly.app.sunrise.catalog.AndroidCatalogStorage
 import ink.lipoly.app.sunrise.catalog.Catalog
 import ink.lipoly.app.sunrise.headset.HeadsetClient

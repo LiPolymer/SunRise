@@ -38,8 +38,8 @@ Kotlin Toolchain 0.12.2 / Kotlin 2.4.20 的 Android + JVM Compose Multiplatform 
 | 位置 | 职责 |
 | --- | --- |
 | `android-app` / `jvm-app` | 平台宿主、权限、应用启动与退出 |
-| `drop/src/blueConnector` | 协议无关的蓝牙通讯契约 |
-| `drop/src@android/blueConnector` / `drop/src@jvm` | Android 真实蓝牙；JVM 内存模拟管理器与 GAIA 外设 |
+| `bluetooth` | 协议无关的蓝牙通讯契约 |
+| `bluetooth` / `drop/src@jvm` | Android 真实蓝牙；JVM 内存模拟管理器与 GAIA 外设 |
 | `drop/src/drop` | 平台无关的 GAIA / 9ECA 控制器与参数数学 API |
 | `shared/src/headset` | 应用单耳机连接、选择、音频/BLE 关联和电量轮询 |
 | `shared/src/di` | Koin 模块、进程 runtime 和蓝牙资源 owner |
@@ -187,6 +187,6 @@ GATT 用 `sid` / `wid` 关联 `tx-start` 的完整 PDU、MTU 与匹配回调状�
 |-----------------------------------------------------------|-----------------------------------------------------------|
 | [headset / Docs.md](shared/src/headset/Docs.md)           | 接入应用、单耳机选择、音频/BLE 关联、重连、轮询和所有权   |
 | [drop / Docs.md](drop/src/drop/Docs.md)                   | 直接控制 GAIA/9ECA、会话绑定、能力、参数和协议异常        |
-| [blueConnector / Docs.md](drop/src/blueConnector/Docs.md) | 通用蓝牙、Android 权限、设备级 GATT、队列/取消和 JVM 限制 |
+| [blueConnector / Docs.md](drop/src/bluetooth/Docs.md) | 通用蓝牙、Android 权限、设备级 GATT、队列/取消和 JVM 限制 |
 
 涉及某层时先读对应文档；不要把完整 API 示例、抓包历史或验收流水重新复制到本文件。

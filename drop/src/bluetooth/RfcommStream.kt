@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 /**
  * 经典蓝牙 RFCOMM 字节通道：Android 按 SPP 服务记录解析通道后连接，JVM 桌面不提供实现。

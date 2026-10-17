@@ -1,12 +1,12 @@
 package ink.lipoly.app.sunrise.headset
 
-import ink.lipoly.app.sunrise.blueConnector.BtDevice
-import ink.lipoly.app.sunrise.blueConnector.BtDeviceKind
-import ink.lipoly.app.sunrise.blueConnector.BtEvent
-import ink.lipoly.app.sunrise.blueConnector.BtException
-import ink.lipoly.app.sunrise.blueConnector.BtManager
-import ink.lipoly.app.sunrise.blueConnector.GattPhase
-import ink.lipoly.app.sunrise.blueConnector.GattSession
+import ink.lipoly.app.sunrise.bluetooth.BtDevice
+import ink.lipoly.app.sunrise.bluetooth.BtDeviceKind
+import ink.lipoly.app.sunrise.bluetooth.BtEvent
+import ink.lipoly.app.sunrise.bluetooth.BtException
+import ink.lipoly.app.sunrise.bluetooth.BtManager
+import ink.lipoly.app.sunrise.bluetooth.GattPhase
+import ink.lipoly.app.sunrise.bluetooth.GattSession
 import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.DropOptions

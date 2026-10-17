@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 import ink.lipoly.app.sunrise.drop.DropGattIds
 import ink.lipoly.app.sunrise.drop.JvmMockGaiaPeripheral
@@ -131,7 +131,7 @@ internal class JvmMockBtManager : BtManager {
     }
 
     /** 新连接只替换会话，不重建设备上的协议存储；旧 close 按对象身份拒绝回写。 */
-    private inner class Gatt(private val device: Device) : BtGatt {
+    private inner class Gatt(private val device: Device) : GattController {
         private val mutableState = MutableStateFlow(GattState())
         override val state = mutableState.asStateFlow()
         private var current: Session? = null

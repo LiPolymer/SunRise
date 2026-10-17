@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.headset
 
-import ink.lipoly.app.sunrise.blueConnector.BtDevice
+import ink.lipoly.app.sunrise.bluetooth.BtDevice
 import ink.lipoly.app.sunrise.drop.DropEvent
 import ink.lipoly.app.sunrise.drop.DropState
 

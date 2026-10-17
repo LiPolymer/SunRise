@@ -1,9 +1,9 @@
 package ink.lipoly.app.sunrise.di
 
 import ink.lipoly.app.sunrise.JvmUiSettingsStore
-import ink.lipoly.app.sunrise.blueConnector.BtHost
-import ink.lipoly.app.sunrise.blueConnector.BtManager
-import ink.lipoly.app.sunrise.blueConnector.createBtManager
+import ink.lipoly.app.sunrise.bluetooth.BtHost
+import ink.lipoly.app.sunrise.bluetooth.BtManager
+import ink.lipoly.app.sunrise.bluetooth.createBtManager
 import ink.lipoly.app.sunrise.catalog.Catalog
 import ink.lipoly.app.sunrise.catalog.JvmCatalogStorage
 import ink.lipoly.app.sunrise.headset.HeadsetAssociations

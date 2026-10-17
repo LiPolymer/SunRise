@@ -18,7 +18,7 @@
 
 ## 职责、依赖和资源所有权
 
-依赖方向是 `headset → 独立 drop 库（blueConnector + drop）`。通用蓝牙契约见 [blueConnector 文档](../../../drop/src/blueConnector/Docs.md)，协议和控件读写确认规则见 [drop 文档](../../../drop/src/drop/Docs.md)。
+依赖方向是 `headset → 独立 drop 库（bluetooth + drop）`。通用蓝牙契约见 [bluetooth 文档](../../../drop/src/bluetooth/Docs.md)，协议和控件读写确认规则见 [drop 文档](../../../drop/src/drop/Docs.md)。
 
 | 所有者 | 职责 | 释放边界 |
 |---|---|---|
@@ -48,7 +48,7 @@
 | [DiagnosticsEntry.kt](../compose/entries/DiagnosticsEntry.kt) | 分开显示应用连接/控制状态、实际异常和 ANC 确认失败 |
 | [HeadsetAutoFilterTest.kt](../../test/headset/HeadsetAutoFilterTest.kt) | 生产自动循环的筛选、手动选择与 READY epoch 保留；计数 GATT 包装复用真实字节 GAIA fixture |
 
-包名使用 `blueConnector`，但公共 `Bt*`、`Gatt*` 与 `createBtManager` 名称不变。`HeadsetClient` 的 common 构造器是 **internal**；外部 Android 调用方使用 `createHeadsetClient(context, bt, options)`，不能把测试中的直接构造写成公共 common 用法。
+包名使用 `bluetooth`，但公共 `Bt*`、`Gatt*` 与 `createBtManager` 名称不变。`HeadsetClient` 的 common 构造器是 **internal**；外部 Android 调用方使用 `createHeadsetClient(context, bt, options)`，不能把测试中的直接构造写成公共 common 用法。
 
 ## Android 与 Compose 接入
 
@@ -171,7 +171,7 @@ Android 工厂沿用私有 SharedPreferences **`drop_verified_devices`**：key �
 | 自动目标的音频地址消失 | 观察 `connectedAudioDevices` 取消目标循环并释放资源，回到发现；无需等慢连接成功才识别目标离开 |
 | 主动 `disconnect()` | 停止自动模式；蓝牙事件不会擅自重启，需要显式 `startAutoConnect()` 或 `connect()` |
 
-发现循环等待上限 **5 秒**，端点失败/丢失后的重试等待上限 **4 秒**；管理器事件通过合并 wake channel 可提前唤醒。等待前会丢弃刚结束尝试产生的合并通知，避免自己导致立刻重试。这些值是等待策略，不是包含系统枚举/连接/探测耗时的完整周期，也不代表无线调用的超时；底层超时见 [blueConnector](../../../drop/src/blueConnector/Docs.md) 与 [drop](../../../drop/src/drop/Docs.md)。
+发现循环等待上限 **5 秒**，端点失败/丢失后的重试等待上限 **4 秒**；管理器事件通过合并 wake channel 可提前唤醒。等待前会丢弃刚结束尝试产生的合并通知，避免自己导致立刻重试。这些值是等待策略，不是包含系统枚举/连接/探测耗时的完整周期，也不代表无线调用的超时；底层超时见 [bluetooth](../../../drop/src/bluetooth/Docs.md) 与 [drop](../../../drop/src/drop/Docs.md)。
 
 每次采纳后启动两个独立任务：能力集合有 ANC 模式时尝试 GAIA ANC 初读；含 GAIA_BLE 协议时立即查询电量，之后每次读取结束再等待 **30 秒**。READY/`connect()` 返回不保证初读完成，9ECA-only 也不被保证具有 GAIA 电量。初读/轮询的普通异常被忽略，保留未知或最近真实读值；调用方取消仍先透传，不生成电量/模式默认成功值。
 

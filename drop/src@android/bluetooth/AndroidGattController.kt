@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.blueConnector
+package ink.lipoly.app.sunrise.bluetooth
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -14,9 +14,9 @@ import kotlinx.coroutines.launch
  * 生命周期 monitor 仅保护创建、分离及条件发布，无线等待始终在锁外。连接结果 deferred
  * 不绑定等待者 Job，取消单个 connect 等待者不取消无线任务；显式 disconnect 才分离任务。
  */
-internal class AndroidBtGatt internal constructor(
+internal class AndroidGattController internal constructor(
     private val device: AndroidBtDevice,
-) : BtGatt {
+) : GattController {
     // 同步关闭可以立即失效会话；生命周期锁不得覆盖连接、发现或 join 等无线等待。
     private val lifecycle = Any()
     private val mutableState = MutableStateFlow(GattState())

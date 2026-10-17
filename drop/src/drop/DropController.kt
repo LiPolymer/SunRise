@@ -1,8 +1,8 @@
 package ink.lipoly.app.sunrise.drop
 
-import ink.lipoly.app.sunrise.blueConnector.BtDevice
-import ink.lipoly.app.sunrise.blueConnector.RfcommStream
-import ink.lipoly.app.sunrise.blueConnector.GattPhase
+import ink.lipoly.app.sunrise.bluetooth.BtDevice
+import ink.lipoly.app.sunrise.bluetooth.RfcommStream
+import ink.lipoly.app.sunrise.bluetooth.GattPhase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers

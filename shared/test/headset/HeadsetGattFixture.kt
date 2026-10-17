@@ -1,12 +1,12 @@
 package ink.lipoly.app.sunrise.headset
 
-import ink.lipoly.app.sunrise.blueConnector.BtDevice
-import ink.lipoly.app.sunrise.blueConnector.BtException
-import ink.lipoly.app.sunrise.blueConnector.GattCharacteristic
-import ink.lipoly.app.sunrise.blueConnector.GattEvent
-import ink.lipoly.app.sunrise.blueConnector.GattProperty
-import ink.lipoly.app.sunrise.blueConnector.GattService
-import ink.lipoly.app.sunrise.blueConnector.GattSession
+import ink.lipoly.app.sunrise.bluetooth.BtDevice
+import ink.lipoly.app.sunrise.bluetooth.BtException
+import ink.lipoly.app.sunrise.bluetooth.GattCharacteristic
+import ink.lipoly.app.sunrise.bluetooth.GattEvent
+import ink.lipoly.app.sunrise.bluetooth.GattProperty
+import ink.lipoly.app.sunrise.bluetooth.GattService
+import ink.lipoly.app.sunrise.bluetooth.GattSession
 import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.GaiaCodec
 import ink.lipoly.app.sunrise.drop.GaiaCommand

@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise.drop
 
-import ink.lipoly.app.sunrise.blueConnector.BtException
-import ink.lipoly.app.sunrise.blueConnector.RfcommStream
+import ink.lipoly.app.sunrise.bluetooth.BtException
+import ink.lipoly.app.sunrise.bluetooth.RfcommStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds

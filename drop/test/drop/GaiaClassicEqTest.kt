@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.drop
 
-import ink.lipoly.app.sunrise.blueConnector.BtException
+import ink.lipoly.app.sunrise.bluetooth.BtException
 import kotlinx.coroutines.runBlocking
 import kotlin.test.*
 

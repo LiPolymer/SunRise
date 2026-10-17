@@ -20,11 +20,11 @@
 
 ## 职责、依赖与源码索引
 
-`blueConnector` 与本协议包合并在独立 Android/JVM KMP 库 `drop` 中，包名保持不变；应用的 `headset` 留在 `shared`，模块依赖为 `shared → drop`，共同及 Android 代码的包内调用方向为 `headset → drop → blueConnector`。库不依赖 `shared`、Koin、Compose、Ktor 或 serialization；唯一生产外部依赖是导出的 `kotlinx-coroutines-core`。Android actual 使用真实系统蓝牙 API；JVM actual 提供进程内模拟管理器，调用 JVM 专属 GAIA 外设实现供桌面 UI 检查，不访问真实蓝牙。
+`bluetooth` 与本协议包位于独立 Android/JVM KMP 库 `drop` 中；应用的 `headset` 留在 `shared`，模块依赖为 `shared → drop`，共同及 Android 代码的包内调用方向为 `headset → drop → bluetooth`。库不依赖 `shared`、Koin、Compose、Ktor 或 serialization；唯一生产外部依赖是导出的 `kotlinx-coroutines-core`。Android actual 使用真实系统蓝牙 API；JVM actual 提供进程内模拟管理器，调用 JVM 专属 GAIA 外设实现供桌面 UI 检查，不访问真实蓝牙。
 
 | 所有者 | 负责 | 不负责 |
 | --- | --- | --- |
-| [blueConnector](../blueConnector/Docs.md) | 稳定设备句柄、平台发现/配对请求、每设备 GATT、每会话原生操作队列与回调 | 识别 GAIA/9ECA、耳机选择、协议解码 |
+| [bluetooth](../bluetooth/Docs.md) | 稳定设备句柄、平台发现/配对请求、每设备 GATT、每会话原生操作队列与回调 | 识别 GAIA/9ECA、耳机选择、协议解码 |
 | 本包 `DropController` / 内部 binding | 当前 GATT epoch 的探测、事务锁、回复槽、控件、功能状态 | scan/connect/disconnect、品牌筛选、自动重连、设备关联、周期电量轮询 |
 | [headset（应用 shared）](../../../shared/src/headset/Docs.md) | 本应用单耳机选择、音频地址→BLE 端点关联、显式 GATT、重试、ANC/电量初读和 30 秒电量轮询、Android 接入 | 替代通用通讯契约或协议编解码 |
 
@@ -47,7 +47,7 @@
 | [AncVerification.kt](AncVerification.kt) | 一次 SET、最多四次 GET 的 ANC 确认算法 |
 | [DropProfile.kt](DropProfile.kt) | 身份匹配、内置映射、覆盖合并及独立读写编号 |
 
-通讯包名是 `ink.lipoly.app.sunrise.blueConnector`；公开通讯入口包括 `BtManager`、`BtDevice`、`BtGatt`、`GattSession`、`RfcommStream` 与 `createBtManager`，协议组帧不属于这些通用契约。
+通讯包名是 `ink.lipoly.app.sunrise.bluetooth`；公开通讯入口包括 `BtManager`、`BtDevice`、`GattController`、`GattSession`、`RfcommStream` 与 `createBtManager`，协议组帧不属于这些通用契约。
 
 `drop` 可独立消费源码模块；消费者的 `module.yaml` 声明 `../drop` 依赖，Android 宿主仍自行声明/申请蓝牙权限。库配置为 Kotlin 2.4.20、Android compileSdk 37/minSdk 24，不开启 Compose，也不配置 Maven 发布。许可与署名统一位于仓库根目录的 [LICENSE](../../../LICENSE) 与 [NOTICE](../../../NOTICE)，独立复制或分发模块时应同时携带这些文件；仍适用 PolyForm Noncommercial 1.0.0 及 Required Notice，不因拆库变为任意商业使用许可。
 
@@ -423,7 +423,7 @@ V1 固定 OFF/NC=0/1，不用 AC/V2 map。`capabilities.ancModes` 从所选路�
 ### 期限与取消所有权
 
 - 协议等待为 **原生写完成后六秒**，不包含事务锁等待与原生写时间。单纯协议超时清 pending，不主动关闭 GATT。
-- 当前 Android 通讯实现原生 read/write/descriptor 期限 10 秒、MTU 5 秒；原生超时会失败化队列与会话，拒绝晚 callback。连接/服务发现属于通讯层，详见 [blueConnector](../blueConnector/Docs.md)。
+- 当前 Android 通讯实现原生 read/write/descriptor 期限 10 秒、MTU 5 秒；原生超时会失败化队列与会话，拒绝晚 callback。连接/服务发现属于通讯层，详见 [bluetooth](../bluetooth/Docs.md)。
 - 请求安装 pending 后再核对 epoch；解绑同时失败化 pending。挂起传输入口和完整 GAIA transaction 都用绑定 lifetime 监听取消调用方的 **子 Job**，解绑转换成 Disconnected。内部 transaction 只能由锁所属协程在 block 内使用，不能逃逸或再次获取同一 Mutex。
 - 调用方本来的 `CancellationException` 原样传播；不要 catch Exception 后返回假成功。取消共享初始化等待不取消资源初始化。
 - 会话原生队列拥有实际操作：调用方取消时，尚未开始项可跳过；已开始项继续排空 callback/自身期限后才轮到下一项。关闭控制器不顺带断开连接，不保证原生写还没发生，也不回滚设备已应用命令。
@@ -437,7 +437,7 @@ V1 固定 OFF/NC=0/1，不用 AC/V2 map。`capabilities.ancModes` 从所选路�
 前提：宿主持有 manager/device，GATT 已 CONNECTED；只创建本函数自己的控制器。构造在连接之后也能从 state 快照绑定。函数关闭控制器 **不**断开借用的会话。
 
 ```kotlin
-import ink.lipoly.app.sunrise.blueConnector.BtDevice
+import ink.lipoly.app.sunrise.bluetooth.BtDevice
 import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
@@ -464,7 +464,7 @@ suspend fun readBorrowedBattery(device: BtDevice): EarbudBattery? {
 前提：两个实际地址不同，宿主已经完成平台授权/打开蓝牙；本函数对这两个设备拥有独占连接生命周期，进入前它们未连接，不能用于会把别人的会话断开的借用场景。注入的 `bt` 由外部释放。
 
 ```kotlin
-import ink.lipoly.app.sunrise.blueConnector.BtManager
+import ink.lipoly.app.sunrise.bluetooth.BtManager
 import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
@@ -560,7 +560,7 @@ suspend fun chooseReportedSource(
 `endpoint` 为已连接 BLE 句柄，`audioDevice` 为宿主已选定的配置身份；`verifiedProfile` 必须来自实际固件验证，示例不虚构编号。关闭这里只释放新 controller，两个传入设备与连接仍归宿主。
 
 ```kotlin
-import ink.lipoly.app.sunrise.blueConnector.BtDevice
+import ink.lipoly.app.sunrise.bluetooth.BtDevice
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropOptions
@@ -621,9 +621,9 @@ suspend fun observeDrop(
 - `BtEvent.OnDiscovered` 不等于 GATT 已连接，更不等于协议/品牌已确认；`awaitReady` 也不会隐式 connect。
 - `GattPhase.CONNECTED` 是普通服务发现完成，可能完全没有 GAIA/9ECA。controller 的 UnsupportedDevice 不应被用来否定通讯管理器连接普通设备的能力。
 - READY 不等于 complete，也不等于每项功能可用；检查协议、能力及最终错误，不把未知值显示成确定关闭/零电量。
-- controller 不提供应用 `HeadsetPhase`、设备选择、自动重连、音频/BLE 关联或 30 秒电量轮询。应用入口和 Android 权限流程见 [headset 指南](../../../shared/src/headset/Docs.md)，原生权限/连接/队列见 [blueConnector 指南](../blueConnector/Docs.md)。
+- controller 不提供应用 `HeadsetPhase`、设备选择、自动重连、音频/BLE 关联或 30 秒电量轮询。应用入口和 Android 权限流程见 [headset 指南](../../../shared/src/headset/Docs.md)，原生权限/连接/队列见 [bluetooth 指南](../bluetooth/Docs.md)。
 - 不缓存跨会话控件，不共用旧特征句柄，不依赖 UI 通知完成请求；晚订阅读 StateFlow，不等历史事件。
 - 常规 GAIA SET 多数有 GET，9ECA SET 多数只有响应；sendRaw/powerOff 只有传输完成。不要将所有 setter 的确认等级统一包装成“硬件已应用”。
 - 常规控制使用 GATT；现有经典 RFCOMM EQ 写入不隐式回退到 BLE，也不提供发现前协议/品牌过滤。内置 profile 名称仅是编号映射规则。
-- JVM `createBtManager` 创建独立内存模拟器，模拟 GAIA 的状态读写和五段 PEQ，生产 `DropController` 仍处理真实格式的 GATT 字节。它不提供 9ECA 或经典 RFCOMM，也不证明 Android 无线、实体 DSP 或 Flash 行为；模拟范围见 [blueConnector](../blueConnector/Docs.md#平台入口与-android-权限)。
+- JVM `createBtManager` 创建独立内存模拟器，模拟 GAIA 的状态读写和五段 PEQ，生产 `DropController` 仍处理真实格式的 GATT 字节。它不提供 9ECA 或经典 RFCOMM，也不证明 Android 无线、实体 DSP 或 Flash 行为；模拟范围见 [bluetooth](../bluetooth/Docs.md#平台入口与-android-权限)。
 - 实体 Android 蓝牙、耳机固件行为、具体映射、Q/滤波器/原始 ID/标志等未定义语义必须结合真机与固件资料验证。此参考以当前源码契约为准，不声称已完成实体硬件验证，不包含随时间失效的测试计数或运行日记。

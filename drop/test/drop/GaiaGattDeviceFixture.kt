@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.drop
 
-import ink.lipoly.app.sunrise.blueConnector.*
+import ink.lipoly.app.sunrise.bluetooth.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,7 +41,7 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
         override val address = "00:00:00:00:00:01"
         override val rfcomm: RfcommStream? get() = this@GaiaGattDeviceFixture.rfcomm
         override val info = MutableStateFlow(BtDeviceInfo(name = "Bluetrum fixture"))
-        override val gatt: BtGatt = object : BtGatt {
+        override val gatt: GattController = object : GattController {
             override val state = MutableStateFlow(GattState(GattPhase.CONNECTED, this@GaiaGattDeviceFixture))
             override suspend fun connect(): GattSession {
                 check(!closed)
