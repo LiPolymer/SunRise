@@ -47,7 +47,7 @@
 | [AncVerification.kt](AncVerification.kt) | 一次 SET、最多四次 GET 的 ANC 确认算法 |
 | [DropProfile.kt](DropProfile.kt) | 身份匹配、内置映射、覆盖合并及独立读写编号 |
 
-通讯包名是 `ink.lipoly.app.sunrise.blueConnector`；`Bt*`、`Gatt*` 与 `createBtManager` 仍使用原类型/工厂名，没有新的 `BlueConnectorManager` 等替代名称。
+通讯包名是 `ink.lipoly.app.sunrise.blueConnector`；公开通讯入口包括 `BtManager`、`BtDevice`、`BtGatt`、`GattSession`、`RfcommStream` 与 `createBtManager`，协议组帧不属于这些通用契约。
 
 `drop` 可独立消费源码模块；消费者的 `module.yaml` 声明 `../drop` 依赖，Android 宿主仍自行声明/申请蓝牙权限。库配置为 Kotlin 2.4.20、Android compileSdk 37/minSdk 24，不开启 Compose，也不配置 Maven 发布。许可与署名统一位于仓库根目录的 [LICENSE](../../../LICENSE) 与 [NOTICE](../../../NOTICE)，独立复制或分发模块时应同时携带这些文件；仍适用 PolyForm Noncommercial 1.0.0 及 Required Notice，不因拆库变为任意商业使用许可。
 

@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise.drop
 
 import ink.lipoly.app.sunrise.blueConnector.BtException
-import ink.lipoly.app.sunrise.blueConnector.BtRfcomm
+import ink.lipoly.app.sunrise.blueConnector.RfcommStream
 import ink.lipoly.app.sunrise.blueConnector.GattCharacteristic
 import ink.lipoly.app.sunrise.blueConnector.GattEvent
 import ink.lipoly.app.sunrise.blueConnector.GattProperty
@@ -40,7 +40,7 @@ internal class DropControlBinding(
     private val publishState: (DropControlBinding) -> Unit,
     private val publishEvent: (DropControlBinding, DropEvent) -> Unit,
     /** 经典 RFCOMM 通道；非空时结构化 EQ 写入走经典链路，BLE 只负责读取与控件。 */
-    classicEq: BtRfcomm? = null,
+    classicEq: RfcommStream? = null,
 ) : DropControlSession {
     // lifetime 不含初始化子任务，解绑可立即取消外部调用，不必等初始化协程收尾。
     private val lifetime = Job(parentScope.coroutineContext[Job])

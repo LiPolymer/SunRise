@@ -117,7 +117,7 @@ internal class JvmMockBtManager : BtManager {
 
     private inner class Device(override val address: String) : BtDevice {
         override val manager: BtManager get() = this@JvmMockBtManager
-        override val rfcomm: BtRfcomm? = null
+        override val rfcomm: RfcommStream? = null
         val peripheral = if (address == DEVICE_ADDRESS) JvmMockGaiaPeripheral() else null
         private val mutableInfo = MutableStateFlow(if (peripheral != null) deviceInfo else BtDeviceInfo())
         override val info = mutableInfo.asStateFlow()

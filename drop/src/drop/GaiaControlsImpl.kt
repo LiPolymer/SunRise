@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise.drop
 
 import ink.lipoly.app.sunrise.blueConnector.BtException
-import ink.lipoly.app.sunrise.blueConnector.BtRfcomm
+import ink.lipoly.app.sunrise.blueConnector.RfcommStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
@@ -14,7 +14,7 @@ import kotlin.time.Duration.Companion.milliseconds
 internal class GaiaControlsImpl(
     private val client: DropControlSession,
     /** 经典 RFCOMM 通道；提供时结构化 EQ 写入走该通道，BLE 只用于读取与控件。 */
-    private val classicEq: BtRfcomm? = null,
+    private val classicEq: RfcommStream? = null,
 ) : GaiaControls {
     /** Transaction-confined sizing only, never a verified current device configuration. */
     private var paramEqWriteBandCount = 0
@@ -343,7 +343,7 @@ internal class GaiaControlsImpl(
      * 权限/未打开等非瞬时错误不做重试。全部尝试失败后按本绑定统一表映射抛出。
      * 平台写入成功只表示字节已交给 RFCOMM，不表示设备应用了配置。
      */
-    private suspend fun BtRfcomm.writeFrame(command: GaiaCommand) {
+    private suspend fun RfcommStream.writeFrame(command: GaiaCommand) {
         val frame = GaiaRfcomm.frame(command)
         var last: BtException? = null
         for (attempt in 0 until CLASSIC_WRITE_ATTEMPTS) {

@@ -37,7 +37,10 @@
 
 | 源文件 | 阅读重点 |
 | --- | --- |
-| [BtApi.kt](BtApi.kt) | 全部公开模型、接口、事件和错误 |
+| [BtManager.kt](BtManager.kt) | 管理器、可用性、管理器事件与公共错误 |
+| [BtDevice.kt](BtDevice.kt) | 稳定设备句柄、设备信息、传输类型与配对状态 |
+| [GattSession.kt](GattSession.kt) | GATT 连接入口、状态、会话、服务/特征句柄与原始通知 |
+| [RfcommStream.kt](RfcommStream.kt) | 经典 RFCOMM 字节通道契约 |
 | [BtPlatform.kt](BtPlatform.kt) | expect 宿主及工厂 |
 | [GattOperationQueue.kt](GattOperationQueue.kt) | 单 worker、容量 64、等待者取消和关闭竞态 |
 | [BtPlatform.android.kt](../../src@android/blueConnector/BtPlatform.android.kt) | Context actual 与 applicationContext 工厂 |
@@ -119,7 +122,7 @@ Android 宿主负责 Manifest 声明、运行时权限请求、授权结果与�
 
 `BtDevice.manager` 是拥有者；`address` 是 Android 大写 MAC；`info` 是最近观测快照；`gatt` 是唯一 GATT 连接入口；`rfcomm` 是该地址的经典通道句柄（Android 提供，其他平台 null）；`requestBond()` 返回请求接受与否。`BtDeviceInfo` 字段：`name: String?` 默认 null；`kind: BtDeviceKind` 默认 UNKNOWN（UNKNOWN/CLASSIC/LE/DUAL）；`bondState: BtBondState` 默认 NONE（NONE/BONDING/BONDED）。这些不是品牌、协议或连接判据。
 
-### BtRfcomm 经典字节通道
+### RfcommStream 经典字节通道
 
 | 成员 | 类型/返回 | 使用含义 |
 | --- | --- | --- |

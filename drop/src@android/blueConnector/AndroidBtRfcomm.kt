@@ -21,7 +21,7 @@ internal class AndroidBtRfcomm(
     private val owner: AndroidBtManager,
     private val nativeDevice: BluetoothDevice,
     override val address: String,
-) : BtRfcomm {
+) : RfcommStream {
     private val gate = Mutex()
     private var socket: BluetoothSocket? = null
 

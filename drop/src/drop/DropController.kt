@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise.drop
 
 import ink.lipoly.app.sunrise.blueConnector.BtDevice
-import ink.lipoly.app.sunrise.blueConnector.BtRfcomm
+import ink.lipoly.app.sunrise.blueConnector.RfcommStream
 import ink.lipoly.app.sunrise.blueConnector.GattPhase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -31,7 +31,7 @@ import kotlinx.coroutines.sync.withLock
  * @param options ANC/DAC 设备编号映射选项。
  * @param profileDevice 仅提供配置匹配的地址/名称；音频身份不同于 BLE 地址时可传音频设备，
  * 不会据此切换连接。每次新绑定读取当时的地址与 info.name。
- * 当 [profileDevice] 地址不同于 [device] 时，其 [BtRfcomm] 句柄随绑定转交结构化 EQ 写入；
+ * 当 [profileDevice] 地址不同于 [device] 时，其 [RfcommStream] 句柄随绑定转交结构化 EQ 写入；
  * 同地址时不猜测对端提供 SPP 记录，EQ 写入继续使用 BLE GATT。
  */
 class DropController(

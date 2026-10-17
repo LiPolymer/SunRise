@@ -21,7 +21,7 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
     private var notifications = false
     var present = true
     /** 经典 RFCOMM 通道；非空时结构化 EQ 写入走它，测试不模拟 RFCOMM 组帧。 */
-    var rfcomm: BtRfcomm? = null
+    var rfcomm: RfcommStream? = null
     var presets = listOf(0, 2, 63)
     var currentPreset = 2
     var totalGainRaw = -17
@@ -39,7 +39,7 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
 
     override val device: BtDevice = object : BtDevice {
         override val address = "00:00:00:00:00:01"
-        override val rfcomm: BtRfcomm? get() = this@GaiaGattDeviceFixture.rfcomm
+        override val rfcomm: RfcommStream? get() = this@GaiaGattDeviceFixture.rfcomm
         override val info = MutableStateFlow(BtDeviceInfo(name = "Bluetrum fixture"))
         override val gatt: BtGatt = object : BtGatt {
             override val state = MutableStateFlow(GattState(GattPhase.CONNECTED, this@GaiaGattDeviceFixture))
@@ -193,7 +193,7 @@ internal class FakeRfcomm(
     /** 让接下来若干次写入失败；用于验证重连重试次数与上限。 */
     var failWritesRemaining: Int = 0,
     var failWriteError: BtException = BtException.Transport("socket closed"),
-) : BtRfcomm {
+) : RfcommStream {
     val frames = mutableListOf<ByteArray>()
     val writtenAt = mutableListOf<Long>()
     var opened = 0

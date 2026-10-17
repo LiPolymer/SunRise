@@ -25,7 +25,7 @@ internal class HeadsetAutoLoopFixture : BtManager {
 
     inner class Device(override val address: String, name: String?) : BtDevice {
         override val manager: BtManager get() = this@HeadsetAutoLoopFixture
-        override val rfcomm: BtRfcomm? = null
+        override val rfcomm: RfcommStream? = null
         override val info = MutableStateFlow(BtDeviceInfo(name, BtDeviceKind.DUAL, BtBondState.BONDED))
         val connects = MutableStateFlow(0)
         val disconnects = MutableStateFlow(0)
