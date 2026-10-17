@@ -1,5 +1,6 @@
 package ink.lipoly.app.sunrise.bluetooth
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
@@ -245,6 +246,7 @@ internal class AndroidGattSession(
      * 显式非 autoConnect 的 LE 连接；连接及服务发现各等 12 秒，完成后冻结服务快照。
      * 不做协议探测、MTU 请求或订阅；发布 CONNECTED 由 [AndroidGattController] 在锁内核对归属后完成。
      */
+    @SuppressLint("MissingPermission") // 连接和服务发现前分别检查权限，平台拒绝由 owner 映射。
     internal suspend fun open() {
         device.owner.enforceBluetoothPermission()
         @Suppress("DEPRECATION")
@@ -286,6 +288,7 @@ internal class AndroidGattSession(
     }
 
     /** 校验会话身份及 READ，再入自有操作队列；回调返回值已复制，成功不是读取通知缓存。 */
+    @SuppressLint("MissingPermission") // enforceGattOperationPermission 在 worker 执行时检查权限。
     override suspend fun read(characteristic: GattCharacteristic): ByteArray {
         val handle = resolve(characteristic)
         if (GattProperty.READ !in handle.properties) throw BtException.UnsupportedOperation("GATT read")
@@ -298,6 +301,7 @@ internal class AndroidGattSession(
      * 仅 WRITE_TYPE_DEFAULT 带响应写；入队前和开始时均检查 MTU-3，并复制调用方数组。
      * API 33+ 使用传值/状态码 API；旧版本先设置特征 value/writeType 再调用 Boolean API。
      */
+    @SuppressLint("MissingPermission") // enforceGattOperationPermission 在 worker 执行时检查权限。
     override suspend fun write(characteristic: GattCharacteristic, value: ByteArray) {
         val handle = resolve(characteristic)
         if (GattProperty.WRITE !in handle.properties)
@@ -330,6 +334,7 @@ internal class AndroidGattSession(
      * 串行设置本地通知开关并写 CCCD，NOTIFY 优先于 INDICATE；禁用不做订阅引用计数。
      * 缺属性/描述符抛 UnsupportedOperation，平台设置或写失败不保证回滚本地开关。
      */
+    @SuppressLint("MissingPermission") // enforceGattOperationPermission 在 worker 执行时检查权限。
     override suspend fun setNotifications(characteristic: GattCharacteristic, enabled: Boolean) {
         val handle = resolve(characteristic)
         val notify = GattProperty.NOTIFY in handle.properties
@@ -357,6 +362,7 @@ internal class AndroidGattSession(
     }
 
     /** 请求值必须为 23..517；返回回调实际值，协商期限 5 秒且超时使整个会话失效。 */
+    @SuppressLint("MissingPermission") // enforceGattOperationPermission 在 worker 执行时检查权限。
     override suspend fun requestMtu(value: Int): Int {
         require(value in 23..517) { "GATT MTU must be in 23..517" }
         ensureActive()
@@ -467,6 +473,7 @@ internal class AndroidGattSession(
         }
     }
 
+    @SuppressLint("MissingPermission") // 撤权后仍尝试 disconnect/close，并分别处理 SecurityException。
     private fun closeNative(gatt: BluetoothGatt?) {
         if (gatt == null) return
         // 无线关闭或权限撤销后仍必须尽力释放原生资源，关闭异常不向外抛。

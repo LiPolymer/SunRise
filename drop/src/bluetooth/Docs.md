@@ -74,6 +74,8 @@ Android 宿主负责 Manifest 声明、运行时权限请求、授权结果与�
 
 `missing` 返回当前未授予的完整权限名集合。空集合不证明适配器开启、旧系统定位开关/扫描环境合适或操作一定成功；旧系统 Manifest 基础蓝牙权限也仍由应用配置。运行过程中权限可被撤销，每次真正无线操作都会重新检查。平台 `SecurityException` 会重新检查权限；复查未捕获竞态时使用本操作类别的完整所需权限集合，无法归为权限的拒绝则保留为传输错误。
 
+Android 原生调用的 `MissingPermission` 只在已核实的函数边界局部标注：普通操作仍经运行时权限守卫，排队 GATT 操作在 worker 实际执行时检查，平台拒绝继续按 `SecurityException` 映射。扫描停止和 GATT 释放即使撤权也尽力执行，不以权限检查提前跳过清理；这些标注不替代宿主授权，也不在整类或整个模块关闭权限检查。
+
 初始 `availability` 的读取次序是：管理器关闭→`CLOSED`；没有适配器→`UNAVAILABLE`；缺 CONNECT 检查权限→`UNKNOWN`；能读取开启状态→`ENABLED`/`DISABLED`；读取遭 `SecurityException`→`UNKNOWN`。不要将 `UNKNOWN` 解释为设备不存在，也不要把 `ENABLED` 当成扫描授权。权限授予后状态并非由 helper 自动刷新；后续操作/广播刷新真实事实。
 
 ## 设备身份与发现

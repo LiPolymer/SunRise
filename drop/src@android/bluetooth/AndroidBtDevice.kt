@@ -1,5 +1,6 @@
 package ink.lipoly.app.sunrise.bluetooth
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +33,7 @@ internal class AndroidBtDevice(
     }
 
     /** 调用公开 createBond；Boolean 仅表示平台接受请求，配对结果等待系统广播更新 [info]。 */
+    @SuppressLint("MissingPermission") // 下方守卫检查权限，平台拒绝仍映射为权限错误。
     override fun requestBond(): Boolean {
         owner.enforceBluetoothPermission()
         return owner.platformOperation("request bond") {

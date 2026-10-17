@@ -1,6 +1,7 @@
 package ink.lipoly.app.sunrise.bluetooth
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -136,7 +137,7 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
 
     /**
      * 每次无线操作检查关闭、权限和适配器开启事实；检查成功可将 availability 刷新为 ENABLED。
-     * enforce…Permission 命名使 Android 权限分析识别此实际执行的守卫，不额外检查权限。
+     * 调用点的局部 MissingPermission 标注对应此实际守卫；不依赖方法名推断 lambda 内权限。
      * @param scan 是否额外需要扫描权限。
      * @throws BtException 关闭、缺权限或无线不可用，不隐式开启蓝牙。
      */
@@ -208,6 +209,7 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
      * 读取系统事实，名称为空时回退到扫描名；首次实际观测发 OnDiscovered，
      * 后续仅信息发生变化才发 OnDeviceChanged，按地址而非名称合并。
      */
+    @SuppressLint("MissingPermission") // 下方守卫先检查 CONNECT，platformOperation 处理撤权竞态。
     internal fun observe(native: BluetoothDevice, scannedName: String? = null): AndroidBtDevice {
         enforceBluetoothPermission()
         val address = normalizeAddress(native.address)
@@ -248,6 +250,7 @@ internal class AndroidBtManager(internal val context: Context) : BtManager {
         result
     }
 
+    @SuppressLint("MissingPermission") // 适配器由权限守卫取得，platformOperation 处理撤权竞态。
     override suspend fun bondedDevices(): List<BtDevice> {
         val bluetoothAdapter = enforceBluetoothPermission()
         return platformOperation("enumerate bonded devices") { bluetoothAdapter.bondedDevices.toList() }

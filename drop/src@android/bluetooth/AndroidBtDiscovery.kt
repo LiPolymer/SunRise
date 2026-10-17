@@ -1,5 +1,6 @@
 package ink.lipoly.app.sunrise.bluetooth
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothProfile
@@ -81,6 +82,7 @@ internal class AndroidBtDiscovery(private val owner: AndroidBtManager) {
      * null scanner 和正常期限返回已找到列表；onScanFailed/溢出保存失败，即使提前命中也不掩盖。
      * 调用者取消透传；finally 尽力 stopScan 并注销请求。过滤掉的结果不进入 manager.observe。
      */
+    @SuppressLint("MissingPermission") // 入口检查 CONNECT/SCAN；finally 即使撤权也尽力 stopScan。
     suspend fun scanLe(name: String?, address: String?, timeoutMillis: Long): List<BtDevice> = scanMutex.withLock {
         val adapter = owner.enforceBluetoothPermission(scan = true)
         val scanner = owner.platformOperation("obtain LE scanner", scan = true) { adapter.bluetoothLeScanner }
