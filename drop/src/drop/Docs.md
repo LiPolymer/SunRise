@@ -5,6 +5,7 @@
 ## 导航
 
 - [职责、依赖与源码索引](#职责依赖与源码索引)
+- [核心对象关系](#核心对象关系)
 - [公开参数与 EQ 数学 API](#公开参数与-eq-数学-api)
 - [控制器 API 与生命周期](#控制器-api-与生命周期)
 - [初始化与能力完整性](#初始化与能力完整性)
@@ -32,7 +33,13 @@
 
 | 文件 | 内容与入口 |
 | --- | --- |
-| [DropApi.kt](DropApi.kt) | 状态/能力/事件/异常、选项、`GaiaControls` / `SourceControls` 公共方法 |
+| [DropState.kt](DropState.kt) | 协议阶段、协议集合、能力与功能快照 |
+| [DropEvent.kt](DropEvent.kt) | 无重放的瞬时协议通知 |
+| [DropException.kt](DropException.kt) | 控制层错误族与语义 |
+| [EarbudModels.kt](EarbudModels.kt) | ANC、增益、追踪、编码、耳侧与电量模型 |
+| [GaiaEqModels.kt](GaiaEqModels.kt) | GAIA 参数 EQ 滤波器、频段与完整读回模型 |
+| [GaiaControls.kt](GaiaControls.kt) | GAIA 公共控件接口 |
+| [SourceControls.kt](SourceControls.kt) | 9ECA 公共控件接口 |
 | [DropController.kt](DropController.kt) | 构造、状态观察、`awaitReady()`、控件 getter、关闭与 epoch 守卫 |
 | [DropControlBinding.kt](DropControlBinding.kt) | 单会话初始化、GAIA/9ECA 回复匹配、通知解释、错误映射 |
 | [DropControlSession.kt](DropControlSession.kt) | 控件所需的单绑定内部接口，不是动态转发到当前连接的 facade |
@@ -45,11 +52,69 @@
 | [GaiaControlsImpl.kt](GaiaControlsImpl.kt) | GAIA 参数检查、读回、功能快照更新 |
 | [SourceControlsImpl.kt](SourceControlsImpl.kt) | 9ECA 状态检查、音源稳定等待、SET 响应与固件 fallback |
 | [AncVerification.kt](AncVerification.kt) | 一次 SET、最多四次 GET 的 ANC 确认算法 |
-| [DropProfile.kt](DropProfile.kt) | 身份匹配、内置映射、覆盖合并及独立读写编号 |
+| [DropProfile.kt](DropProfile.kt) | 身份匹配、内置映射、覆盖合并、协议选项及独立读写编号 |
 
 通讯包名是 `ink.lipoly.app.sunrise.bluetooth`；公开通讯入口包括 `BtManager`、`BtDevice`、`GattController`、`GattSession`、`RfcommStream` 与 `createBtManager`，协议组帧不属于这些通用契约。
 
 `drop` 可独立消费源码模块；消费者的 `module.yaml` 声明 `../drop` 依赖，Android 宿主仍自行声明/申请蓝牙权限。库配置为 Kotlin 2.4.20、Android compileSdk 37/minSdk 24，不开启 Compose，也不配置 Maven 发布。许可与署名统一位于仓库根目录的 [LICENSE](../../../LICENSE) 与 [NOTICE](../../../NOTICE)，独立复制或分发模块时应同时携带这些文件；仍适用 PolyForm Noncommercial 1.0.0 及 Required Notice，不因拆库变为任意商业使用许可。
+
+## 核心对象关系
+
+下图描述当前实现，不是拟议的新 API；实线表示访问、持有或调用，虚线表示接口实现。
+
+```mermaid
+flowchart TD
+    device["BtDevice"]
+    gatt["GattController"]
+    session["GattSession"]
+
+    device -->|".gatt"| gatt
+    gatt -->|"suspend .connect()"| session
+    device -->|"DropController(device, ...)"| controller
+
+    subgraph publicApi["对外入口"]
+        controller["DropController"]
+        gaia["GaiaControls"]
+        source["SourceControls"]
+        state["StateFlow&lt;DropState&gt;"]
+        events["SharedFlow&lt;DropEvent&gt;"]
+
+        controller -->|".gaia"| gaia
+        controller -->|".source"| source
+        controller -->|".state"| state
+        controller -->|".events"| events
+    end
+
+    subgraph internalImpl["单个连接 epoch 内部"]
+        binding["DropControlBinding<br/>初始化、事务锁、pending、通知处理"]
+        contract["DropControlSession<br/>控件使用的内部接口"]
+        gaiaImpl["GaiaControlsImpl"]
+        sourceImpl["SourceControlsImpl"]
+
+        binding -.->|"实现"| contract
+        binding -->|"创建并持有"| gaiaImpl
+        binding -->|"创建并持有"| sourceImpl
+        gaiaImpl -->|"请求、事务、状态更新"| contract
+        sourceImpl -->|"请求、状态更新"| contract
+    end
+
+    controller -->|"观察 GATT 状态，安装或替换"| binding
+    binding -->|"借用，不拥有连接"| session
+    binding -->|"经 controller 发布当前绑定的状态"| state
+    binding -->|"经 controller 发布当前绑定的事件"| events
+
+    gaiaImpl -.->|"实现"| gaia
+    sourceImpl -.->|"实现"| source
+
+    classic["RfcommStream?<br/>由 profileDevice 提供"]
+    classic -->|"经 controller / binding 注入"| gaiaImpl
+    gaiaImpl -->|"仅指定 PEQ 激活与参数写入"| classic
+```
+
+- `DropController` 跨重连存续；`DropControlBinding` 和控件实例只属于一次会话。
+- `DropControlSession` 是接口，不是另一条连接；GAIA / 9ECA 经它使用同一绑定的生命周期与事务锁。
+- GATT 承担常规请求与回复；经典通道存在时，指定 PEQ 写入走 RFCOMM，失败不回退 BLE。
+- 关闭控制器会退休绑定和旧控件，不会关闭借用的 GATT。
 
 ## 公开参数与 EQ 数学 API
 

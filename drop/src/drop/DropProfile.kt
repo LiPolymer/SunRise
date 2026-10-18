@@ -124,3 +124,9 @@ internal object DropProfiles {
     fun gainFromDevice(value: Int, profile: DropProfile): GainLevel? =
         (profile.gainWrite ?: defaultGain).entries.firstOrNull { it.value == value }?.key
 }
+
+/**
+ * 协议配置选项；不负责发现、连接、品牌筛选或重试。
+ * @property profileOverrides 自定义设备映射；匹配地址优先，同类按列表首项，缺省字段可继承内置配置。
+ */
+data class DropOptions(val profileOverrides: List<DropProfile> = emptyList())
