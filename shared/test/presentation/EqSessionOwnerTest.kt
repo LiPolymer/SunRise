@@ -3,10 +3,10 @@ package ink.lipoly.app.sunrise.presentation
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditPhase
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqSubmitMode
 import ink.lipoly.app.sunrise.compose.StoredGaiaDevice
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaControls
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaParamEqState
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.moondrop.PeqFilter
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaControls
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaParamEqState
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaPeqBand
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqFilter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent

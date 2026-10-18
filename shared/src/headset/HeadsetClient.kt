@@ -5,16 +5,16 @@ import ink.lipoly.app.sunrise.bluetooth.BtDeviceKind
 import ink.lipoly.app.sunrise.bluetooth.BtEvent
 import ink.lipoly.app.sunrise.bluetooth.BtException
 import ink.lipoly.app.sunrise.bluetooth.BtManager
-import ink.lipoly.app.sunrise.bluetooth.GattPhase
-import ink.lipoly.app.sunrise.bluetooth.GattSession
-import ink.lipoly.app.sunrise.drop.DropController
+import ink.lipoly.app.sunrise.drop.BatteryControls
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.DropOptions
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropState
-import ink.lipoly.app.sunrise.drop.EarbudControls
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaControls
-import ink.lipoly.app.sunrise.drop.moondrop.SourceControls
+import ink.lipoly.app.sunrise.drop.IBudsController
+import ink.lipoly.app.sunrise.drop.NoiseControls
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaControls
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceControls
+import ink.lipoly.app.sunrise.drop.moondrop.openMoondrop
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -46,10 +46,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * 应用自有的单耳机组合入口：选择音频身份、显式连接 GATT、创建 [DropController] 并执行重试和轮询。
+ * 应用自有的单耳机组合入口：选择音频身份、打开会话级 [IBudsController] 并执行重试和轮询。
  *
  * 公共 common API 不提供构造入口；Android 宿主通过平台工厂创建，并拥有注入的 [BtManager]。
- * 本类关闭自己的控制器和尝试端点，但不关闭管理器，也不管理其他设备的会话。
+ * 本类关闭自己的控制器（其 GATT/SPP 由控制器释放），但不关闭管理器，也不管理其他设备的会话。
  * 不按品牌过滤，不配对、不建立系统音频连接，也不提供 RFCOMM 回退。
  *
  * 每次选择替换独立连接 epoch，新选择等待前一选择清理完成后才开始无线操作。
@@ -65,6 +65,8 @@ class HeadsetClient internal constructor(
     private val options: DropOptions = DropOptions(),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** 同步 close() 无法挂起等待传输释放；独立作用域只执行有限的关闭任务。 */
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lifecycle = Mutex()
     private val closed = MutableStateFlow(false)
     private val connection = MutableStateFlow<Connection?>(null)
@@ -89,18 +91,21 @@ class HeadsetClient internal constructor(
      * 此 getter 检查应用/控制阶段和会话身份，但不证明 GAIA 或具体能力存在。
      * @throws DropException.NotReady 尚未就绪、正在重连或已关闭；关闭后此 getter 仍抛 NotReady。
      */
-    val gaia: GaiaControls get() = readyController().gaia
+    val gaia: GaiaControls
+        get() = readyController() as? GaiaControls ?: throw DropException.NotReady()
     /**
      * 当前已采纳且仍就绪的 9ECA 控件；实际方法仍会检查协议/特征支持。
      * 旧引用在绑定失效后不可复用，应在每次调用时重新获取。
      * @throws DropException.NotReady 无有效 READY 端点（包括本客户端已关闭）。
      */
-    val source: SourceControls get() = readyController().source
+    val source: SourceControls
+        get() = readyController() as? SourceControls ?: throw DropException.NotReady()
     /**
-     * 当前已采纳绑定的跨协议基础门面（电量、降噪）；品牌特有操作仍从 [gaia] / [source] 取得。
-     * 取用约束与 [gaia] 相同：关闭或无 READY 绑定抛 [DropException.NotReady]，旧引用随后失效。
+     * 当前已采纳且仍就绪的会话控制器；[GaiaControls]、[SourceControls]、[BatteryControls]、
+     * [NoiseControls] 等能力用 `as?` 取得，不需要的能力 cast 为 null。
+     * 取用约束与 [gaia] 相同：关闭或无 READY 会话抛 [DropException.NotReady]，旧引用随后失效。
      */
-    val controls: EarbudControls get() = readyController().controls
+    val controller: IBudsController get() = readyController()
 
     /**
      * 对象身份就是 facade epoch，不用地址或阶段判断新旧任务。
@@ -119,14 +124,13 @@ class HeadsetClient internal constructor(
     }
 
     /**
-     * 单次端点尝试及其资源；[ownsGatt] 在挂起 connect 前设置，保证尚未拿到 session 的取消也会 disconnect。
-     * [adopted] 仅在控制器 READY、会话身份仍匹配且关联已保存后成立，探测完成不等于应用采纳。
+     * 单次端点尝试及其资源；控制器由 [openMoondrop] 创建并持有传输，尚未返回时为空。
+     * [adopted] 仅在控制器 READY、epoch 仍匹配且关联已保存后成立，探测完成不等于应用采纳。
      */
-    private class Attempt(val endpoint: BtDevice, val controller: DropController) {
-        val session = MutableStateFlow<GattSession?>(null)
+    private class Attempt {
+        val controller = MutableStateFlow<IBudsController?>(null)
         val adopted = MutableStateFlow(false)
         val observers = mutableListOf<Job>()
-        var ownsGatt = false
     }
 
     private class AudioTargetGone : CancellationException("Audio headset is no longer connected")
@@ -186,6 +190,7 @@ class HeadsetClient internal constructor(
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 val (next, previous) = replaceConnection(auto = true, selected = null, first = null)
+                previous?.attempt?.value?.controller?.value?.close()
                 launchConnection(next, previous)
             } catch (e: DropException.Disconnected) {
                 if (!closed.value) throw e
@@ -225,19 +230,21 @@ class HeadsetClient internal constructor(
         val first = CompletableDeferred<Unit>()
         val selected = device.copy(verified = associations.endpoint(device.address.uppercase()) != null)
         val (next, previous) = replaceConnection(auto = false, selected = selected, first = first)
+        previous?.attempt?.value?.controller?.value?.close()
         launchConnection(next, previous)
         try {
             first.await()
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
-                lifecycle.withLock {
+                val attempt = lifecycle.withLock {
                     if (connection.value === next) {
                         connection.value = null
                         mutableState.value = HeadsetState()
                     }
                     next.job.cancel()
-                    next.attempt.value?.controller?.close()
+                    next.attempt.value
                 }
+                attempt?.controller?.value?.close()
                 next.finished.await()
             }
             throw e
@@ -255,11 +262,13 @@ class HeadsetClient internal constructor(
         val previous = lifecycle.withLock {
             connection.getAndUpdate { null }.also {
                 it?.job?.cancel()
-                it?.attempt?.value?.controller?.close()
                 mutableState.value = HeadsetState()
             }
         }
-        withContext(NonCancellable) { previous?.finished?.await() }
+        withContext(NonCancellable) {
+            previous?.attempt?.value?.controller?.value?.close()
+            previous?.finished?.await()
+        }
     }
 
     /**
@@ -273,7 +282,9 @@ class HeadsetClient internal constructor(
         if (!closed.compareAndSet(expect = false, update = true)) return
         val previous = connection.getAndUpdate { null }
         previous?.job?.cancel()
-        previous?.attempt?.value?.controller?.close()
+        previous?.attempt?.value?.controller?.value?.let { controller ->
+            cleanupScope.launch { controller.close() }
+        }
         mutableState.value = HeadsetState()
         wake.close()
         scope.cancel()
@@ -288,7 +299,6 @@ class HeadsetClient internal constructor(
         val next = Connection(auto, selected, scope.coroutineContext[Job], first)
         val previous = connection.getAndUpdate { next }
         previous?.job?.cancel()
-        previous?.attempt?.value?.controller?.close()
         publishLocked(next) {
             HeadsetState(
                 phase = if (auto) HeadsetPhase.DISCOVERING else HeadsetPhase.CONNECTING,
@@ -391,9 +401,8 @@ class HeadsetClient internal constructor(
                             everReady = true
                             current.first?.complete(Unit)
                             startPolling(current, ready)
-                            val lost = ready.endpoint.gatt.state.first {
-                                it.phase != GattPhase.CONNECTED || it.session !== ready.session.value
-                            }
+                            val controller = ready.controller.value ?: throw DropException.Disconnected()
+                            val lost = controller.state.first { it.phase != DropPhase.READY }
                             lost.error?.let { throw it }
                         } catch (e: CancellationException) {
                             throw e
@@ -490,8 +499,8 @@ class HeadsetClient internal constructor(
     }
 
     /**
-     * 先安装独立 Attempt 与观察，再调用 connect；即使 connect 未返回也必须具备显式 disconnect 所有权。
-     * 控制器使用 selected 的 profile 身份，仅在会话仍匹配且控制 READY 时保存关联并采纳。
+     * 先安装独立 Attempt 与观察，再由控制器打开传输；connect 与探测均由控制器负责，失败会被它断开。
+     * 控制器使用 selected 的 profile 身份，仅在仍匹配且控制 READY 时保存关联并采纳。
      * 任意失败/取消路径都先 releaseAttempt，再允许下一候选或新选择进入无线操作。
      */
     private suspend fun tryEndpoint(
@@ -500,7 +509,7 @@ class HeadsetClient internal constructor(
         selected: HeadsetDevice,
     ): Attempt {
         ensureCurrent(current)
-        val attempt = Attempt(endpoint, DropController(endpoint, options, profileDevice = selected.device))
+        val attempt = Attempt()
         var adopted = false
         try {
             lifecycle.withLock {
@@ -513,28 +522,23 @@ class HeadsetClient internal constructor(
                     )
                 }
             }
+            val controller = openMoondrop(endpoint, options, profileDevice = selected.device)
+            attempt.controller.value = controller
             val observers = CoroutineScope(currentCoroutineContext())
             attempt.observers += observers.launch(start = CoroutineStart.UNDISPATCHED) {
-                attempt.controller.state.collect { forwardState(current, attempt) }
+                controller.state.collect { forwardState(current, attempt) }
             }
             attempt.observers += observers.launch(start = CoroutineStart.UNDISPATCHED) {
-                attempt.controller.events.collect { event ->
+                controller.events.collect { event ->
                     lifecycle.withLock {
-                        if (isCurrentAttempt(current, attempt) &&
-                            (attempt.session.value == null || hasSession(attempt))) {
-                            mutableEvents.tryEmit(HeadsetEvent.Control(event))
-                        }
+                        if (isCurrentAttempt(current, attempt)) mutableEvents.tryEmit(HeadsetEvent.Control(event))
                     }
                 }
             }
             ensureCurrent(current)
-            attempt.ownsGatt = true
-            attempt.session.value = endpoint.gatt.connect()
-            attempt.controller.awaitReady()
             lifecycle.withLock {
                 ensureCurrent(current)
-                if (!hasSession(attempt) || attempt.controller.state.value.phase != DropPhase.READY)
-                    throw DropException.Disconnected()
+                if (controller.state.value.phase != DropPhase.READY) throw DropException.Disconnected()
                 associations.remember(selected.address.uppercase(), endpoint.address)
                 attempt.adopted.value = true
                 current.target.value = (current.target.value ?: selected).copy(verified = true)
@@ -542,7 +546,7 @@ class HeadsetClient internal constructor(
                     HeadsetState(
                         phase = HeadsetPhase.READY,
                         device = current.target.value,
-                        controls = attempt.controller.state.value,
+                        controls = controller.state.value,
                     )
                 }
             }
@@ -554,8 +558,8 @@ class HeadsetClient internal constructor(
     }
 
     /**
-     * 不可取消清理先失效本轮 attempt、关闭控制器与订阅，再在锁外 disconnect。
-     * 不要求 session 已返回：泛型 GATT 的独立连接任务不会因其调用方取消而自动结束。
+     * 不可取消清理先失效本轮 attempt、取消订阅，再在锁外关闭控制器。
+     * 控制器拥有其传输：关闭会断开本次 GATT/SPP，未返回的失败由控制器自行断开。
      * epoch 条件发布确保旧清理只能释放自己的资源，不能覆盖新选择的状态。
      */
     private suspend fun releaseAttempt(current: Connection, attempt: Attempt) = withContext(NonCancellable) {
@@ -569,22 +573,16 @@ class HeadsetClient internal constructor(
                     )
                 }
             }
-            attempt.controller.close()
             attempt.observers.forEach { it.cancel() }
         }
-        if (attempt.ownsGatt) {
-            // 仅取消 connect 的等待者不会取消管理器自有无线任务，必须显式 disconnect。
-            attempt.endpoint.gatt.disconnect()
-        }
+        attempt.controller.value?.close()
     }
 
-    /** 转发同时检查连接 epoch、attempt 身份和已知 session；READY 必须等应用采纳，不能仅凭 probe 完成。 */
+    /** 转发同时检查连接 epoch 与 attempt 身份；READY 必须等应用采纳，不能仅凭 probe 完成。 */
     private suspend fun forwardState(current: Connection, attempt: Attempt) {
         lifecycle.withLock {
             if (!isCurrentAttempt(current, attempt)) return@withLock
-            val controls = attempt.controller.state.value
-            if (controls.phase != DropPhase.IDLE && attempt.session.value != null && !hasSession(attempt))
-                return@withLock
+            val controls = attempt.controller.value?.state?.value ?: return@withLock
             publishLocked(current) {
                 it.copy(
                     phase = when (controls.phase) {
@@ -607,9 +605,10 @@ class HeadsetClient internal constructor(
     private fun startPolling(current: Connection, attempt: Attempt) {
         val polling = CoroutineScope(current.job + Dispatchers.Default)
         attempt.observers += polling.launch {
-            if (attempt.controller.state.value.capabilities.ancModes.isNotEmpty()) {
+            if (attempt.controller.value?.state?.value?.capabilities?.ancModes?.isNotEmpty() == true) {
                 try {
-                    if (isCurrentAttempt(current, attempt) && hasSession(attempt)) attempt.controller.controls.noise?.read()
+                    if (isCurrentAttempt(current, attempt))
+                        (attempt.controller.value as? NoiseControls)?.readNoise()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -618,10 +617,10 @@ class HeadsetClient internal constructor(
             }
         }
         attempt.observers += polling.launch {
-            while (isCurrentAttempt(current, attempt) && hasSession(attempt) &&
-                attempt.controller.state.value.phase == DropPhase.READY) {
+            while (isCurrentAttempt(current, attempt) &&
+                attempt.controller.value?.state?.value?.phase == DropPhase.READY) {
                 try {
-                    attempt.controller.controls.battery?.read()
+                    (attempt.controller.value as? BatteryControls)?.readBattery()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -651,20 +650,15 @@ class HeadsetClient internal constructor(
         device, device.info.value.name, associations.endpoint(device.address.uppercase()) != null,
     )
 
-    private fun hasSession(attempt: Attempt): Boolean {
-        val gatt = attempt.endpoint.gatt.state.value
-        val session = attempt.session.value
-        return session != null && gatt.phase == GattPhase.CONNECTED && gatt.session === session
-    }
-
     /** 此 facade 的 getter 始终以 NotReady 表达不可用（含 close）；旧控制器控件的失效异常另属绑定层。 */
-    private fun readyController(): DropController {
+    private fun readyController(): IBudsController {
         val current = connection.value ?: throw DropException.NotReady()
         val attempt = current.attempt.value ?: throw DropException.NotReady()
-        if (!isCurrentAttempt(current, attempt) || !attempt.adopted.value || !hasSession(attempt) ||
+        val controller = attempt.controller.value ?: throw DropException.NotReady()
+        if (!isCurrentAttempt(current, attempt) || !attempt.adopted.value ||
             state.value.phase != HeadsetPhase.READY || state.value.controls.phase != DropPhase.READY ||
-            attempt.controller.state.value.phase != DropPhase.READY) throw DropException.NotReady()
-        return attempt.controller
+            controller.state.value.phase != DropPhase.READY) throw DropException.NotReady()
+        return controller
     }
 
     private fun isCurrent(current: Connection) = !closed.value && connection.value === current

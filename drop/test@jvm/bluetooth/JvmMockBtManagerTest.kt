@@ -1,12 +1,13 @@
 package ink.lipoly.app.sunrise.bluetooth
 
 import ink.lipoly.app.sunrise.drop.AncMode
-import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.GainLevel
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaControls
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.openMoondrop
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -158,18 +159,16 @@ class JvmMockBtManagerTest {
         }
     }
 
-    @Test fun productionControllerReadsWritesAndRetainsOnlyItsOwnPeripheralOnReconnect() = runBlocking {
+    @Test fun productionControllerOwnsItsSessionAndReopeningDropsTheOldOne() = runBlocking {
         val manager = newManager()
         val independent = newManager()
         val device = manager.refreshConnectedAudioDevices().single()
         val otherDevice = independent.refreshConnectedAudioDevices().single()
-        val controller = DropController(device)
-        val otherController = DropController(otherDevice)
+        val controller = openMoondrop(device)
+        val otherController = openMoondrop(otherDevice)
         try {
             withTimeout(5.seconds) {
-                device.gatt.connect()
-                controller.awaitReady()
-                val originalControls = controller.gaia
+                val originalControls = assertIs<GaiaControls>(controller)
                 val battery = originalControls.getBattery()
                 assertNotNull(battery.left)
                 assertNotNull(battery.right)
@@ -185,20 +184,23 @@ class JvmMockBtManagerTest {
                 originalControls.setParamEq(changedBands)
                 assertEquals(changedBands, originalControls.getParamEq().bands)
 
-                device.gatt.disconnect()
-                device.gatt.connect()
-                controller.awaitReady()
+                // 会话级控制器：关闭即释放传输，旧能力引用随之失效，而不是跨重连继续生效。
+                controller.close()
                 assertFailsWith<DropException.Disconnected> { originalControls.getBattery() }
-                assertEquals(desiredMode, controller.gaia.getAncMode())
-                assertEquals(GainLevel.HIGH, controller.gaia.getGain())
-                assertEquals(changedBands, controller.gaia.getParamEq().bands)
+                val reopened = openMoondrop(device)
+                try {
+                    val controls = assertIs<GaiaControls>(reopened)
+                    assertEquals(desiredMode, controls.getAncMode())
+                    assertEquals(GainLevel.HIGH, controls.getGain())
+                    assertEquals(changedBands, controls.getParamEq().bands)
+                } finally {
+                    reopened.close()
+                }
 
-                otherDevice.gatt.connect()
-                otherController.awaitReady()
-                assertEquals(initialMode, otherController.gaia.getAncMode())
-                assertEquals(initialEq.bands, otherController.gaia.getParamEq().bands)
+                assertEquals(initialMode, assertIs<GaiaControls>(otherController).getAncMode())
+                assertEquals(initialEq.bands, assertIs<GaiaControls>(otherController).getParamEq().bands)
                 manager.close()
-                assertEquals(initialMode, otherController.gaia.getAncMode())
+                assertEquals(initialMode, assertIs<GaiaControls>(otherController).getAncMode())
             }
         } finally {
             controller.close()

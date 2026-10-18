@@ -38,9 +38,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.moondrop.PeqFilter
-//import ink.lipoly.app.sunrise.drop.moondrop.PeqHeadroom
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaPeqBand
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqFilter
+//import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqHeadroom
 import ink.lipoly.app.sunrise.catalog.*
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropException

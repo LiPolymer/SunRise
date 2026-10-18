@@ -25,8 +25,8 @@
 | `SunRiseApplication` / `SunRiseRuntime` | 应用级管理器、facade、目录和连接策略；Activity 只处理权限/UI | 唯一 owner 显式关闭时先 client 再 manager；Activity 销毁不关闭 |
 | `PresentationSession` | 宿主级事件/能力读取、文档操作与按 controls 身份绑定的 EQ editor | 宿主退出释放 EQ、目录操作、耳机展示及子 scope，不关闭应用服务或 picker |
 | `BtManager` | 稳定地址句柄、系统设备事实、通用 GATT | 由应用 resource owner 关闭；客户端不关闭注入管理器 |
-| `HeadsetClient` | 单音频身份选择、端点尝试、显式 GATT connect/disconnect、自己的 `DropController`、重试与初读/电量轮询 | 清理自己的尝试端点与观察任务；不清理其他设备 |
-| `DropController` | 当前 GATT 会话中的协议初始化、请求匹配和功能状态 | 客户端关闭其控制器；控制器本身不拥有 GATT 连接 |
+| `HeadsetClient` | 单音频身份选择、端点尝试、`openMoondrop` 会话、重试与初读/电量轮询 | 关闭自己创建的控制器（其传输由控制器释放）；不清理其他设备 |
+| `IBudsController` | 打开并拥有一次 GATT/SPP 传输会话、协议初始化、请求匹配和功能状态 | 品牌/设备选择、自动重连、关联与轮询；由调用方关闭旧实例后重建 |
 
 本包不做：内置品牌名单或目录依赖、协议候选预筛选、系统音频 profile 强制连接、自动配对、RFCOMM 或通用多耳机 UI。宿主可提供通用自动候选 predicate；默认接受全部。Android 自动模式依赖设备已经被系统当作音频设备连接；手动连接地址不替用户建立这个系统音频连接。桌面宿主注入 JVM actual 的模拟管理器，沿用本客户端的自动选择、控制器与轮询流程，不在 Headset 层伪造 READY 或功能状态。
 
@@ -72,7 +72,7 @@
 | `events: SharedFlow<HeadsetEvent>` | 无重放、额外缓冲 32、`tryEmit` 尽力通知；不是可靠历史/请求通道 |
 | `gaia: GaiaControls` | 当前已采纳且会话仍有效的 READY 控件；getter 不保证 GAIA 或具体能力存在 |
 | `source: SourceControls` | 同上，实际方法检查 9ECA 特征/协议支持 |
-| `controls: EarbudControls` | 同上；跨协议基础门面（能力、电量、降噪），`battery`/`noise` 在协议不支持时为 null |
+| `controller: IBudsController` | 同上；`GaiaControls`/`SourceControls`/`BatteryControls`/`NoiseControls` 用 `as?` 取得，不支持的 cast 为 null |
 | `discoverConnectedDevices()` | 挂起刷新系统原始已连接音频列表并创建快照；不 LE 扫描、不改变当前选择、不建立 GATT |
 | `setAutoDeviceFilter(acceptDevice: (HeadsetDevice) -> Boolean)` | 保存纯 predicate 并发送既有 wake；只过滤下一轮自动选择的音频候选，不替换 epoch，不改变当前目标、原始发现或手动连接 |
 | `startAutoConnect()` | 同步接受启动，异步替换旧选择并执行自动循环；不等待 READY，错误看状态/事件 |
@@ -82,7 +82,7 @@
 | `close()` | 幂等终结；同步失效/重置，不挂起等待 GATT 断开，资源在任务 finally 中继续清理；不可再次启动/连接/发现 |
 | Android `createHeadsetClient(context, bt, options = DropOptions())` | 用 applicationContext 创建客户端与平台关联存储；不创建管理器、不扫描/配对/连接 |
 
-`gaia`/`source` getter 同时要求：当前连接 epoch 未关闭、当前 attempt 已采纳、端点仍为 CONNECTED 且 session 对象匹配、应用状态 READY、转发控制状态 READY、控制器自身 READY。条件不成立抛 `DropException.NotReady`，**客户端 close 后 getter 也抛 NotReady**。与之不同：`startAutoConnect`、`setAutoDeviceFilter`、`connect`、`discoverConnectedDevices` 在客户端关闭后抛 `DropException.Disconnected`；先前已取得的旧控件在其控制器绑定失效后也抛 `Disconnected`。不要据此缓存旧控件“等它恢复”。
+`gaia`/`source`/`controller` getter 同时要求：当前连接 epoch 未关闭、当前 attempt 已采纳、其控制器存在、应用状态 READY、转发控制状态 READY、控制器自身 READY。条件不成立抛 `DropException.NotReady`，**客户端 close 后 getter 也抛 NotReady**。与之不同：`startAutoConnect`、`setAutoDeviceFilter`、`connect`、`discoverConnectedDevices` 在客户端关闭后抛 `DropException.Disconnected`；先前已取得的旧控件在其控制器绑定失效后也抛 `Disconnected`。不要据此缓存旧控件“等它恢复”。
 
 ## 状态、模型与事件参考
 
@@ -146,13 +146,13 @@
 
 没有 RFCOMM 最终回退；同名关联只是应用策略，**不能证明同一物理耳机**。扫描缺权限仅跳过扫描阶段，不否定已经尝试的缓存/直接 GATT。其他枚举、扫描、连接和探测异常保留为真实失败。
 
-每次尝试创建 `DropController(endpoint, options, profileDevice = selected.device)`，客户端自己调用 `endpoint.gatt.connect()`，再 `controller.awaitReady()`。因此：
+每次尝试调用 `openMoondrop(endpoint, options, profileDevice = selected.device)`：控制器自己 `gatt.connect()` 并等待探测。因此：
 
-- 控制器不会自动连接；无线连接归客户端的 attempt。
+- 连接所有权在控制器；客户端不再单独 connect/disconnect。
 - profile 地址/名称匹配使用音频身份；BLE 地址不同不会悄悄改变用户配置匹配对象。
 - 音频身份与 BLE 端点地址不同时，其经典 RFCOMM 句柄随控制器转交结构化 EQ 写入（见 [drop 传输选择](../../../drop/src/drop/Docs.md)）；同地址时不猜测对端提供 SPP 记录。
-- 控制器 PROBING/READY 状态可能先到达；在当前 session 仍有效、控制器确实 READY、成功写入关联并标记采纳后，才公开应用 READY。
-- 失败/取消先释放该次控制器和 GATT，再尝试下一候选，不留下静默后台连接。
+- 控制器的 PROBING/READY 可能先到达；只有控制器确实 READY、成功写入关联并标记采纳后，才公开应用 READY。
+- 失败/取消先关闭该次控制器；`openMoondrop` 在返回前失败会自行断开连接，再尝试下一候选，不留下静默后台连接。
 
 ### 关联持久化
 
@@ -183,11 +183,10 @@ Android 工厂沿用私有 SharedPreferences **`drop_verified_devices`**：key �
 客户端的 scope 使用 `SupervisorJob + Dispatchers.Default`。`lifecycle` Mutex 只保护短的替换、采纳、发布、资源标记操作；不持锁等待 GATT、probe 或前驱清理。
 
 - **连接 epoch** 是 `Connection` 对象身份，不是地址/阶段字符串。重复选择同地址也产生新 epoch。
-- **attempt 身份** 是当前端点尝试对象；状态/事件须同时属于当前 Connection 与 Attempt。
-- **session 身份** 用端点 `gatt.state` 的 CONNECTED 和 session 对象引用校验。旧帧、旧控件、旧关闭结果不能发布成新选择状态。
-- 新 Connection 在锁外等待前驱 `finished`，前驱即使在进入无线工作前已被取消，也必须走完 cleanup 链。`UNDISPATCHED` 入口确保替换和 launch 之间发生 close 时仍安装 finally。
-- `ownsGatt` 在通用 `connect()` 挂起**之前**设置。即使客户端尚未拿到返回的 session，清理也会显式 `endpoint.gatt.disconnect()`：只取消 connect 的等待者不足以取消管理器自有的无线连接任务。
-- 清理运行于 `NonCancellable`：先使 attempt 失效并关闭控制器/观察任务，锁外断开端点。旧清理只释放自己的资源，不写新 epoch 的状态。
+- **attempt 身份**是当前端点尝试对象；状态/事件须同时属于当前 Connection 与 Attempt。旧帧、旧控制器、旧关闭结果不能发布成新选择状态。
+- 控制器存在后，会话事实由 `IBudsController.state` 承担；客户端 getter 与轮询额外要求控制器自身 READY，不复用旧会话的能力引用。
+- 连接所有权随 `openMoondrop` 交给控制器：客户端不单独 `gatt.disconnect()`，替换与 close 通过关闭控制器释放传输；`openMoondrop` 在连接后失败时自行断开，不会留下无主连接。
+- 清理运行于 `NonCancellable`：先使 attempt 失效并取消观察任务，再在锁外关闭控制器。旧清理只释放自己的资源，不写新 epoch 的状态。
 - `close()` 无需等待 lifecycle 锁即可同步设置关闭标记；发布路径最后再次检查关闭标记，防止竞态将非默认状态写回。
 
 **`disconnect()` 与 `close()` 不等价**：前者挂起等待当前连接清理完成，可随后重启；后者同步终结并取消自有 scope，返回时 GATT 清理可能仍在进行。close 后观察到 IDLE 也不是“所有原生句柄已经断开”的证明。需要确定本轮释放完成时，先挂起 `disconnect()`，再最终 `close()`；宿主若拥有管理器，最后再 `bt.close()`。不要因本客户端 close 而关闭外部所有者的管理器或另一设备。
@@ -197,6 +196,7 @@ Android 工厂沿用私有 SharedPreferences **`drop_verified_devices`**：key �
 下面是应用层可复用函数，前提是调用方已通过 Android 工厂创建长期客户端并完成授权，`selected` 来自该客户端的 `discoverConnectedDevices()` 或同管理器句柄。它明确替换已有选择，读取后停止本轮；若 UI 想保留连接，应把 `disconnect()` 放在实际生命周期结束处，而不是照搬成每次按钮动作。
 
 ```kotlin
+import ink.lipoly.app.sunrise.drop.BatteryControls
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
 import ink.lipoly.app.sunrise.headset.HeadsetClient
@@ -210,11 +210,11 @@ suspend fun readSelectedBattery(
 ): EarbudBatteryReading {
     try {
         client.connect(selected) // 等本轮有效 READY；不代表初始电量轮询已完成。
-        // client.controls 已要求 READY；battery 为 null 表示当前协议不报告电量。
-        val battery = client.controls.battery
+        // controller 已要求 READY；cast 为 null 表示本次会话不报告电量。
+        val battery = client.controller as? BatteryControls
             ?: throw DropException.UnsupportedCapability("battery")
-        // 不缓存跨会话控件；返回的是本次实际查询值，不将 READY 推断成已知电量。
-        return battery.read()
+        // 不缓存跨会话引用；返回的是本次实际查询值，不将 READY 推断成已知电量。
+        return battery.readBattery()
     } finally {
         // 等待本函数选择的生命周期释放，取消时也清理；外部仍拥有 client 与 bt。
         withContext(NonCancellable) { client.disconnect() }

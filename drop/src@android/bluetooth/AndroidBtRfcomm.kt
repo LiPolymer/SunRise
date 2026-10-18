@@ -3,11 +3,14 @@ package ink.lipoly.app.sunrise.bluetooth
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Android RFCOMM 通道：按 SPP 服务记录（UUID 0x1101）解析通道并连接，SDP、RFCOMM 组帧、
@@ -15,7 +18,7 @@ import java.util.UUID
  *
  * 同一实例的打开/写入/关闭串行；打开与写入在 IO 分发器执行。取消打开或写入会关闭已创建的
  * socket，避免留下半开连接；[close] 幂等且不抛平台异常。持有本类不等于对端提供 GAIA。
- * 写入前丢弃已缓冲的入站字节：本层只做写通道，不解析设备回复，也不能据此报告已应用。
+ * 入站字节由 [read] 读取；没有活跃读取者时，写入前仍尽力排空缓冲以兼容只写用法。
  */
 internal class AndroidBtRfcomm(
     private val owner: AndroidBtManager,
@@ -23,7 +26,10 @@ internal class AndroidBtRfcomm(
     override val address: String,
 ) : RfcommStream {
     private val gate = Mutex()
+    @Volatile
     private var socket: BluetoothSocket? = null
+    /** 活跃读取者数量；大于 0 时写入不再排空入站，避免吞掉协议回复。 */
+    private val readers = AtomicInteger()
 
     override suspend fun open() {
         gate.withLock {
@@ -49,8 +55,8 @@ internal class AndroidBtRfcomm(
         gate.withLock {
             val target = socket ?: throw BtException.UnsupportedOperation("RFCOMM channel is not open")
             withContext(Dispatchers.IO) {
-                // 入站字节只是设备回复，本层不解析；丢弃尽力而为，读取失败不改变写入判定。
-                runCatching {
+                // 有人读取时保留入站字节；仅写通道仍尽力排空，避免缓冲堆积。
+                if (readers.get() == 0) runCatching {
                     val buffered = target.inputStream.available()
                     if (buffered > 0) target.inputStream.read(ByteArray(buffered))
                 }
@@ -70,6 +76,48 @@ internal class AndroidBtRfcomm(
             }
         }
     }
+
+    override suspend fun read(): ByteArray {
+        val target = socket ?: throw BtException.UnsupportedOperation("RFCOMM channel is not open")
+        readers.incrementAndGet()
+        try {
+            while (true) {
+                if (socket !== target) throw BtException.Disconnected()
+                val chunk = readAvailable(target)
+                if (chunk != null) {
+                    trace("rx", chunk.size)
+                    return chunk
+                }
+                // 阻塞 read 无法随协程取消返回；轮询让取消、关闭与超时都能及时生效。
+                delay(READ_POLL_MILLIS)
+            }
+        } finally {
+            readers.decrementAndGet()
+        }
+    }
+
+    /** 返回当前可用的一段字节，没有数据返回 null；失败时释放可疑通道并映射为平台异常。 */
+    private suspend fun readAvailable(target: BluetoothSocket): ByteArray? = withContext(Dispatchers.IO) {
+        try {
+            val available = target.inputStream.available()
+            if (available <= 0) return@withContext null
+            val buffer = ByteArray(minOf(available, MAX_READ))
+            val count = target.inputStream.read(buffer)
+            if (count <= 0) null else buffer.copyOf(count)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 关闭竞态以 Disconnected 表达；真实读取失败按传输错误保留原因。
+            if (socket !== target) throw BtException.Disconnected()
+            socket = null
+            target.closeQuietly()
+            throw transportFailure("read RFCOMM channel", e)
+        }
+    }
+
+    /** 复用管理器的平台错误映射（权限/传输分类），不在本层重复实现。 */
+    private fun transportFailure(operation: String, error: Exception): Nothing =
+        throw owner.platformOperation(operation) { throw error }
 
     override suspend fun close() {
         val target = gate.withLock { socket.also { socket = null } } ?: return
@@ -107,5 +155,11 @@ internal class AndroidBtRfcomm(
 
         /** 经典 SPP 服务类；对端 SDP 记录用该 UUID 注册并给出 RFCOMM 通道号。 */
         val SPP: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+
+        /** 单次读取上限；RFCOMM 是字节流，调用方仍需自行组帧。 */
+        const val MAX_READ = 1024
+
+        /** 无数据时的轮询间隔；不持有事务锁，也不影响写入。 */
+        const val READ_POLL_MILLIS = 10L
     }
 }

@@ -18,7 +18,7 @@ import ink.lipoly.app.sunrise.compose.SingleChoiceButtons
 import ink.lipoly.app.sunrise.compose.display
 import ink.lipoly.app.sunrise.presentation.*
 import ink.lipoly.app.sunrise.drop.*
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
 import ink.lipoly.app.sunrise.settings.UiSettings
 import ink.lipoly.app.sunrise.headset.HeadsetPhase
 import ink.lipoly.app.sunrise.headset.HeadsetState
@@ -138,7 +138,9 @@ internal fun OverviewEntry(
                             options = modes, selected = controlState.ancMode, label = { it.display() },
                             enabled = usable,
                             onSelect = { mode ->
-                                session.headset.runAction("设置降噪", control = true) { this.controls.noise?.write(mode) }
+                                session.headset.runAction("设置降噪", control = true) {
+                                    (this.controller as? NoiseControls)?.writeNoise(mode)
+                                }
                             },
                         )
                     }

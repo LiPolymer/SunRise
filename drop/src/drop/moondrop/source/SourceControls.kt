@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.drop.moondrop
+package ink.lipoly.app.sunrise.drop.moondrop.source
 
 import ink.lipoly.app.sunrise.drop.EarbudSide
 

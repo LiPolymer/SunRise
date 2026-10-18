@@ -1,8 +1,7 @@
-package ink.lipoly.app.sunrise.drop.moondrop
+package ink.lipoly.app.sunrise.drop.moondrop.gaia
 
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.AudioCodec
-import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
 import ink.lipoly.app.sunrise.drop.GainLevel
@@ -11,7 +10,7 @@ import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
 import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
 
 /**
- * 当前 READY 绑定的 GAIA 控件；换会话后必须重新从 [DropController.gaia] 获取。
+ * 当前 READY 绑定的 GAIA 控件；换会话后必须重新从 [MoondropController] 取得。
  * ANC/codec/PEQ 的 SET 不等待 ACK，而以 GET 确认；其他大部分 SET 等回复再独立 GET。
  * 功能存在性不由 getter 保证，缺少 GAIA 时操作抛 [DropException.UnsupportedCapability]。
  */

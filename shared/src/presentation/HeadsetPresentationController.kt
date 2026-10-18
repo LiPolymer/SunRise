@@ -3,7 +3,7 @@ package ink.lipoly.app.sunrise.presentation
 import ink.lipoly.app.sunrise.bluetooth.BtDevice
 import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.DropException
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
 import ink.lipoly.app.sunrise.headset.HeadsetClient
 import ink.lipoly.app.sunrise.headset.HeadsetDevice
 import ink.lipoly.app.sunrise.headset.HeadsetEvent

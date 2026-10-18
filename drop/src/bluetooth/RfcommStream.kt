@@ -19,6 +19,12 @@ interface RfcommStream {
      * @throws BtException 尚未打开、已关闭或平台写入失败。
      */
     suspend fun write(bytes: ByteArray)
+    /**
+     * 读取当前可用的一段入站字节；无数据时挂起等待，取消只结束本次等待，不关闭通道。
+     * 一次返回不保证是一帧：组帧、拼接、超时与重同步由调用方负责。
+     * @throws BtException 尚未打开、已关闭或平台读取失败。
+     */
+    suspend fun read(): ByteArray
     /** 幂等关闭通道并释放平台 socket；未打开或已关闭时不做任何事。 */
     suspend fun close()
 }

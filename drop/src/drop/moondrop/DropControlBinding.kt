@@ -11,11 +11,19 @@ import ink.lipoly.app.sunrise.drop.DropProfile
 import ink.lipoly.app.sunrise.drop.DropProtocol
 import ink.lipoly.app.sunrise.drop.DropState
 import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
-import ink.lipoly.app.sunrise.drop.EarbudControls
 import ink.lipoly.app.sunrise.drop.GaiaTransaction
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
 import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaControls
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaControlsImpl
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceCodec
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceControls
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceControlsImpl
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceFeature
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceFrame
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceIds
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,12 +75,10 @@ internal class DropControlBinding(
     }
     private val mutableState = MutableStateFlow(DropState(phase = DropPhase.PROBING, protocols = protocols))
     override val state = mutableState.asStateFlow()
-    /** 状态观察与 awaitReady 共用的初始化结果；每个 epoch 仅启动一次，调用方取消不取消它。 */
+    /** 初始化结果；每个 epoch 仅启动一次，`openMoondrop` 等待它完成，调用方取消不取消它。 */
     val ready = CompletableDeferred<Unit>()
     val gaia: GaiaControls = GaiaControlsImpl(this, classicEq)
     val source: SourceControls = SourceControlsImpl(this)
-    /** 跨协议门面：只投影电量与降噪等基础能力，品牌特有操作仍走 [gaia] / [source]。 */
-    val controls: EarbudControls = BindingControls(this, gaia)
     val isOpen: Boolean get() = !closed.value && lifetime.isActive
 
     private data class PendingGaia(
@@ -178,10 +184,6 @@ internal class DropControlBinding(
 
     private fun ensureBound() {
         if (!isOpen || !isCurrent(this)) throw DropException.Disconnected()
-    }
-
-    override fun checkActive() {
-        ensureBound()
     }
 
     /**

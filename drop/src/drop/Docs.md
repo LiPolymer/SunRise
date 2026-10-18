@@ -26,10 +26,10 @@
 | 所有者 | 负责 | 不负责 |
 | --- | --- | --- |
 | [bluetooth](../bluetooth/Docs.md) | 稳定设备句柄、平台发现/配对请求、每设备 GATT、每会话原生操作队列与回调 | 识别 GAIA/9ECA、耳机选择、协议解码 |
-| 本包 `DropController` / 内部 binding | 当前 GATT epoch 的探测、事务锁、回复槽、控件、功能状态 | scan/connect/disconnect、品牌筛选、自动重连、设备关联、周期电量轮询 |
-| [headset（应用 shared）](../../../shared/src/headset/Docs.md) | 本应用单耳机选择、音频地址→BLE 端点关联、显式 GATT、重试、ANC/电量初读和 30 秒电量轮询、Android 接入 | 替代通用通讯契约或协议编解码 |
+| 本包 `openMoondrop` / `IBudsController` / 内部 binding | 打开并拥有单次传输会话、探测、事务锁、回复槽、控件、功能状态 | 品牌筛选、设备选择、自动重连、设备关联、周期电量轮询 |
+| [headset（应用 shared）](../../../shared/src/headset/Docs.md) | 本应用单耳机选择、音频地址→BLE 端点关联、会话重建、重试、ANC/电量初读和 30 秒电量轮询、Android 接入 | 替代通用通讯契约或协议编解码 |
 
-权限/Activity/Compose 生命周期、单耳机候选选择、关联持久化、轮询与桌面界面行为应从上面两份指南阅读；不能把这些策略理解为 `DropController` 的隐式行为。常规控制使用 GATT，现有经典 RFCOMM 通道仅用于 GAIA EQ 写入；不增加品牌名单、自动扫描或自动连接。
+权限/Activity/Compose 生命周期、单耳机候选选择、关联持久化、轮询与桌面界面行为应从上面两份指南阅读；不能把这些策略理解为 `IBudsController` 的隐式行为。常规控制使用 GATT，现有经典 RFCOMM 通道仅用于 GAIA EQ 写入；不增加品牌名单、自动扫描或自动连接。
 
 | 文件 | 内容与入口 |
 | --- | --- |
@@ -37,31 +37,32 @@
 | [DropEvent.kt](DropEvent.kt) | 无重放的瞬时协议通知 |
 | [DropException.kt](DropException.kt) | 控制层错误族与语义 |
 | [EarbudModels.kt](EarbudModels.kt) | ANC、增益、追踪、编码、耳侧与电量读数模型 |
-| [EarbudControls.kt](EarbudControls.kt) | 跨协议基础门面：能力、电量、降噪；不继承协议控件接口 |
-| [DropController.kt](DropController.kt) | 构造、状态观察、`awaitReady()`、控件 getter、关闭与 epoch 守卫 |
+| [IBudsController.kt](IBudsController.kt) | 单会话门面（状态、事件、关闭）与 `as?` 取得的能力接口：电量、降噪 |
 | [DropControlSession.kt](DropControlSession.kt) | 控件所需的单绑定内部接口，不是动态转发到当前连接的 facade |
 | [DropProfile.kt](DropProfile.kt) | 身份匹配、覆盖合并与协议选项（内置型号表在 `moondrop/`） |
 | [gaia/GaiaWire.kt](gaia/GaiaWire.kt) | GAIA 通用信封：`GaiaCommand` / `GaiaPacket`、类型常量、`GaiaCodec` 与能力分页解析 |
-| [moondrop/BindingControls.kt](moondrop/BindingControls.kt) | internal：把单绑定的 GAIA 控件投影为门面，不含协议逻辑 |
+| [moondrop/MoondropController.kt](moondrop/MoondropController.kt) | 公开 `openMoondrop`、单会话 GAIA/9ECA 委托、owned 传输关闭与 epoch 守卫 |
 | [moondrop/DropControlBinding.kt](moondrop/DropControlBinding.kt) | 单会话初始化、GAIA/9ECA 回复匹配、通知解释、错误映射 |
 | [moondrop/DropProfiles.kt](moondrop/DropProfiles.kt) | 内置型号名称表、ANC 路径与读写编号合并解析 |
 | [moondrop/DropGattIds.kt](moondrop/DropGattIds.kt) | 完整小写协议 UUID；不属于通用通讯包 |
-| [moondrop/GaiaEqModels.kt](moondrop/GaiaEqModels.kt) | GAIA 参数 EQ 滤波器、频段与完整读回模型 |
-| [moondrop/GaiaControls.kt](moondrop/GaiaControls.kt) | GAIA 公共控件接口 |
-| [moondrop/GaiaControlsImpl.kt](moondrop/GaiaControlsImpl.kt) | GAIA 参数检查、读回、功能快照更新 |
-| [moondrop/GaiaIds.kt](moondrop/GaiaIds.kt) | GAIA feature 与命令编号表；存在常量不表示设备实现 |
-| [moondrop/GaiaBluetrumPeqCodec.kt](moondrop/GaiaBluetrumPeqCodec.kt) | 内部严格 Bluetrum PEQ 负载编解码、响应解析、MTU 批量上限 |
-| [moondrop/GaiaPeqParameters.kt](moondrop/GaiaPeqParameters.kt) | 公开原始量纲转换、单段及完整快照验证，无 I/O |
-| [moondrop/PeqBiquad.kt](moondrop/PeqBiquad.kt) / [PeqHeadroom.kt](moondrop/PeqHeadroom.kt) | 公开 48 kHz 响应估算及 768 点前置衰减计算，无 I/O |
-| [moondrop/GaiaRfcomm.kt](moondrop/GaiaRfcomm.kt) | 经典 RFCOMM `FF 04 00` 组帧；单帧负载上限 0x7F |
-| [moondrop/SourceProtocol.kt](moondrop/SourceProtocol.kt) | 9ECA 全部值模型、`SourceIds`、`SourceCodec` |
-| [moondrop/SourceControls.kt](moondrop/SourceControls.kt) | 9ECA 公共控件接口 |
-| [moondrop/SourceControlsImpl.kt](moondrop/SourceControlsImpl.kt) | 9ECA 状态检查、音源稳定等待、SET 响应与固件 fallback |
-| [moondrop/AncVerification.kt](moondrop/AncVerification.kt) | 一次 SET、最多四次 GET 的 ANC 确认算法 |
+| [moondrop/gaia/GaiaEqModels.kt](moondrop/gaia/GaiaEqModels.kt) | GAIA 参数 EQ 滤波器、频段与完整读回模型 |
+| [moondrop/gaia/GaiaControls.kt](moondrop/gaia/GaiaControls.kt) | GAIA 公共控件接口 |
+| [moondrop/gaia/GaiaControlsImpl.kt](moondrop/gaia/GaiaControlsImpl.kt) | GAIA 参数检查、读回、功能快照更新 |
+| [moondrop/gaia/GaiaIds.kt](moondrop/gaia/GaiaIds.kt) | GAIA feature 与命令编号表；存在常量不表示设备实现 |
+| [moondrop/gaia/GaiaBluetrumPeqCodec.kt](moondrop/gaia/GaiaBluetrumPeqCodec.kt) | 内部严格 Bluetrum PEQ 负载编解码、响应解析、MTU 批量上限 |
+| [moondrop/gaia/GaiaPeqParameters.kt](moondrop/gaia/GaiaPeqParameters.kt) | 公开原始量纲转换、单段及完整快照验证，无 I/O |
+| [moondrop/gaia/PeqBiquad.kt](moondrop/gaia/PeqBiquad.kt) / [PeqHeadroom.kt](moondrop/gaia/PeqHeadroom.kt) | 公开 48 kHz 响应估算及 768 点前置衰减计算，无 I/O |
+| [moondrop/gaia/GaiaRfcomm.kt](moondrop/gaia/GaiaRfcomm.kt) | 经典 RFCOMM `FF 04 00` 组帧；单帧负载上限 0x7F |
+| [moondrop/gaia/AncVerification.kt](moondrop/gaia/AncVerification.kt) | 一次 SET、最多四次 GET 的 ANC 确认算法 |
+| [moondrop/source/SourceProtocol.kt](moondrop/source/SourceProtocol.kt) | 9ECA 全部值模型、`SourceIds`、`SourceCodec` |
+| [moondrop/source/SourceControls.kt](moondrop/source/SourceControls.kt) | 9ECA 公共控件接口 |
+| [moondrop/source/SourceControlsImpl.kt](moondrop/source/SourceControlsImpl.kt) | 9ECA 状态检查、音源稳定等待、SET 响应与固件 fallback |
 
 `drop` 源码按层分开：`ink.lipoly.app.sunrise.drop` 只保留跨协议契约、状态与生命周期；
 `ink.lipoly.app.sunrise.drop.gaia` 只描述 GAIA 信封（头、类型、能力分页），不含 feature 语义；
-`ink.lipoly.app.sunrise.drop.moondrop` 承载当前设备的 feature 表、GAIA/9ECA 控件与 Bluetrum 负载。
+`ink.lipoly.app.sunrise.drop.moondrop` 放会话持有者、型号表与协议绑定；
+`ink.lipoly.app.sunrise.drop.moondrop.gaia` 放 GAIA feature 表、控件与 Bluetrum EQ；
+`ink.lipoly.app.sunrise.drop.moondrop.source` 放 9ECA 值模型与控件。
 新增品牌应新增同级子包（例如 `roselink`、`tanchjim`），不把协议实现放回通用层或 `bluetooth`。
 
 通讯包名是 `ink.lipoly.app.sunrise.bluetooth`；公开通讯入口包括 `BtManager`、`BtDevice`、`GattController`、`GattSession`、`RfcommStream` 与 `createBtManager`，协议组帧不属于这些通用契约。
@@ -80,27 +81,33 @@ flowchart TD
 
     device -->|".gatt"| gatt
     gatt -->|"suspend .connect()"| session
-    device -->|"DropController(device, ...)"| controller
+    device -->|"openMoondrop(device, ...)"| controller
 
     subgraph publicApi["对外入口"]
-        controller["DropController"]
-        gaia["GaiaControls"]
-        source["SourceControls"]
+        controller["IBudsController"]
+        gaia["as? GaiaControls"]
+        source["as? SourceControls"]
+        battery["as? BatteryControls"]
+        noise["as? NoiseControls"]
         state["StateFlow&lt;DropState&gt;"]
         events["SharedFlow&lt;DropEvent&gt;"]
 
-        controller -->|".gaia"| gaia
-        controller -->|".source"| source
+        controller -->|"能力 cast"| gaia
+        controller -->|"能力 cast"| source
+        controller -->|"能力 cast"| battery
+        controller -->|"能力 cast"| noise
         controller -->|".state"| state
         controller -->|".events"| events
     end
 
-    subgraph internalImpl["单个连接 epoch 内部"]
+    subgraph internalImpl["单次传输会话内部"]
+        impl["MoondropController<br/>internal"]
         binding["DropControlBinding<br/>初始化、事务锁、pending、通知处理"]
         contract["DropControlSession<br/>控件使用的内部接口"]
         gaiaImpl["GaiaControlsImpl"]
         sourceImpl["SourceControlsImpl"]
 
+        impl -->|"创建并持有"| binding
         binding -.->|"实现"| contract
         binding -->|"创建并持有"| gaiaImpl
         binding -->|"创建并持有"| sourceImpl
@@ -108,23 +115,22 @@ flowchart TD
         sourceImpl -->|"请求、状态更新"| contract
     end
 
-    controller -->|"观察 GATT 状态，安装或替换"| binding
-    binding -->|"借用，不拥有连接"| session
-    binding -->|"经 controller 发布当前绑定的状态"| state
-    binding -->|"经 controller 发布当前绑定的事件"| events
-
-    gaiaImpl -.->|"实现"| gaia
-    sourceImpl -.->|"实现"| source
+    controller -.->|"实现"| impl
+    impl -->|"经绑定发布状态"| state
+    impl -->|"经绑定发布事件"| events
+    impl -->|"委托"| gaiaImpl
+    impl -->|"委托"| sourceImpl
+    binding -->|"使用调用方会话；owned 时由 controller 断开"| session
 
     classic["RfcommStream?<br/>由 profileDevice 提供"]
-    classic -->|"经 controller / binding 注入"| gaiaImpl
+    classic -->|"经 openMoondrop / binding 注入"| gaiaImpl
     gaiaImpl -->|"仅指定 PEQ 激活与参数写入"| classic
 ```
 
-- `DropController` 跨重连存续；`DropControlBinding` 和控件实例只属于一次会话。
+- `IBudsController` 只覆盖一次传输会话：换设备或重连由调用方 `close()` 旧实例并重新 `openMoondrop`。
 - `DropControlSession` 是接口，不是另一条连接；GAIA / 9ECA 经它使用同一绑定的生命周期与事务锁。
 - GATT 承担常规请求与回复；经典通道存在时，指定 PEQ 写入走 RFCOMM，失败不回退 BLE。
-- 关闭控制器会退休绑定和旧控件，不会关闭借用的 GATT。
+- `close()` 退休绑定与旧能力引用；owned 入口会断开自己打开的 GATT/SPP，借用会话则不动调用方的连接。
 
 ## 公开参数与 EQ 数学 API
 
@@ -149,40 +155,47 @@ flowchart TD
 
 ```kotlin
 // 签名速查，不是独立运行示例；device/profileDevice 是调用方持有的 BtDevice。
-DropController(device, options = DropOptions(), profileDevice = device)
+suspend fun openMoondrop(
+    device: BtDevice,
+    options: DropOptions = DropOptions(),
+    profileDevice: BtDevice = device,
+): IBudsController
 ```
 
 | API | 契约 |
 | --- | --- |
-| `device: BtDevice` | 实际通讯端点。其管理器、GATT 连接由调用方拥有 |
-| 构造参数 `options` | `DropOptions.profileOverrides`，仅影响编号配置 |
-| 构造参数 `profileDevice` | 匹配配置使用的地址/名称。可与通讯端点不同；每次新绑定读取其当时 `info.value.name` |
-| `state: StateFlow<DropState>` | 当前功能快照，有初值；晚订阅读当前值恢复 |
+| `device: BtDevice` | 实际通讯端点；`openMoondrop` 调用其 `gatt.connect()` 并拥有该连接 |
+| 参数 `options` | `DropOptions.profileOverrides`，仅影响编号配置 |
+| 参数 `profileDevice` | 匹配配置使用的地址/名称。可与通讯端点不同；每次调用读取其当时 `info.value.name` |
+| `state: StateFlow<DropState>` | 当前功能快照，有初值；晚订阅读当前值恢复；关闭后为默认 `DropState()` |
 | `events: SharedFlow<DropEvent>` | 无重放、best-effort 的瞬时通知；不是事务匹配通道 |
-| `gaia: GaiaControls` / `source: SourceControls` | 返回当前 READY 绑定的控件，不保证该协议存在。无 READY 绑定抛 `NotReady`，已关闭抛 `Disconnected` |
-| `suspend awaitReady(): Unit` | 为当前已经 CONNECTED 的会话启动/共享一次初始化并等待；没有现有会话立即 `NotReady`，不等未来连接 |
-| `close(): Unit` | 幂等同步退休绑定、失败化 pending/初始化等待、取消自有 scope，并恢复默认 `DropState()`；不关闭 GATT/管理器 |
+| `as? GaiaControls` / `as? SourceControls` | 实现支持该协议时可用；不支持或能力缺失时 cast 为 null，没有抛 `UnsupportedCapability` 的空实现 |
+| `as? BatteryControls` / `as? NoiseControls` | 电量与降噪的独立能力接口：`readBattery()`、`readNoise()`、`writeNoise(mode)` |
+| `suspend close(): Unit` | 幂等退休绑定、取消自有 scope、恢复默认 `DropState()`，并断开本实例打开的 GATT/SPP；旧能力引用转为 `Disconnected` |
 
-### 构造与共享初始化
+### 会话所有权
 
-构造仅启动 `device.gatt.state` 收集。构造在连接前、在连接后，以及显式 `connect()` 返回后立即调用 `awaitReady()`，都使用同一会话绑定路径：
+`openMoondrop` 是唯一公开入口，只支持 owned：先 `gatt.connect()`，再探测并等待 READY。任一步在连接之后失败（含 `CancellationException`）都会在不可取消上下文中断开本次连接，然后原样抛出。控制器不扫描、不配对、不重连，也不关闭管理器；换设备或重连由调用方 `close()` 旧实例并重新打开。
 
-1. 读取 **最新** GATT 快照，只接受 `GattPhase.CONNECTED` 的会话，不依赖已错过的事件。
-2. 若已有 binding 的 session **引用身份与 id 均相同**，复用它；否则退休旧绑定并创建新绑定。
-3. 短生命周期 Mutex 只保护安装/替换，不持锁等待无线 I/O。同步 `close()` 不等待此锁，因此安装之后再次校验关闭标志与 epoch。
-4. 状态观察与 `awaitReady()` 共享 binding 的一次启动标志和 `CompletableDeferred<Unit>`；同 epoch 不重复探测。
-5. 初始化失败可在 state 中保留 `ERROR/error`，随后 binding 关闭；同一 GATT 会话不会自动重新探测。调用方决定是否显式建立新会话。
+内部另有借用入口（已建立的 `GattSession` + `DropProfile`），仅供本模块测试使用，不构成公开 API，也不承诺借用会话的断开责任。
 
-单个调用者取消 `awaitReady()` 只取消该次等待，不取消共享初始化或 GATT。断连、换会话或控制器关闭使绑定等待/请求失败；初始化结束前还要核对当前 epoch，不能在旧会话上发布 READY。
+### 初始化与等待
+
+1. 建立绑定后立即启动一次初始化；没有可识别协议时 `UnsupportedDevice`，发布 `ERROR` 后关闭绑定。
+2. `openMoondrop` 在返回前等待该次初始化完成；失败直接抛出，不返回半就绪实例。
+3. 初始化失败后同一 GATT 会话不会自动重新探测；是否重试由调用方决定。
+4. owned 实例持续观察 GATT 状态：断开或替换出其他会话时关闭绑定并恢复默认快照，不等下一次调用才发现。
+
+单个调用者取消等待不改变已建立的连接；取消 `openMoondrop` 自身则按上述失败路径断开。初始化结束前仍要核对当前 epoch，不能在旧会话上发布 READY。
 
 ### 控件引用与并发
 
-控件对象属于 **某个绑定**，而不是永久“当前设备”代理。普通动作重新取 getter；实时编辑器可在一个连接 epoch 内固定持有该对象，换绑时必须关闭并丢弃旧草稿，不能在旧 worker 内获取新 getter。旧引用失效后抛 `Disconnected`，不能把请求或旧读值发送到新会话。
+控件对象属于 **某个绑定**，而不是永久“当前设备”代理。能力接口只在本实例内有效；实时编辑器可固定持有该对象，换会话时必须关闭并丢弃旧草稿。旧引用失效后抛 `Disconnected`，不能把请求或旧读值发送到新会话。
 
 - 一个 binding 内 GAIA 和 9ECA 共用事务 Mutex，每次请求只有对应 pending 槽；不同设备的控制器各自独立，可以同时等待回复。
 - Codec SET+GET、完整 PEQ 读取/批量写入/验证和预设 SET+GET 在一次 `withGaiaTransaction` 内持有同一个 Mutex；不与 GAIA 或 9ECA 请求交错。其他多步骤动作（例如 ANC 读回、音源轮询）仍由多次事务组成，不自动成为大事务。
-- 隔离保证针对 **不同设备**。同一设备创建多个控制器并行操作同一协议不在保证范围；响应可能被各自订阅者观察，不应据此建立同设备共享控制方案。
-- `close()` 不发送关闭通知命令、不撤销其他使用者的 CCCD，也不等待已开始原生操作的 callback。若调用方拥有连接，需另外断开；借用连接时则不能顺手断开。
+- 隔离保证针对 **不同设备**。同一设备创建多个客户端/控制器并行操作同一协议不在保证范围；响应可能被各自订阅者观察，不应据此建立同设备共享控制方案。
+- `close()` 不发送关闭通知命令、不撤销其他使用者的 CCCD，也不等待已开始原生操作的 callback；owned 实例随后断开自己的连接。
 
 ## 初始化与能力完整性
 
@@ -265,16 +278,15 @@ DropController(device, options = DropOptions(), profileDevice = device)
 
 固件 `features` 位映射：bit0 PRESET_EQ、bit1 PEQ、bit2 AUDIO_SOURCE、bit3 VOLUME、bit4 MIC_GAIN；其余位忽略。不要用 `featureFlags` 未定义位发明功能。`ByteArray` 模型字段是原始字节，不自动解码文本；Kotlin 数据类不提供数组内容相等保证。
 
-## 跨协议门面
+## 能力接口
 
-`DropController.controls` / `HeadsetClient.controls` 返回 `EarbudControls`：当前 READY 绑定的基础能力投影，
-与 `GaiaControls`、`SourceControls` 并列，**不继承**它们，也不暴露任何实现类。
+控制器只暴露 `IBudsController`；能力由实现额外实现，调用方用 `as?` 取得：`GaiaControls`、`SourceControls`、`BatteryControls`、`NoiseControls`。没有该能力时 cast 为 `null`，不提供返回构造值的空实现，也不暴露实现类。
 
-- `capabilities` 只报告协议集合、可写降噪模式与探测完整性；空集合不证明不支持，也不表示品牌认证。
-- `battery` / `noise` 在协议不支持时为 `null`，不提供抛 `UnsupportedCapability` 的空实现；`noise.write` 返回读回模式。
-- 品牌或系列特有能力（增益、LED、空间音频、EQ、编码、按键）继续走 `gaia` / `source`，后续品牌由各自公开接口提供，调用方用 `as?` 取得。
-- 门面、`gaia`、`source` 同属一个绑定 epoch：换会话后必须重新取得，旧引用读取能力或调用操作都抛 `Disconnected`。
-- 门面不持有状态：功能快照仍看 `DropState`，门面方法只做委托，不复制读值。
+- 协议存在性、可写降噪模式与探测完整性仍看 `DropState`（`protocols`、`capabilities`）；空集合不证明不支持，也不表示品牌认证。
+- `BatteryControls.readBattery()` 返回合并后的组件读数并更新 `DropState.battery`；`NoiseControls.writeNoise()` 返回读回确认的模式。
+- 品牌或系列特有能力（增益、LED、空间音频、EQ、编码、按键）走 `GaiaControls` / `SourceControls`，后续品牌由各自的控制器工厂与公开接口提供。
+- 所有能力属于同一次传输会话：换会话后必须重新从新控制器取得，旧引用调用抛 `Disconnected`。
+- 能力对象不复制状态：功能快照仍看 `state`，方法只做委托。
 
 ## GAIA 控件方法参考
 
@@ -411,7 +423,7 @@ V1 固定 OFF/NC=0/1，不用 AC/V2 map。`capabilities.ancModes` 从所选路�
 
 内置 GOLDEN AGES 2 / SPACE TRAVEL 2 的 AC write 为 OFF=1、NC=2、TRANSPARENCY=4、WIND=3，read 为 0/1/2/3→OFF/NC/TRANSPARENCY/WIND；gain 为 LOW/MEDIUM/HIGH=2/1/0。PUDDING 的 V2 write 为 OFF=0、NC=4、TRANSPARENCY=2、WIND=3、ADAPTIVE=1，read 对应这些编号，gain 默认。NEKOCAKE/PILL/MOCA 仅显式使用默认 gain。这些名称表 **只影响映射，不是品牌过滤、不证明固件版本或物理设备**。
 
-字段编号最终以字节提交，本层不替自定义 profile 检查完整性/编号范围。只有经固件实测的映射才应配置；不要从发送编号推断 GET 编号。音频地址不同于 BLE 时，传 `DropController(endpoint, options, profileDevice = audioDevice)`；profileDevice 不触发扫描/切换/连接，关联策略属于 [headset](../../../shared/src/headset/Docs.md)。
+字段编号最终以字节提交，本层不替自定义 profile 检查完整性/编号范围。只有经固件实测的映射才应配置；不要从发送编号推断 GET 编号。音频地址不同于 BLE 时，传 `openMoondrop(endpoint, options, profileDevice = audioDevice)`；profileDevice 不触发扫描/切换/连接，关联策略属于 [headset](../../../shared/src/headset/Docs.md)。
 
 ## 帧、特征与事务匹配
 
@@ -518,39 +530,41 @@ V1 固定 OFF/NC=0/1，不用 AC/V2 map。`capabilities.ancModes` 从所选路�
 
 以下均为完整导入与函数，使用调用方实际句柄/地址；不构造假生产后端，不申请权限、不替用户选择物理耳机。错误会抛给宿主，宿主应优先透传 `CancellationException` 再展示控制错误。
 
-### 借用已经连接的会话
+### 打开一次连接并读取电量
 
-前提：宿主持有 manager/device，GATT 已 CONNECTED；只创建本函数自己的控制器。构造在连接之后也能从 state 快照绑定。函数关闭控制器 **不**断开借用的会话。
+前提：宿主持有 manager/device 并已完成授权；函数自己打开并关闭本次连接，不借用调用方的 GATT 会话。
 
 ```kotlin
 import ink.lipoly.app.sunrise.bluetooth.BtDevice
-import ink.lipoly.app.sunrise.drop.DropController
+import ink.lipoly.app.sunrise.drop.BatteryControls
 import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
+import ink.lipoly.app.sunrise.drop.moondrop.openMoondrop
 
-suspend fun readBorrowedBattery(device: BtDevice): EarbudBatteryReading? {
-    val controller = DropController(device)
+suspend fun readBatteryOnce(device: BtDevice): EarbudBatteryReading {
+    val controller = openMoondrop(device)
     try {
-        controller.awaitReady()
-        // 门面按绑定能力投影：battery 为 null 表示当前协议不报告电量，无需再判协议集合。
-        return controller.controls.battery?.read()
+        // 能力用 as? 取得；null 表示该实现不报告电量，不判协议集合猜测。
+        val battery = controller as? BatteryControls ?: error("该设备不报告电量")
+        return battery.readBattery()
     } finally {
+        // 关闭会断开本次自有的 GATT；返回值来自实际响应，不预设电量。
         controller.close()
     }
 }
 ```
 
-门面只覆盖电量、降噪等基础能力；增益、LED、空间音频、EQ 等仍从 `controller.gaia` 取得。读取不是锁住无线连接；读取后仍可能断连并抛异常，这是正常竞态，不应转成成功。
+能力接口只覆盖电量、降噪等基础能力；增益、LED、空间音频、EQ 等仍从 `controller as? GaiaControls` 取得。读取不是锁住无线连接；读取后仍可能断连并抛异常，这是正常竞态，不应转成成功。
 
 ### 拥有两个不同设备的连接
 
-前提：两个实际地址不同，宿主已经完成平台授权/打开蓝牙；本函数对这两个设备拥有独占连接生命周期，进入前它们未连接，不能用于会把别人的会话断开的借用场景。注入的 `bt` 由外部释放。
+前提：两个实际地址不同，宿主已经完成平台授权/打开蓝牙；本函数对这两个设备拥有独占连接生命周期，进入前它们未连接。注入的 `bt` 由外部释放。
 
 ```kotlin
+import ink.lipoly.app.sunrise.bluetooth.BtDevice
 import ink.lipoly.app.sunrise.bluetooth.BtManager
-import ink.lipoly.app.sunrise.drop.DropController
-import ink.lipoly.app.sunrise.drop.DropPhase
-import ink.lipoly.app.sunrise.drop.DropProtocol
+import ink.lipoly.app.sunrise.drop.BatteryControls
 import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
+import ink.lipoly.app.sunrise.drop.moondrop.openMoondrop
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -564,67 +578,57 @@ suspend fun readOwnedPair(
     val a = bt.device(addressA)
     val b = bt.device(addressB)
     require(a !== b) { "需要两个不同设备" }
-    val ca = DropController(a)
-    val cb = DropController(b)
-    try {
-        return coroutineScope {
-            val batteryA = async {
-                a.gatt.connect()
-                ca.awaitReady()
-                check(ca.state.value.phase == DropPhase.READY)
-                check(DropProtocol.GAIA_BLE in ca.state.value.protocols)
-                ca.gaia.getBattery()
-            }
-            val batteryB = async {
-                b.gatt.connect()
-                cb.awaitReady()
-                check(cb.state.value.phase == DropPhase.READY)
-                check(DropProtocol.GAIA_BLE in cb.state.value.protocols)
-                cb.gaia.getBattery()
-            }
-            batteryA.await() to batteryB.await()
+    suspend fun read(device: BtDevice): EarbudBatteryReading {
+        val controller = openMoondrop(device)
+        try {
+            return (controller as? BatteryControls)?.readBattery()
+                ?: error("设备不报告电量")
+        } finally {
+            withContext(NonCancellable) { controller.close() }
         }
-    } finally {
-        ca.close()
-        cb.close()
-        withContext(NonCancellable) {
-            try { a.gatt.disconnect() } finally { b.gatt.disconnect() }
-        }
+    }
+    return coroutineScope {
+        val batteryA = async { read(a) }
+        val batteryB = async { read(b) }
+        batteryA.await() to batteryB.await()
     }
 }
 ```
 
-一个异步读取失败会取消另一个调用方，finally 仍释放本函数拥有的两连接；控制器关闭与 GATT 断开明确分开。返回的电量来自实际响应，不预设数字。
+一个读取失败会取消另一个调用方，`finally` 仍在不可取消上下文中关闭已打开的连接；控制器自身负责断开自己打开的 GATT，调用方不再单独 `gatt.disconnect()`。返回的电量来自实际响应，不预设数字。
 
 ### 由设备条目和宿主选择切换音源
 
-前提：controller 已 awaitReady，宿主拥有其生命周期；`chooseSourceId` 根据展示给用户的实际 entries 选择，也可返回 null 取消。不硬编码任何音源 ID，零条目不发送 SET。只在缺可读 capability 时 fallback 命令页，其他错误不被伪装成空列表。
+前提：controller 已就绪，宿主拥有其生命周期；`chooseSourceId` 根据展示给用户的实际 entries 选择，也可返回 null 取消。不硬编码任何音源 ID，零条目不发送 SET。只在缺可读 capability 时 fallback 命令页，其他错误不被伪装成空列表。
 
 ```kotlin
-import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
-import ink.lipoly.app.sunrise.drop.moondrop.SourceEntry
-import ink.lipoly.app.sunrise.drop.moondrop.SourceStatus
-import ink.lipoly.app.sunrise.drop.moondrop.SourceSwitchOptions
+import ink.lipoly.app.sunrise.drop.IBudsController
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceControls
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceEntry
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceStatus
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceSwitchOptions
 
 suspend fun chooseReportedSource(
-    controller: DropController,
+    controller: IBudsController,
     chooseSourceId: (List<SourceEntry>) -> Int?,
 ): SourceStatus? {
     val snapshot = controller.state.value
     if (snapshot.phase != DropPhase.READY ||
         DropProtocol.SOURCE_9ECA !in snapshot.protocols) return null
+    // 9ECA 能力按实现支持用 as? 取得；null 表示本次会话不提供该协议。
+    val source = controller as? SourceControls ?: return null
     val entries = try {
-        controller.source.readSourceCapability().entries
+        source.readSourceCapability().entries
     } catch (e: DropException.UnsupportedCapability) {
-        controller.source.getCapabilityPage(0).entries
+        source.getCapabilityPage(0).entries
     }
     if (entries.isEmpty()) return null
     val selectedId = chooseSourceId(entries) ?: return null
     val selected = entries.firstOrNull { it.sourceId == selectedId } ?: return null
-    val result = controller.source.setAudioSource(
+    val result = source.setAudioSource(
         selected.sourceId,
         SourceSwitchOptions(awaitStable = true),
     )
@@ -639,16 +643,17 @@ suspend fun chooseReportedSource(
 
 ### 使用音频身份与实测映射，确认 ANC
 
-`endpoint` 为已连接 BLE 句柄，`audioDevice` 为宿主已选定的配置身份；`verifiedProfile` 必须来自实际固件验证，示例不虚构编号。关闭这里只释放新 controller，两个传入设备与连接仍归宿主。
+`endpoint` 为要连接的 BLE 句柄，`audioDevice` 为宿主已选定的配置身份；`verifiedProfile` 必须来自实际固件验证，示例不虚构编号。函数关闭时会断开自己打开的连接。
 
 ```kotlin
 import ink.lipoly.app.sunrise.bluetooth.BtDevice
 import ink.lipoly.app.sunrise.drop.AncMode
-import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropOptions
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProfile
 import ink.lipoly.app.sunrise.drop.DropProtocol
+import ink.lipoly.app.sunrise.drop.NoiseControls
+import ink.lipoly.app.sunrise.drop.moondrop.openMoondrop
 
 suspend fun applyMeasuredAncProfile(
     endpoint: BtDevice,
@@ -656,18 +661,18 @@ suspend fun applyMeasuredAncProfile(
     verifiedProfile: DropProfile,
     requested: AncMode,
 ): AncMode? {
-    val controller = DropController(
+    val controller = openMoondrop(
         device = endpoint,
         options = DropOptions(profileOverrides = listOf(verifiedProfile)),
         profileDevice = audioDevice,
     )
     try {
-        controller.awaitReady()
         val snapshot = controller.state.value
         if (snapshot.phase != DropPhase.READY ||
             DropProtocol.GAIA_BLE !in snapshot.protocols ||
             requested !in snapshot.capabilities.ancModes) return null
-        return controller.gaia.setAncMode(requested)
+        val noise = controller as? NoiseControls ?: return null
+        return noise.writeNoise(requested)
     } finally {
         controller.close()
     }
@@ -681,15 +686,15 @@ verifiedProfile.match 应匹配 audioDevice 的地址/名称，不是强制覆�
 本函数借用一个 controller，在调用方协程生命周期内收集；调用方取消后两个收集自动结束，不替宿主关闭 controller/GATT。事件回调应轻量，因为 slow UI 不能依赖事件无损。
 
 ```kotlin
-import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropEvent
 import ink.lipoly.app.sunrise.drop.DropState
+import ink.lipoly.app.sunrise.drop.IBudsController
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 suspend fun observeDrop(
-    controller: DropController,
+    controller: IBudsController,
     onState: (DropState) -> Unit,
     onEvent: (DropEvent) -> Unit,
 ): Unit = coroutineScope {
@@ -700,12 +705,12 @@ suspend fun observeDrop(
 
 ## 常见误用与平台边界
 
-- `BtEvent.OnDiscovered` 不等于 GATT 已连接，更不等于协议/品牌已确认；`awaitReady` 也不会隐式 connect。
+- `openMoondrop` 会显式 connect 并等待探测；`BtEvent.OnDiscovered` 仍不等于 GATT 已连接，更不等于协议/品牌已确认。
 - `GattPhase.CONNECTED` 是普通服务发现完成，可能完全没有 GAIA/9ECA。controller 的 UnsupportedDevice 不应被用来否定通讯管理器连接普通设备的能力。
 - READY 不等于 complete，也不等于每项功能可用；检查协议、能力及最终错误，不把未知值显示成确定关闭/零电量。
 - controller 不提供应用 `HeadsetPhase`、设备选择、自动重连、音频/BLE 关联或 30 秒电量轮询。应用入口和 Android 权限流程见 [headset 指南](../../../shared/src/headset/Docs.md)，原生权限/连接/队列见 [bluetooth 指南](../bluetooth/Docs.md)。
 - 不缓存跨会话控件，不共用旧特征句柄，不依赖 UI 通知完成请求；晚订阅读 StateFlow，不等历史事件。
 - 常规 GAIA SET 多数有 GET，9ECA SET 多数只有响应；sendRaw/powerOff 只有传输完成。不要将所有 setter 的确认等级统一包装成“硬件已应用”。
 - 常规控制使用 GATT；现有经典 RFCOMM EQ 写入不隐式回退到 BLE，也不提供发现前协议/品牌过滤。内置 profile 名称仅是编号映射规则。
-- JVM `createBtManager` 创建独立内存模拟器，模拟 GAIA 的状态读写和五段 PEQ，生产 `DropController` 仍处理真实格式的 GATT 字节。它不提供 9ECA 或经典 RFCOMM，也不证明 Android 无线、实体 DSP 或 Flash 行为；模拟范围见 [bluetooth](../bluetooth/Docs.md#平台入口与-android-权限)。
+- JVM `createBtManager` 创建独立内存模拟器，模拟 GAIA 的状态读写和五段 PEQ，生产 `MoondropController` 仍处理真实格式的 GATT 字节。它不提供 9ECA 或经典 RFCOMM，也不证明 Android 无线、实体 DSP 或 Flash 行为；模拟范围见 [bluetooth](../bluetooth/Docs.md#平台入口与-android-权限)。
 - 实体 Android 蓝牙、耳机固件行为、具体映射、Q/滤波器/原始 ID/标志等未定义语义必须结合真机与固件资料验证。此参考以当前源码契约为准，不声称已完成实体硬件验证，不包含随时间失效的测试计数或运行日记。

@@ -29,13 +29,14 @@ import androidx.compose.ui.unit.dp
 import ink.lipoly.app.sunrise.compose.ListItemCard
 import ink.lipoly.app.sunrise.compose.Expander
 import ink.lipoly.app.sunrise.drop.AncMode
+import ink.lipoly.app.sunrise.drop.BatteryControls
 import ink.lipoly.app.sunrise.drop.DropEvent
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
 import ink.lipoly.app.sunrise.drop.GainLevel
 import ink.lipoly.app.sunrise.drop.HeadTrackingMode
-import ink.lipoly.app.sunrise.drop.moondrop.SourceCapability
+import ink.lipoly.app.sunrise.drop.moondrop.source.SourceCapability
 import ink.lipoly.app.sunrise.headset.HeadsetClient
 import ink.lipoly.app.sunrise.headset.HeadsetDevice
 import ink.lipoly.app.sunrise.headset.HeadsetEvent
@@ -200,7 +201,10 @@ internal fun DiagnosticsEntry(
                     "  右 " + state.battery.right?.percent.percent() +
                     "  盒 " + state.battery.case?.percent.percent())
                 OutlinedButton(onClick = {
-                    runAction("读取电量", DropProtocol.GAIA_BLE) { controls.battery?.read(); "完成" }
+                    runAction("读取电量", DropProtocol.GAIA_BLE) {
+                        (this.controller as? BatteryControls)?.readBattery()
+                        "完成"
+                    }
                 }, enabled = gaiaReady) { Text("刷新电量") }
 
                 Text("降噪：" + (state.ancMode?.label() ?: "未读取"))

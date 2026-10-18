@@ -1,19 +1,17 @@
 package ink.lipoly.app.sunrise.drop
 
 import ink.lipoly.app.sunrise.bluetooth.*
-import ink.lipoly.app.sunrise.drop.moondrop.DropControlBinding
 import ink.lipoly.app.sunrise.drop.moondrop.DropGattIds
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
 import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.moondrop.PeqFilter
-import kotlinx.coroutines.CoroutineScope
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaPeqBand
+import ink.lipoly.app.sunrise.drop.moondrop.MoondropController
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqFilter
+import ink.lipoly.app.sunrise.drop.moondrop.openMoondrop
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.withTimeout
-import kotlin.time.Duration.Companion.milliseconds
 
 /** In-memory device storage behind real GATT bytes and the production binding's notification collector. */
 internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, override val id: Long = 1) : GattSession {
@@ -230,21 +228,17 @@ internal class FakeRfcomm(
     override suspend fun close() {
         closed++
     }
+    override suspend fun read(): ByteArray =
+        throw BtException.UnsupportedOperation("Fixture RFCOMM has no inbound data")
 }
 
-internal suspend fun CoroutineScope.readyBinding(
+/** 借用 fixture 会话建立 READY 控制器；调用方负责在结束时 close()。 */
+internal suspend fun readyController(
     device: GaiaGattDeviceFixture,
     current: () -> Boolean = { true },
-    publish: (DropControlBinding) -> Unit = {},
-): DropControlBinding {
-    val binding = DropControlBinding(device, this, DropProfile(DropProfileMatch.NameContains("fixture")),
-        { current() }, publish, { _, _ -> }, device.rfcomm)
-    binding.startInitialization()
-    try {
-        withTimeout(3_000.milliseconds) { binding.ready.await() }
-    } catch (e: Exception) {
-        binding.close()
-        throw e
-    }
-    return binding
-}
+): MoondropController = openMoondrop(
+    session = device,
+    profile = DropProfile(DropProfileMatch.NameContains("fixture")),
+    classicEq = device.rfcomm,
+    current = current,
+)

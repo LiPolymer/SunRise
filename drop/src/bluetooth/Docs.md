@@ -63,7 +63,7 @@
 - Android：`BtHost` 是 `android.content.Context` 的 actual typealias。工厂使用 `host.applicationContext`，创建管理器和系统广播订阅，不申请权限，不自动连接或扫描。广播注册失败抛 `BtException.Transport`。
 - JVM：`BtHost` 是抽象标记类，工厂创建独立内存管理器。模拟音频/LE/已配对设备为 `MOONDROP MOCA`，地址 `02:00:00:00:00:01`，类型 DUAL、配对 BONDED；发现与操作立即完成，无真实扫描等待。已获取的有效未知地址保持未知信息，连接明确失败，不为任意地址模拟成功。
 
-模拟器通过会话专属 GAIA command/response 特征让生产 `DropController` 完成探测和请求匹配。电量固定左 82%、右 76%、盒 64%；支持六种 ANC、三档增益、LC3/LDAC/LHDC 开关、LED、空间音频、头部追踪及五段峰值 PEQ。SET 更新内存存储，后续 GET 返回实际存储值；重连创建新会话和句柄但保留设备参数，重新创建管理器后重置。未实现的命令明确失败，不提供 9ECA、RFCOMM、音频或 Flash 操作。会话关闭、旧/外部句柄、MTU 和属性检查仍有效；模拟器不复现 Android 原生操作延迟、权限或回调竞态。
+模拟器通过会话专属 GAIA command/response 特征让生产 `openMoondrop` / `MoondropController` 完成探测和请求匹配。电量固定左 82%、右 76%、盒 64%；支持六种 ANC、三档增益、LC3/LDAC/LHDC 开关、LED、空间音频、头部追踪及五段峰值 PEQ。SET 更新内存存储，后续 GET 返回实际存储值；重连创建新会话和句柄但保留设备参数，重新创建管理器后重置。未实现的命令明确失败，不提供 9ECA、RFCOMM、音频或 Flash 操作。会话关闭、旧/外部句柄、MTU 和属性检查仍有效；模拟器不复现 Android 原生操作延迟、权限或回调竞态。
 
 Android 宿主负责 Manifest 声明、运行时权限请求、授权结果与重新进入前台后的检查。本包的 `BtPermissions.missing(context, scan = true)` **只检查，不弹授权界面**：
 
@@ -131,9 +131,10 @@ Android 原生调用的 `MissingPermission` 只在已核实的函数边界局部
 | `address` | `String` | 远端规范大写地址，仅诊断 |
 | `open()` | 挂起，`Unit` | 已打开直接返回；否则按 SPP 服务记录解析通道并连接，需 `BLUETOOTH_CONNECT` |
 | `write(bytes)` | 挂起，`Unit` | 向已打开通道写入并刷新；不做组帧、分片或响应匹配 |
+| `read()` | 挂起，`ByteArray` | 读取当前可用的一段入站字节；无数据时挂起等待，取消只结束本次等待，不关闭通道 |
 | `close()` | 挂起，`Unit` | 幂等释放 socket，不抛平台异常 |
 
-Android 实现用系统栈完成 SDP 查询、RFCOMM 组帧、流控与校验，本层只搬运字节；打开或写入的取消会关闭已创建的 socket，避免半开连接。写入前丢弃已缓冲的入站字节（尽力而为，读取失败不影响写入判定）；写入失败时清空句柄并关闭可疑 socket，下一次写入重新连接。诊断默认关闭，`adb shell setprop log.tag.SunRiseRfcomm DEBUG` 打开后记录 `connect`、`tx` 与 `tx-fail`；`tx-fail` 含对端地址、字节数与完整原因链（外层映射错误到平台异常），不含完整 payload。LE 地址上的句柄通常找不到 SPP 记录，因此 `open()` 失败是正常结果而不是状态断言。管理器 `close()` 会同步关闭已开通道。持有句柄不代表对端是经典设备、已配对或提供任何服务。
+Android 实现用系统栈完成 SDP 查询、RFCOMM 组帧、流控与校验，本层只搬运字节；打开或写入的取消会关闭已创建的 socket，避免半开连接。`read()` 采用轮询而非阻塞读，使取消、关闭与超时都能及时返回；单次返回不保证是一帧，组帧由调用方负责。没有活跃读取者时，写入前仍尽力排空已缓冲的入站字节（读取失败不影响写入判定）；一旦有读取者，写入不再排空，避免吞掉协议回复。读取失败会清空并关闭可疑 socket，下一次操作重新连接。写入失败时清空句柄并关闭可疑 socket，下一次写入重新连接。诊断默认关闭，`adb shell setprop log.tag.SunRiseRfcomm DEBUG` 打开后记录 `connect`、`tx`、`rx` 与 `tx-fail`；`tx-fail` 含对端地址、字节数与完整原因链（外层映射错误到平台异常），不含完整 payload。LE 地址上的句柄通常找不到 SPP 记录，因此 `open()` 失败是正常结果而不是状态断言。管理器 `close()` 会同步关闭已开通道。持有句柄不代表对端是经典设备、已配对或提供任何服务。
 
 ### BtGatt、GattSession 与句柄
 

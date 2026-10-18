@@ -42,7 +42,7 @@ Kotlin Toolchain 0.12.2 / Kotlin 2.4.20 的 Android + JVM Compose Multiplatform 
 | `bluetooth` / `drop/src@jvm` | Android 真实蓝牙；JVM 内存模拟管理器与 GAIA 外设 |
 | `drop/src/drop` | 跨协议契约：状态、事件、异常、profile、门面与控制器生命周期 |
 | `drop/src/drop/gaia` | GAIA 通用信封、类型与能力分页；不含 feature 语义 |
-| `drop/src/drop/moondrop` | 当前设备的 GAIA / 9ECA / Bluetrum 实现、协议 UUID 与参数数学 API |
+| `drop/src/drop/moondrop` | 当前设备的会话持有者、型号表与协议绑定（`gaia` / `source` 子包放 GAIA/9ECA 实现） |
 | `shared/src/headset` | 应用单耳机连接、选择、音频/BLE 关联和电量轮询 |
 | `shared/src/di` | Koin 模块、进程 runtime 和蓝牙资源 owner |
 | `shared/src/presentation` | 宿主展示会话、连接协调器、目录操作及 EQ 会话所有权 |
@@ -129,7 +129,7 @@ StateFlow 用 `collectAsState()` 订阅。`compose/ParamEqBinding.kt` 的 `remem
 ## 蓝牙与控制边界
 
 - `BtManager` 按规范地址保存稳定 `BtDevice`，每台设备独立管理 GATT。`OnDiscovered` 只表示枚举/扫描观测，不证明连接、品牌匹配或协议可用。
-- 显式 `device.gatt.connect()` 后，通过 `DropController(device).awaitReady()` 初始化。控制器关闭不关闭 GATT；不同设备会话隔离，旧帧和旧控件不能影响新会话。不保证同一设备上的重复控制器并行控制同一协议。
+- 通过 `openMoondrop(device)` 打开会话：控制器自行 `gatt.connect()` 并返回 READY 的 `IBudsController`，GAIA/9ECA/电量/降噪能力用 `as?` 取得。`close()` 释放本实例打开的 GATT/SPP；换会话由调用方关闭旧实例后重建，旧引用抛 `Disconnected`。不同设备会话隔离，不保证同一设备上的多个控制器并行控制同一协议。
 - 应用仍为单耳机策略：0 台音频候选等待，1 台尝试，多台要求选择；依次尝试缓存端点、音频地址、同名已配对 LE/DUAL、LE 扫描。同名不是物理设备关联证明。
 - 连接阶段、音频身份与错误在 `HeadsetState`，协议、能力、电量与 ANC 在 `state.controls`。电量轮询由应用 facade 拥有，不下放控制器。
 - ANC 和 LDAC/LC3/LHDC 设备端开关采用 SET 后 GET 确认；失配保留实际值，无法验证则清除未知值。编码开关不代表当前音频流实际编码。
@@ -142,7 +142,7 @@ StateFlow 用 `collectAsState()` 订阅。`compose/ParamEqBinding.kt` 的 `remem
 - 手动提交模式的编辑、松手、撤销、重置和平直只改草稿；只有“提交一次”发送完整快照，刚读取的原样配置也允许提交一次。排队/发送期间冻结编辑与重复提交；成功后直到再次编辑或重读才可再提交。方式切换不隐式发送，重读保留方式，新编辑器默认实时。
 - 写入顺序固定：查询段数 → 无条件选择 USER63 → 等待 100 ms → 批量参数。没有当前预设查询或写后切换；所有分包使用同一新 header，频率/Q/单段增益不变，按实际链路容量分包。
 - 有经典 RFCOMM 绑定时，激活与参数写入走经典链路，BLE 保留读取和控件；经典写入失败不得回退 BLE。无经典通道时仍使用 BLE。实机曾证明同字节 BLE 写入导致单侧无声，而官版经典写入正常，不得仅凭字节一致改回 BLE。
-- RFCOMM 使用 SPP，`GaiaRfcomm` 帧为 `FF 04 00 <GAIA 负载长度>` + 标准 GAIA 帧。失败时关闭可疑通道；单帧最多三次尝试，重连前等待 150 ms，不重发已成功帧。入站丢弃尽力而为，读取失败不冒充写入失败。
+- RFCOMM 使用 SPP，`GaiaRfcomm` 帧为 `FF 04 00 <GAIA 负载长度>` + 标准 GAIA 帧。失败时关闭可疑通道；单帧最多三次尝试，重连前等待 150 ms，不重发已成功帧。入站由 `RfcommStream.read()` 读取，无活跃读取者时写入前尽力排空；读取失败不冒充写入失败。
 - 每次发送按最新量化 raw 参数重算前置衰减：48 kHz、20–20000 Hz 的 768 个对数点计算级联峰值，负补偿向下舍入到 0.1 dB 后再减 0.1 dB，无提升时不做正向放大。超出 signed16 或非有限响应时，在任何命令前拒绝。它不是 limiter 或绝对防削波保证。
 - “已发送”仅代表传输完成，不证明设备接受、DSP 生效或 Flash 保存；不能用继续加衰减掩盖爆音。
 - 保留节点拖动、滚轮 Q、带宽把手、键盘微调及单参数输入。触屏双指横向张开使 Q 降低、合拢使 Q 升高；单指可升格双指，仅继续修改所选段 Q，剩一指后不恢复节点拖动，全部松手后再开始。组合手势共用一次撤销，不改变发送策略。

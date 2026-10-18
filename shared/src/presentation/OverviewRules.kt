@@ -5,7 +5,7 @@ import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
 import ink.lipoly.app.sunrise.drop.DropState
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
 
 /** 已由能力报告或成功读回确认的总览控制。 */
 enum class OverviewControl { GAIN, LED, SPATIAL, HEAD_TRACKING }

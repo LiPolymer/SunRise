@@ -1,10 +1,10 @@
 package ink.lipoly.app.sunrise.drop
 
 import ink.lipoly.app.sunrise.bluetooth.BtException
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaBluetrumPeqCodec
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaBluetrumPeqCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaRfcomm
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaRfcomm
 import kotlinx.coroutines.runBlocking
 import kotlin.test.*
 
@@ -28,16 +28,16 @@ class GaiaClassicEqTest {
             totalGainRaw = official.totalGainRaw
             rfcomm = channel
         }
-        val binding = readyBinding(device)
+        val controller = readyController(device)
         try {
-            val loaded = binding.gaia.getParamEq()
+            val loaded = controller.getParamEq()
             assertEquals(official.bands, loaded.bands)
             device.commands.clear()
-            binding.gaia.setParamEq(loaded.bands)
+            controller.setParamEq(loaded.bands)
             // 读取仍在 BLE：只有段数查询，不再有 BLE 的激活或配置写入。
             assertEquals(listOf(GaiaIds.Eq.GET_BAND_COUNT), device.commands.map { it.command })
             assertTrue(writes(device).isEmpty())
-            assertNull(binding.state.value.paramEq)
+            assertNull(controller.state.value.paramEq)
             assertEquals(1, channel.opened)
             assertEquals(listOf(
                 "ff040001001d0a033f",
@@ -45,29 +45,29 @@ class GaiaClassicEqTest {
             ), channel.frames.map(::hex))
             val gapMs = (channel.writtenAt[1] - channel.writtenAt[0]) / 1_000_000.0
             assertTrue(gapMs >= 90.0, "activation gap $gapMs ms")
-        } finally { binding.close() }
+        } finally { controller.close() }
     }
 
     @Test fun classicChannelChunksLongConfigurationAndNeverFallsBackToBle() = runBlocking {
         val channel = FakeRfcomm(failWrite = BtException.Transport("RFCOMM write failed"))
         val device = GaiaGattDeviceFixture(10, 512).apply { rfcomm = channel }
-        val binding = readyBinding(device)
+        val controller = readyController(device)
         try {
-            val loaded = binding.gaia.getParamEq()
+            val loaded = controller.getParamEq()
             val target = loaded.bands.map { it.copy(gainRaw = 180) }
             device.commands.clear()
-            assertFailsWith<DropException.Transport> { binding.gaia.setParamEq(target) }
+            assertFailsWith<DropException.Transport> { controller.setParamEq(target) }
             // 失败发生在经典链路：不重试、不回退 BLE，且失效写入元数据。
             assertEquals(listOf(GaiaIds.Eq.GET_BAND_COUNT), device.commands.map { it.command })
             assertTrue(writes(device).isEmpty())
-            assertNull(binding.state.value.paramEq)
+            assertNull(controller.state.value.paramEq)
             assertEquals(-17, device.totalGainRaw)
             val afterFailure = device.commands.size
-            assertFailsWith<DropException.NotReady> { binding.gaia.setParamEq(target) }
+            assertFailsWith<DropException.NotReady> { controller.setParamEq(target) }
             assertEquals(afterFailure, device.commands.size)
             channel.failWrite = null
-            binding.gaia.getParamEq()
-            binding.gaia.setParamEq(target)
+            controller.getParamEq()
+            controller.setParamEq(target)
             // 10 段拆成两块，每块 7 段与 3 段，长度字段只计 GAIA 负载。
             assertEquals(listOf(4 + 4 + 4 + 49, 4 + 4 + 4 + 21), channel.frames.drop(1).map { it.size })
             assertEquals(0xff, channel.frames[1][0].toInt() and 0xff)
@@ -75,19 +75,19 @@ class GaiaClassicEqTest {
             assertEquals(0x00, channel.frames[1][2].toInt() and 0xff)
             assertEquals(53, channel.frames[1][3].toInt() and 0xff)
             assertEquals(25, channel.frames[2][3].toInt() and 0xff)
-            assertNull(binding.state.value.paramEq)
-        } finally { binding.close() }
+            assertNull(controller.state.value.paramEq)
+        } finally { controller.close() }
     }
 
     @Test fun transientWriteFailuresReconnectAndRetryTheSameFrame() = runBlocking {
         // 设备侧偶发关闭 SPP 通道：控件层每帧最多尝试三次，较晚的尝试会关闭并重开通道。
         val channel = FakeRfcomm()
         val device = GaiaGattDeviceFixture(5, 512).apply { rfcomm = channel }
-        val binding = readyBinding(device)
+        val controller = readyController(device)
         try {
-            val loaded = binding.gaia.getParamEq()
+            val loaded = controller.getParamEq()
             channel.failWritesRemaining = 2
-            binding.gaia.setParamEq(loaded.bands)
+            controller.setParamEq(loaded.bands)
             // 前两次激活帧写入失败，第三次重连后成功；配置帧随后一次成功。
             assertEquals(3, channel.opened)
             assertEquals(2, channel.closed)
@@ -95,29 +95,29 @@ class GaiaClassicEqTest {
             assertEquals("ff040001001d0a033f", hex(channel.frames[0]))
             assertEquals(0xff, channel.frames[1][0].toInt() and 0xff)
             assertEquals(0x27, channel.frames[1][3].toInt() and 0xff)
-            assertNull(binding.state.value.paramEq)
-        } finally { binding.close() }
+            assertNull(controller.state.value.paramEq)
+        } finally { controller.close() }
     }
 
     @Test fun exhaustedFrameAttemptsFailWithoutBleFallback() = runBlocking {
         val channel = FakeRfcomm(failWritesRemaining = 3)
         val device = GaiaGattDeviceFixture(5, 512).apply { rfcomm = channel }
-        val binding = readyBinding(device)
+        val controller = readyController(device)
         try {
-            val loaded = binding.gaia.getParamEq()
+            val loaded = controller.getParamEq()
             device.commands.clear()
             val target = loaded.bands.map { it.copy(gainRaw = 180) }
-            assertFailsWith<DropException.Transport> { binding.gaia.setParamEq(target) }
+            assertFailsWith<DropException.Transport> { controller.setParamEq(target) }
             // 三次尝试用尽后不再继续：每次重试各关闭并重开一次，且不写 BLE。
             assertEquals(3, channel.opened)
             assertEquals(2, channel.closed)
             assertTrue(channel.frames.isEmpty())
             assertEquals(listOf(GaiaIds.Eq.GET_BAND_COUNT), device.commands.map { it.command })
-            assertNull(binding.state.value.paramEq)
+            assertNull(controller.state.value.paramEq)
             val afterFailure = device.commands.size
-            assertFailsWith<DropException.NotReady> { binding.gaia.setParamEq(target) }
+            assertFailsWith<DropException.NotReady> { controller.setParamEq(target) }
             assertEquals(afterFailure, device.commands.size)
-        } finally { binding.close() }
+        } finally { controller.close() }
     }
 
     @Test fun rejectedFramesKeepSingleByteLengthBound() {

@@ -10,10 +10,10 @@ import ink.lipoly.app.sunrise.bluetooth.GattSession
 import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
 import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.moondrop.PeqFilter
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaPeqBand
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqFilter
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 

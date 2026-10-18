@@ -20,9 +20,6 @@ internal interface DropControlSession {
     /** 此 epoch 的快照，不是全局设备状态。 */
     val state: StateFlow<DropState>
 
-    /** 绑定仍是设备当前会话；旧/已关闭绑定抛 [DropException.Disconnected]，用于无 I/O 的能力读取。 */
-    fun checkActive()
-
     /** 返回本绑定初始化时解析的配置，失效绑定抛 Disconnected。 */
     fun profile(): DropProfile
     /** 返回探测选中的 AC/V2/V1 路径，未知路径由控件拒绝。 */

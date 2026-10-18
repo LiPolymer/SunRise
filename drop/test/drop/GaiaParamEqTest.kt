@@ -1,13 +1,13 @@
 package ink.lipoly.app.sunrise.drop
 
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaBluetrumPeqCodec
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaBluetrumPeqCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
 import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaPeqParameters
-import ink.lipoly.app.sunrise.drop.moondrop.PeqFilter
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaPeqBand
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaPeqParameters
+import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqFilter
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -83,11 +83,11 @@ class GaiaParamEqTest {
     @Test fun completeDeviceReadThenSendOnlyActivationAndMtuChunking() = runBlocking {
         for ((count, mtu, expected) in listOf(Triple(5, 247, listOf(0..4)), Triple(10, 247, listOf(0..6, 7..9)), Triple(5, 23, (0..4).map { it..it }))) {
             val device = GaiaGattDeviceFixture(count, mtu)
-            val binding = readyBinding(device)
+            val controller = readyController(device)
             try {
-                val loaded = binding.gaia.getParamEq()
+                val loaded = controller.getParamEq()
                 assertEquals(2, loaded.currentPreset)
-                assertEquals(loaded, binding.state.value.paramEq)
+                assertEquals(loaded, controller.state.value.paramEq)
                 assertTrue(writes(device).isEmpty())
                 device.beforeReply = { packet, payload ->
                     if (packet.feature == GaiaIds.MUSIC_PROCESSING && packet.command == GaiaIds.Eq.GET_USER_CONFIG)
@@ -95,30 +95,30 @@ class GaiaParamEqTest {
                     else payload
                 }
                 val target = loaded.bands.map { it.copy(gainRaw = 119, qRaw = 4097) }
-                binding.gaia.setParamEq(target)
+                controller.setParamEq(target)
                 assertEquals(target, device.bands)
                 assertEquals(63, device.currentPreset)
-                assertNull(binding.state.value.paramEq)
+                assertNull(controller.state.value.paramEq)
                 assertEquals(expected, ranges(writes(device)))
                 assertTrue(device.writes.all { it.size <= mtu - 3 })
                 assertTrue(device.commands.none { it.feature == 5 && it.command in 7..8 })
                 device.beforeReply = { _, payload -> payload }
-                binding.gaia.setParamEq(loaded.bands)
+                controller.setParamEq(loaded.bands)
                 assertEquals(loaded.bands, device.bands)
-                assertNull(binding.state.value.paramEq)
-                val actual = binding.gaia.getParamEq()
+                assertNull(controller.state.value.paramEq)
+                val actual = controller.getParamEq()
                 assertEquals(loaded.bands, actual.bands)
                 assertEquals(63, actual.currentPreset)
-                assertEquals(actual, binding.state.value.paramEq)
-                binding.gaia.setEqualizerPreset(2)
-                assertNull(binding.state.value.paramEq)
+                assertEquals(actual, controller.state.value.paramEq)
+                controller.setEqualizerPreset(2)
+                assertNull(controller.state.value.paramEq)
                 val afterPreset = device.commands.size
-                assertFailsWith<DropException.NotReady> { binding.gaia.setParamEq(target) }
+                assertFailsWith<DropException.NotReady> { controller.setParamEq(target) }
                 assertEquals(afterPreset, device.commands.size)
-                binding.gaia.getParamEq()
-                binding.gaia.setParamEq(target)
-                assertNull(binding.state.value.paramEq)
-            } finally { binding.close() }
+                controller.getParamEq()
+                controller.setParamEq(target)
+                assertNull(controller.state.value.paramEq)
+            } finally { controller.close() }
         }
     }
 
@@ -128,9 +128,9 @@ class GaiaParamEqTest {
             247 to listOf(0..6, 7..9),
         )) {
             val device = GaiaGattDeviceFixture(10, mtu)
-            val binding = readyBinding(device)
+            val controller = readyController(device)
             try {
-                val loaded = binding.gaia.getParamEq()
+                val loaded = controller.getParamEq()
                 assertEquals(-17, loaded.totalGainRaw) // A stale device header must not drive new uploads.
                 val flat = loaded.bands.map { it.copy(frequencyHz = 2345 + it.index, qRaw = 4097) }
                 val singleBoost = flat.toMutableList().also {
@@ -150,7 +150,7 @@ class GaiaParamEqTest {
                     flat to 0,
                 )) {
                     val before = device.commands.size
-                    binding.gaia.setParamEq(snapshot)
+                    controller.setParamEq(snapshot)
                     val commands = device.commands.drop(before)
                     // Selection precedes every band write and no preset query is interleaved.
                     assertEquals(
@@ -167,69 +167,69 @@ class GaiaParamEqTest {
                     assertEquals(snapshot, decoded.flatMap { it.bands })
                     assertEquals(snapshot, device.bands)
                     assertEquals(expectedHeader, device.totalGainRaw)
-                    assertNull(binding.state.value.paramEq)
+                    assertNull(controller.state.value.paramEq)
                 }
                 assertTrue(device.writes.all { it.size <= mtu - 3 })
-            } finally { binding.close() }
+            } finally { controller.close() }
         }
     }
 
     @Test fun unrepresentableGlobalHeadroomRejectsBeforeAnyCommand() = runBlocking {
         val device = GaiaGattDeviceFixture(10, 23)
-        val binding = readyBinding(device)
+        val controller = readyController(device)
         try {
-            val loaded = binding.gaia.getParamEq()
+            val loaded = controller.getParamEq()
             val target = loaded.bands.map {
                 it.copy(frequencyHz = 1000, gainRaw = 3600, qRaw = 4096)
             }
             val before = device.commands.size
-            assertFailsWith<IllegalArgumentException> { binding.gaia.setParamEq(target) }
+            assertFailsWith<IllegalArgumentException> { controller.setParamEq(target) }
             assertEquals(before, device.commands.size)
             assertEquals(loaded.bands, device.bands)
             assertEquals(-17, device.totalGainRaw)
-            assertEquals(loaded, binding.state.value.paramEq)
-        } finally { binding.close() }
+            assertEquals(loaded, controller.state.value.paramEq)
+        } finally { controller.close() }
     }
 
     @Test fun invalidLastBandAndChangedCountRejectBeforeAnyWrite() = runBlocking {
         val device = GaiaGattDeviceFixture(10)
-        val binding = readyBinding(device)
+        val controller = readyController(device)
         try {
-            val loaded = binding.gaia.getParamEq()
+            val loaded = controller.getParamEq()
             val invalid = loaded.bands.toMutableList().also { it[9] = it[9].copy(qRaw = 0) }
             val before = device.commands.size
-            assertFailsWith<IllegalArgumentException> { binding.gaia.setParamEq(invalid) }
+            assertFailsWith<IllegalArgumentException> { controller.setParamEq(invalid) }
             assertEquals(before, device.commands.size)
             assertTrue(writes(device).isEmpty())
-            assertFailsWith<IllegalArgumentException> { binding.gaia.setParamEq(loaded.bands.reversed()) }
-            assertFailsWith<IllegalArgumentException> { binding.gaia.setParamEq(emptyList()) }
+            assertFailsWith<IllegalArgumentException> { controller.setParamEq(loaded.bands.reversed()) }
+            assertFailsWith<IllegalArgumentException> { controller.setParamEq(emptyList()) }
             for (filter in PeqFilter.entries.filter { it != PeqFilter.PEAKING }) {
                 val unsupported = loaded.bands.toMutableList().also { it[9] = it[9].copy(filter = filter) }
-                assertFailsWith<IllegalArgumentException> { binding.gaia.setParamEq(unsupported) }
+                assertFailsWith<IllegalArgumentException> { controller.setParamEq(unsupported) }
                 assertEquals(before, device.commands.size)
             }
             device.bands = device.bands.dropLast(1)
-            assertFailsWith<DropException.Protocol> { binding.gaia.setParamEq(loaded.bands) }
+            assertFailsWith<DropException.Protocol> { controller.setParamEq(loaded.bands) }
             assertTrue(writes(device).isEmpty())
-            assertNull(binding.state.value.paramEq)
-        } finally { binding.close() }
+            assertNull(controller.state.value.paramEq)
+        } finally { controller.close() }
     }
 
     @Test fun clampingAndPresetRefusalRemainUnverifiedUntilManualRead() = runBlocking {
         for (refusePreset in listOf(false, true)) {
             val device = GaiaGattDeviceFixture(10)
-            val binding = readyBinding(device)
+            val controller = readyController(device)
             try {
-                val loaded = binding.gaia.getParamEq()
+                val loaded = controller.getParamEq()
                 if (refusePreset) device.acceptPresetWrites = false
                 else device.clampBand = { if (it.index == 9) it.copy(gainRaw = 60) else it }
                 val target = loaded.bands.map { it.copy(gainRaw = 180) }
-                binding.gaia.setParamEq(target)
-                assertNull(binding.state.value.paramEq)
+                controller.setParamEq(target)
+                assertNull(controller.state.value.paramEq)
                 assertEquals(listOf(0..6, 7..9), ranges(writes(device)))
-                val actual = binding.gaia.getParamEq()
+                val actual = controller.getParamEq()
                 assertEquals(device.bands, actual.bands)
-                assertEquals(actual, binding.state.value.paramEq)
+                assertEquals(actual, controller.state.value.paramEq)
                 if (refusePreset) {
                     assertEquals(2, actual.currentPreset)
                     assertEquals(target, actual.bands)
@@ -238,16 +238,16 @@ class GaiaParamEqTest {
                     assertEquals(60, actual.bands.last().gainRaw)
                     assertNotEquals(target, actual.bands)
                 }
-            } finally { binding.close() }
+            } finally { controller.close() }
         }
     }
 
     @Test fun originalTransportFailureStopsRemainingWritesAndInvalidatesMetadata() = runBlocking {
         for (failActivation in listOf(false, true)) {
             val device = GaiaGattDeviceFixture(17)
-            val binding = readyBinding(device)
+            val controller = readyController(device)
             try {
-                val loaded = binding.gaia.getParamEq()
+                val loaded = controller.getParamEq()
                 val failure = DropException.Protocol("Injected transport failure")
                 val before = device.commands.size
                 device.beforeWrite = { packet ->
@@ -257,10 +257,10 @@ class GaiaParamEqTest {
                         throw failure
                 }
                 val error = assertFailsWith<DropException.Protocol> {
-                    binding.gaia.setParamEq(loaded.bands.map { it.copy(gainRaw = 180) })
+                    controller.setParamEq(loaded.bands.map { it.copy(gainRaw = 180) })
                 }
                 assertSame(failure, error)
-                assertNull(binding.state.value.paramEq)
+                assertNull(controller.state.value.paramEq)
                 if (failActivation) {
                     // Selection is the first write, so a failed activation leaves every band untouched.
                     assertTrue(writes(device).isEmpty())
@@ -286,14 +286,14 @@ class GaiaParamEqTest {
                 }
                 device.beforeWrite = {}
                 val afterFailure = device.commands.size
-                assertFailsWith<DropException.NotReady> { binding.gaia.setParamEq(loaded.bands) }
+                assertFailsWith<DropException.NotReady> { controller.setParamEq(loaded.bands) }
                 assertEquals(afterFailure, device.commands.size)
-                binding.gaia.getParamEq()
-                binding.gaia.setParamEq(loaded.bands)
+                controller.getParamEq()
+                controller.setParamEq(loaded.bands)
                 assertEquals(loaded.bands, device.bands)
                 assertEquals(63, device.currentPreset)
-                assertNull(binding.state.value.paramEq)
-            } finally { binding.close() }
+                assertNull(controller.state.value.paramEq)
+            } finally { controller.close() }
         }
     }
 
@@ -309,44 +309,44 @@ class GaiaParamEqTest {
                 5 -> device.beforeReply = { packet, payload -> if (packet.feature == 5 && packet.command == 5) payload.copyOf().also { it[8] = 99 } else payload }
                 6 -> device.beforeReply = { packet, payload -> if (packet.feature == 5 && packet.command == 5) payload.copyOf().also { it[8] = 29 } else payload }
             }
-            val binding = readyBinding(device)
+            val controller = readyController(device)
             try {
-                assertFailsWith<DropException> { binding.gaia.getParamEq() }
+                assertFailsWith<DropException> { controller.getParamEq() }
                 val afterRead = device.commands.size
-                assertFailsWith<DropException.NotReady> { binding.gaia.setParamEq(device.bands.ifEmpty {
+                assertFailsWith<DropException.NotReady> { controller.setParamEq(device.bands.ifEmpty {
                     listOf(GaiaPeqBand(0, 1000, 0, 4096, PeqFilter.PEAKING))
                 }) }
                 assertEquals(afterRead, device.commands.size)
-                assertNull(binding.state.value.paramEq)
+                assertNull(controller.state.value.paramEq)
                 assertTrue(writes(device).isEmpty())
                 assertTrue(device.commands.none { it.feature == 5 && it.command in setOf(3, 6, 7, 8) })
-            } finally { binding.close() }
+            } finally { controller.close() }
         }
     }
 
     @Test fun unchangedBandsArePreservedAndMixedHeadersReject() = runBlocking {
         val device = GaiaGattDeviceFixture(10)
-        val binding = readyBinding(device)
+        val controller = readyController(device)
         try {
-            val loaded = binding.gaia.getParamEq()
+            val loaded = controller.getParamEq()
             val target = loaded.bands.map { if (it.index == 9) it.copy(gainRaw = 60) else it }
-            binding.gaia.setParamEq(target)
+            controller.setParamEq(target)
             assertEquals(loaded.bands[0], device.bands[0])
             device.beforeReply = { packet, payload ->
                 if (packet.feature == 5 && packet.command == 5 && packet.payload[0].toInt() == 7)
                     payload.copyOf().also { it[3] = 0 } else payload
             }
-            assertFailsWith<DropException.Protocol> { binding.gaia.getParamEq() }
-            assertNull(binding.state.value.paramEq)
+            assertFailsWith<DropException.Protocol> { controller.getParamEq() }
+            assertNull(controller.state.value.paramEq)
             val afterRead = device.commands.size
-            assertFailsWith<DropException.NotReady> { binding.gaia.setParamEq(target) }
+            assertFailsWith<DropException.NotReady> { controller.setParamEq(target) }
             assertEquals(afterRead, device.commands.size)
-        } finally { binding.close() }
+        } finally { controller.close() }
     }
 
     @Test fun wrongRangeAndSetAckCannotCompleteRangeRead() = runBlocking {
         val device = GaiaGattDeviceFixture(10)
-        val binding = readyBinding(device)
+        val controller = readyController(device)
         try {
             device.beforeReply = { packet, payload ->
                 if (packet.feature == 5 && packet.command == 5 && packet.payload[0].toInt() == 7) {
@@ -355,15 +355,15 @@ class GaiaParamEqTest {
                 }
                 payload
             }
-            assertEquals(device.bands, binding.gaia.getParamEq().bands)
-        } finally { binding.close() }
+            assertEquals(device.bands, controller.getParamEq().bands)
+        } finally { controller.close() }
     }
 
     @Test fun entirePeqWriteOwnsMutexAndCancellationDoesNotRollback() = runBlocking {
         val device = GaiaGattDeviceFixture(10)
-        val binding = readyBinding(device)
+        val controller = readyController(device)
         try {
-            val loaded = binding.gaia.getParamEq()
+            val loaded = controller.getParamEq()
             val waiting = CompletableDeferred<Unit>()
             val release = CompletableDeferred<Unit>()
             device.beforeWrite = { packet ->
@@ -373,37 +373,37 @@ class GaiaParamEqTest {
                 }
             }
             supervisorScope {
-                val peq = async { binding.gaia.setParamEq(loaded.bands.map { it.copy(gainRaw = 180) }) }
+                val peq = async { controller.setParamEq(loaded.bands.map { it.copy(gainRaw = 180) }) }
                 withTimeout(2_000.milliseconds) { waiting.await() }
-                val codec = async(start = CoroutineStart.UNDISPATCHED) { binding.gaia.isCodecEnabled(AudioCodec.LDAC) }
+                val codec = async(start = CoroutineStart.UNDISPATCHED) { controller.isCodecEnabled(AudioCodec.LDAC) }
                 assertTrue(device.commands.none { it.feature == GaiaIds.CODEC_TYPE })
                 peq.cancel()
                 assertFailsWith<kotlinx.coroutines.CancellationException> { peq.await() }
-                assertNull(binding.state.value.paramEq)
+                assertNull(controller.state.value.paramEq)
                 assertEquals(180, device.bands[0].gainRaw)
                 assertEquals(0, device.bands[9].gainRaw)
                 release.complete(Unit)
                 assertFalse(withTimeout(2_000.milliseconds) { codec.await() })
                 val afterCancellation = device.commands.size
-                assertFailsWith<DropException.NotReady> { binding.gaia.setParamEq(loaded.bands) }
+                assertFailsWith<DropException.NotReady> { controller.setParamEq(loaded.bands) }
                 assertEquals(afterCancellation, device.commands.size)
                 device.beforeWrite = {}
-                binding.gaia.getParamEq()
-                binding.gaia.setParamEq(loaded.bands)
+                controller.getParamEq()
+                controller.setParamEq(loaded.bands)
                 assertEquals(loaded.bands, device.bands)
             }
-        } finally { binding.close() }
+        } finally { controller.close() }
     }
 
     @Test fun oldEpochSendCannotContinueOrClearNewBindingMetadata() = runBlocking {
         val oldDevice = GaiaGattDeviceFixture(10)
         var oldCurrent = true
-        val old = readyBinding(oldDevice, { oldCurrent })
+        val old = readyController(oldDevice, { oldCurrent })
         val newDevice = GaiaGattDeviceFixture(id = 2)
-        val fresh = readyBinding(newDevice)
+        val fresh = readyController(newDevice)
         try {
-            val loaded = old.gaia.getParamEq()
-            val freshActual = fresh.gaia.getParamEq()
+            val loaded = old.getParamEq()
+            val freshActual = fresh.getParamEq()
             val waiting = CompletableDeferred<Unit>()
             val release = CompletableDeferred<Unit>()
             oldDevice.beforeWrite = { packet ->
@@ -415,7 +415,7 @@ class GaiaParamEqTest {
             }
             supervisorScope {
                 val inflight = async {
-                    runCatching { old.gaia.setParamEq(loaded.bands.map { it.copy(gainRaw = 180) }) }
+                    runCatching { old.setParamEq(loaded.bands.map { it.copy(gainRaw = 180) }) }
                 }
                 withTimeout(2_000.milliseconds) { waiting.await() }
                 oldCurrent = false
@@ -429,8 +429,8 @@ class GaiaParamEqTest {
             assertEquals(63, oldDevice.currentPreset)
             assertEquals(freshActual, fresh.state.value.paramEq)
             assertTrue(writes(newDevice).isEmpty())
-            assertFailsWith<DropException.Disconnected> { old.gaia.setParamEq(loaded.bands) }
-            fresh.gaia.setParamEq(freshActual.bands.map { it.copy(gainRaw = 60) })
+            assertFailsWith<DropException.Disconnected> { old.setParamEq(loaded.bands) }
+            fresh.setParamEq(freshActual.bands.map { it.copy(gainRaw = 60) })
             assertTrue(newDevice.bands.all { it.gainRaw == 60 })
             assertNull(fresh.state.value.paramEq)
         } finally { old.close(); fresh.close() }
@@ -439,11 +439,11 @@ class GaiaParamEqTest {
     @Test fun oldEpochReadbackCannotUpdateNewBinding() = runBlocking {
         val oldDevice = GaiaGattDeviceFixture()
         var oldCurrent = true
-        val old = readyBinding(oldDevice, { oldCurrent })
+        val old = readyController(oldDevice, { oldCurrent })
         val newDevice = GaiaGattDeviceFixture(id = 2)
-        val fresh = readyBinding(newDevice)
+        val fresh = readyController(newDevice)
         try {
-            val loaded = old.gaia.getParamEq()
+            val loaded = old.getParamEq()
             val waiting = CompletableDeferred<GaiaPacket>()
             val release = CompletableDeferred<Unit>()
             oldDevice.beforeReply = { packet, payload ->
@@ -454,7 +454,7 @@ class GaiaParamEqTest {
                 payload
             }
             supervisorScope {
-                val inflight = async { runCatching { old.gaia.getParamEq() } }
+                val inflight = async { runCatching { old.getParamEq() } }
                 val request = withTimeout(2_000.milliseconds) { waiting.await() }
                 oldCurrent = false
                 old.close()
@@ -462,10 +462,10 @@ class GaiaParamEqTest {
                 oldDevice.emitResponse(request, oldDevice.configurationBytes(0..4))
                 release.complete(Unit)
             }
-            assertFailsWith<DropException.Disconnected> { old.gaia.setParamEq(loaded.bands) }
+            assertFailsWith<DropException.Disconnected> { old.setParamEq(loaded.bands) }
             assertNull(fresh.state.value.paramEq)
             assertTrue(writes(newDevice).isEmpty())
-            assertEquals(newDevice.bands, fresh.gaia.getParamEq().bands)
+            assertEquals(newDevice.bands, fresh.getParamEq().bands)
         } finally { old.close(); fresh.close() }
     }
 }

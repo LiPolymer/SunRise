@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.drop.moondrop
+package ink.lipoly.app.sunrise.drop.moondrop.gaia
 
 /**
  * GAIA feature 与各 feature 内命令编号；命名存在不表示设备实现此功能。

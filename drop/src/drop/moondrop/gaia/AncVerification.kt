@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.drop.moondrop
+package ink.lipoly.app.sunrise.drop.moondrop.gaia
 
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropException

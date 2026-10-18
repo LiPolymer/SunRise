@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.drop.moondrop
+package ink.lipoly.app.sunrise.drop.moondrop.gaia
 
 /** Generic GAIA filter IDs; Bluetrum bulk encoding is separate and currently writes peaking as 0. */
 enum class PeqFilter(val gaiaId: Int) {
