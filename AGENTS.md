@@ -41,6 +41,7 @@ Kotlin Toolchain 0.12.2 / Kotlin 2.4.20 的 Android + JVM Compose Multiplatform 
 | `bluetooth` | 协议无关的蓝牙通讯契约 |
 | `bluetooth` / `drop/src@jvm` | Android 真实蓝牙；JVM 内存模拟管理器与 GAIA 外设 |
 | `drop/src/drop` | 跨协议契约：状态、事件、异常、profile、门面与控制器生命周期 |
+| `drop/src/drop/gaia` | GAIA 通用信封、类型与能力分页；不含 feature 语义 |
 | `drop/src/drop/moondrop` | 当前设备的 GAIA / 9ECA / Bluetrum 实现、协议 UUID 与参数数学 API |
 | `shared/src/headset` | 应用单耳机连接、选择、音频/BLE 关联和电量轮询 |
 | `shared/src/di` | Koin 模块、进程 runtime 和蓝牙资源 owner |

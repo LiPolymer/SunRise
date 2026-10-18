@@ -13,6 +13,9 @@ import ink.lipoly.app.sunrise.drop.DropState
 import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
 import ink.lipoly.app.sunrise.drop.EarbudControls
 import ink.lipoly.app.sunrise.drop.GaiaTransaction
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
+import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow

@@ -12,6 +12,8 @@ import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
 import ink.lipoly.app.sunrise.drop.GaiaTransaction
 import ink.lipoly.app.sunrise.drop.GainLevel
 import ink.lipoly.app.sunrise.drop.HeadTrackingMode
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
+import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds

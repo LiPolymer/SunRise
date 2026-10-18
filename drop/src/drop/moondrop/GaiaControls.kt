@@ -7,6 +7,8 @@ import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
 import ink.lipoly.app.sunrise.drop.GainLevel
 import ink.lipoly.app.sunrise.drop.HeadTrackingMode
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
+import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
 
 /**
  * 当前 READY 绑定的 GAIA 控件；换会话后必须重新从 [DropController.gaia] 获取。

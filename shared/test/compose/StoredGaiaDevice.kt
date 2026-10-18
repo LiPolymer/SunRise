@@ -5,9 +5,9 @@ import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
 import ink.lipoly.app.sunrise.drop.GainLevel
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaCommand
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
 import ink.lipoly.app.sunrise.drop.moondrop.GaiaControls
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaPacket
+import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
 import ink.lipoly.app.sunrise.drop.moondrop.GaiaParamEqState
 import ink.lipoly.app.sunrise.drop.moondrop.GaiaPeqBand
 import ink.lipoly.app.sunrise.drop.HeadTrackingMode

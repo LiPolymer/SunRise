@@ -2,7 +2,7 @@ package ink.lipoly.app.sunrise.drop
 
 import ink.lipoly.app.sunrise.bluetooth.BtException
 import ink.lipoly.app.sunrise.drop.moondrop.GaiaBluetrumPeqCodec
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaCommand
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
 import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
 import ink.lipoly.app.sunrise.drop.moondrop.GaiaRfcomm
 import kotlinx.coroutines.runBlocking

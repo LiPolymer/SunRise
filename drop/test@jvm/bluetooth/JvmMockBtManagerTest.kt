@@ -4,8 +4,8 @@ import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.GainLevel
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaCodec
-import ink.lipoly.app.sunrise.drop.moondrop.GaiaCommand
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
 import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch

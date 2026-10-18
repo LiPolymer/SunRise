@@ -3,6 +3,9 @@ package ink.lipoly.app.sunrise.drop.moondrop
 import ink.lipoly.app.sunrise.bluetooth.BtException
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.HeadTrackingMode
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
+import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
 
 /**
  * In-memory GAIA simulation for the desktop UI, not a Bluetooth device or a firmware emulator.

@@ -1,6 +1,7 @@
 package ink.lipoly.app.sunrise.drop.moondrop
 
 import ink.lipoly.app.sunrise.drop.DropException
+import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
 
 /** Only the confirmed GAIA Bluetrum layout; no 9ECA or Flash-save assumptions. */
 internal object GaiaBluetrumPeqCodec {

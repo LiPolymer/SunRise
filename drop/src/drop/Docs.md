@@ -41,6 +41,7 @@
 | [DropController.kt](DropController.kt) | 构造、状态观察、`awaitReady()`、控件 getter、关闭与 epoch 守卫 |
 | [DropControlSession.kt](DropControlSession.kt) | 控件所需的单绑定内部接口，不是动态转发到当前连接的 facade |
 | [DropProfile.kt](DropProfile.kt) | 身份匹配、覆盖合并与协议选项（内置型号表在 `moondrop/`） |
+| [gaia/GaiaWire.kt](gaia/GaiaWire.kt) | GAIA 通用信封：`GaiaCommand` / `GaiaPacket`、类型常量、`GaiaCodec` 与能力分页解析 |
 | [moondrop/BindingControls.kt](moondrop/BindingControls.kt) | internal：把单绑定的 GAIA 控件投影为门面，不含协议逻辑 |
 | [moondrop/DropControlBinding.kt](moondrop/DropControlBinding.kt) | 单会话初始化、GAIA/9ECA 回复匹配、通知解释、错误映射 |
 | [moondrop/DropProfiles.kt](moondrop/DropProfiles.kt) | 内置型号名称表、ANC 路径与读写编号合并解析 |
@@ -48,7 +49,7 @@
 | [moondrop/GaiaEqModels.kt](moondrop/GaiaEqModels.kt) | GAIA 参数 EQ 滤波器、频段与完整读回模型 |
 | [moondrop/GaiaControls.kt](moondrop/GaiaControls.kt) | GAIA 公共控件接口 |
 | [moondrop/GaiaControlsImpl.kt](moondrop/GaiaControlsImpl.kt) | GAIA 参数检查、读回、功能快照更新 |
-| [moondrop/GaiaProtocol.kt](moondrop/GaiaProtocol.kt) | `GaiaCommand` / `GaiaPacket`、`GaiaIds`、`GaiaCodec` |
+| [moondrop/GaiaIds.kt](moondrop/GaiaIds.kt) | GAIA feature 与命令编号表；存在常量不表示设备实现 |
 | [moondrop/GaiaBluetrumPeqCodec.kt](moondrop/GaiaBluetrumPeqCodec.kt) | 内部严格 Bluetrum PEQ 负载编解码、响应解析、MTU 批量上限 |
 | [moondrop/GaiaPeqParameters.kt](moondrop/GaiaPeqParameters.kt) | 公开原始量纲转换、单段及完整快照验证，无 I/O |
 | [moondrop/PeqBiquad.kt](moondrop/PeqBiquad.kt) / [PeqHeadroom.kt](moondrop/PeqHeadroom.kt) | 公开 48 kHz 响应估算及 768 点前置衰减计算，无 I/O |
@@ -59,7 +60,8 @@
 | [moondrop/AncVerification.kt](moondrop/AncVerification.kt) | 一次 SET、最多四次 GET 的 ANC 确认算法 |
 
 `drop` 源码按层分开：`ink.lipoly.app.sunrise.drop` 只保留跨协议契约、状态与生命周期；
-`ink.lipoly.app.sunrise.drop.moondrop` 承载当前设备的 GAIA/9ECA/Bluetrum 实现。
+`ink.lipoly.app.sunrise.drop.gaia` 只描述 GAIA 信封（头、类型、能力分页），不含 feature 语义；
+`ink.lipoly.app.sunrise.drop.moondrop` 承载当前设备的 feature 表、GAIA/9ECA 控件与 Bluetrum 负载。
 新增品牌应新增同级子包（例如 `roselink`、`tanchjim`），不把协议实现放回通用层或 `bluetooth`。
 
 通讯包名是 `ink.lipoly.app.sunrise.bluetooth`；公开通讯入口包括 `BtManager`、`BtDevice`、`GattController`、`GattSession`、`RfcommStream` 与 `createBtManager`，协议组帧不属于这些通用契约。
@@ -326,7 +328,7 @@ DropController(device, options = DropOptions(), profileDevice = device)
 | `requestRaw(command: GaiaCommand)` | 等同 vendor/feature/command 的 RESPONSE；不统一检查 GAIA 成功/拒绝负载，不保证物理应用 |
 | `sendRaw(command: GaiaCommand)` | 无 pending 槽，只等传输写，不等协议响应，不报告已应用 |
 
-`GaiaIds` 顶层常量是 feature ID，各嵌套对象是所属 feature 的命令 ID。大量编号仅供原始接口，存在常量不意味着已有结构化控件或设备支持；请查 [GaiaProtocol.kt](GaiaProtocol.kt) 的各项 KDoc。原始 AUDIO_CURATION 参数、未定义状态/标志、时长或增益单位不能从命令名称推断。
+`GaiaIds` 顶层常量是 feature ID，各嵌套对象是所属 feature 的命令 ID。大量编号仅供原始接口，存在常量不意味着已有结构化控件或设备支持；请查 [GaiaIds.kt](moondrop/GaiaIds.kt) 的各项 KDoc。原始 AUDIO_CURATION 参数、未定义状态/标志、时长或增益单位不能从命令名称推断。
 
 ## 9ECA 控件方法参考
 
