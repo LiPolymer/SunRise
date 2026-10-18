@@ -47,6 +47,12 @@ class DropController(
     /** 当前 READY 绑定的 9ECA 控件；就绪/关闭/旧引用约束与 [gaia] 相同，不保证含 9ECA。 */
     val source: SourceControls get() = readyBinding().source
 
+    /**
+     * 当前 READY 绑定的跨协议基础门面：电量与降噪；品牌特有操作仍从 [gaia] / [source] 取得。
+     * 就绪、关闭与旧引用约束同 [gaia]；门面不代替 [state] 的功能快照。
+     */
+    val controls: EarbudControls get() = readyBinding().controls
+
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             device.gatt.state.collect { synchronizeBinding()?.startInitialization() }

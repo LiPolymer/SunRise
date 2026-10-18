@@ -36,10 +36,12 @@
 | [DropState.kt](DropState.kt) | 协议阶段、协议集合、能力与功能快照 |
 | [DropEvent.kt](DropEvent.kt) | 无重放的瞬时协议通知 |
 | [DropException.kt](DropException.kt) | 控制层错误族与语义 |
-| [EarbudModels.kt](EarbudModels.kt) | ANC、增益、追踪、编码、耳侧与电量模型 |
+| [EarbudModels.kt](EarbudModels.kt) | ANC、增益、追踪、编码、耳侧与电量读数模型 |
 | [GaiaEqModels.kt](GaiaEqModels.kt) | GAIA 参数 EQ 滤波器、频段与完整读回模型 |
 | [GaiaControls.kt](GaiaControls.kt) | GAIA 公共控件接口 |
 | [SourceControls.kt](SourceControls.kt) | 9ECA 公共控件接口 |
+| [EarbudControls.kt](EarbudControls.kt) | 跨协议基础门面：能力、电量、降噪；不继承协议控件接口 |
+| [BindingControls.kt](BindingControls.kt) | internal：把单绑定的 GAIA 控件投影为门面，不含协议逻辑 |
 | [DropController.kt](DropController.kt) | 构造、状态观察、`awaitReady()`、控件 getter、关闭与 epoch 守卫 |
 | [DropControlBinding.kt](DropControlBinding.kt) | 单会话初始化、GAIA/9ECA 回复匹配、通知解释、错误映射 |
 | [DropControlSession.kt](DropControlSession.kt) | 控件所需的单绑定内部接口，不是动态转发到当前连接的 facade |
@@ -255,6 +257,17 @@ DropController(device, options = DropOptions(), profileDevice = device)
 
 固件 `features` 位映射：bit0 PRESET_EQ、bit1 PEQ、bit2 AUDIO_SOURCE、bit3 VOLUME、bit4 MIC_GAIN；其余位忽略。不要用 `featureFlags` 未定义位发明功能。`ByteArray` 模型字段是原始字节，不自动解码文本；Kotlin 数据类不提供数组内容相等保证。
 
+## 跨协议门面
+
+`DropController.controls` / `HeadsetClient.controls` 返回 `EarbudControls`：当前 READY 绑定的基础能力投影，
+与 `GaiaControls`、`SourceControls` 并列，**不继承**它们，也不暴露任何实现类。
+
+- `capabilities` 只报告协议集合、可写降噪模式与探测完整性；空集合不证明不支持，也不表示品牌认证。
+- `battery` / `noise` 在协议不支持时为 `null`，不提供抛 `UnsupportedCapability` 的空实现；`noise.write` 返回读回模式。
+- 品牌或系列特有能力（增益、LED、空间音频、EQ、编码、按键）继续走 `gaia` / `source`，后续品牌由各自公开接口提供，调用方用 `as?` 取得。
+- 门面、`gaia`、`source` 同属一个绑定 epoch：换会话后必须重新取得，旧引用读取能力或调用操作都抛 `Disconnected`。
+- 门面不持有状态：功能快照仍看 `DropState`，门面方法只做委托，不复制读值。
+
 ## GAIA 控件方法参考
 
 每个调用需要当前 READY 绑定及 `GAIA_BLE`。getter 不检查协议，具体传输入口会检查。多数既有 SET 是“匹配 SET 回复 → 独立 GET”；ANC、codec 和 PEQ 不依赖 SET ACK。基本取值至少一个负载字节；既有布尔控件非零即 true，但 codec/EQ STATE 严格只接受 0/1。
@@ -263,7 +276,7 @@ DropController(device, options = DropOptions(), profileDevice = device)
 
 | 方法 | 输入/结果/状态 |
 | --- | --- |
-| `getBattery()` | 返回 `EarbudBattery(left,right,case)` 并更新 battery。响应必须至少两字节且偶数长，未知组件 ID 忽略 |
+| `getBattery()` | 返回 `EarbudBatteryReading(left,right,case)` 并更新 battery；每个组件是 `BatteryReading(raw,percent)`，不裁剪 raw。响应必须至少两字节且偶数长，未知组件 ID 忽略 |
 | `getAncMode()` | 根据固定 ANC 路径及读 map 解码并更新 ancMode；路径 UNKNOWN→UnsupportedCapability，未知编号→Protocol |
 | `setAncMode(mode)` | mode 须存在于可写映射；一次单向 SET 后最多四次 GET，返回确认模式；详见 ANC 章节 |
 | `getGain()` | GET DAC 原始编号，逆查 gainWrite，更新 gain；未知编号→Protocol |
@@ -504,25 +517,21 @@ V1 固定 OFF/NC=0/1，不用 AC/V2 map。`capabilities.ancModes` 从所选路�
 ```kotlin
 import ink.lipoly.app.sunrise.bluetooth.BtDevice
 import ink.lipoly.app.sunrise.drop.DropController
-import ink.lipoly.app.sunrise.drop.DropPhase
-import ink.lipoly.app.sunrise.drop.DropProtocol
-import ink.lipoly.app.sunrise.drop.EarbudBattery
+import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
 
-suspend fun readBorrowedBattery(device: BtDevice): EarbudBattery? {
+suspend fun readBorrowedBattery(device: BtDevice): EarbudBatteryReading? {
     val controller = DropController(device)
     try {
         controller.awaitReady()
-        val snapshot = controller.state.value
-        if (snapshot.phase != DropPhase.READY ||
-            DropProtocol.GAIA_BLE !in snapshot.protocols) return null
-        return controller.gaia.getBattery()
+        // 门面按绑定能力投影：battery 为 null 表示当前协议不报告电量，无需再判协议集合。
+        return controller.controls.battery?.read()
     } finally {
         controller.close()
     }
 }
 ```
 
-检查快照不是锁住无线连接；检查后仍可能断连并抛异常，这是正常竞态，不应转成成功。
+门面只覆盖电量、降噪等基础能力；增益、LED、空间音频、EQ 等仍从 `controller.gaia` 取得。读取不是锁住无线连接；读取后仍可能断连并抛异常，这是正常竞态，不应转成成功。
 
 ### 拥有两个不同设备的连接
 
@@ -533,7 +542,7 @@ import ink.lipoly.app.sunrise.bluetooth.BtManager
 import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
-import ink.lipoly.app.sunrise.drop.EarbudBattery
+import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -543,7 +552,7 @@ suspend fun readOwnedPair(
     bt: BtManager,
     addressA: String,
     addressB: String,
-): Pair<EarbudBattery, EarbudBattery> {
+): Pair<EarbudBatteryReading, EarbudBatteryReading> {
     val a = bt.device(addressA)
     val b = bt.device(addressB)
     require(a !== b) { "需要两个不同设备" }

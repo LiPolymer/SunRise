@@ -72,6 +72,7 @@
 | `events: SharedFlow<HeadsetEvent>` | 无重放、额外缓冲 32、`tryEmit` 尽力通知；不是可靠历史/请求通道 |
 | `gaia: GaiaControls` | 当前已采纳且会话仍有效的 READY 控件；getter 不保证 GAIA 或具体能力存在 |
 | `source: SourceControls` | 同上，实际方法检查 9ECA 特征/协议支持 |
+| `controls: EarbudControls` | 同上；跨协议基础门面（能力、电量、降噪），`battery`/`noise` 在协议不支持时为 null |
 | `discoverConnectedDevices()` | 挂起刷新系统原始已连接音频列表并创建快照；不 LE 扫描、不改变当前选择、不建立 GATT |
 | `setAutoDeviceFilter(acceptDevice: (HeadsetDevice) -> Boolean)` | 保存纯 predicate 并发送既有 wake；只过滤下一轮自动选择的音频候选，不替换 epoch，不改变当前目标、原始发现或手动连接 |
 | `startAutoConnect()` | 同步接受启动，异步替换旧选择并执行自动循环；不等待 READY，错误看状态/事件 |
@@ -197,30 +198,23 @@ Android 工厂沿用私有 SharedPreferences **`drop_verified_devices`**：key �
 
 ```kotlin
 import ink.lipoly.app.sunrise.drop.DropException
-import ink.lipoly.app.sunrise.drop.DropPhase
-import ink.lipoly.app.sunrise.drop.DropProtocol
-import ink.lipoly.app.sunrise.drop.EarbudBattery
+import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
 import ink.lipoly.app.sunrise.headset.HeadsetClient
 import ink.lipoly.app.sunrise.headset.HeadsetDevice
-import ink.lipoly.app.sunrise.headset.HeadsetPhase
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
 suspend fun readSelectedBattery(
     client: HeadsetClient,
     selected: HeadsetDevice,
-): EarbudBattery {
+): EarbudBatteryReading {
     try {
         client.connect(selected) // 等本轮有效 READY；不代表初始电量轮询已完成。
-        val snapshot = client.state.value
-        if (snapshot.phase != HeadsetPhase.READY ||
-            snapshot.controls.phase != DropPhase.READY
-        ) throw DropException.NotReady()
-        if (DropProtocol.GAIA_BLE !in snapshot.controls.protocols) {
-            throw DropException.UnsupportedCapability("GAIA battery")
-        }
+        // client.controls 已要求 READY；battery 为 null 表示当前协议不报告电量。
+        val battery = client.controls.battery
+            ?: throw DropException.UnsupportedCapability("battery")
         // 不缓存跨会话控件；返回的是本次实际查询值，不将 READY 推断成已知电量。
-        return client.gaia.getBattery()
+        return battery.read()
     } finally {
         // 等待本函数选择的生命周期释放，取消时也清理；外部仍拥有 client 与 bt。
         withContext(NonCancellable) { client.disconnect() }
@@ -228,7 +222,7 @@ suspend fun readSelectedBattery(
 }
 ```
 
-此函数应由负责该客户端选择的单一应用流程调用；不要与另一个同时替换选择的流程并用，否则 finally 的 `disconnect()` 会停止客户端当时的当前选择。它不接管客户端/管理器的最终 close。调用方展示电量时继续处理 `null` 为未知；范围和设备原始字节规则见 [drop](../../../drop/src/drop/Docs.md)。
+此函数应由负责该客户端选择的单一应用流程调用；不要与另一个同时替换选择的流程并用，否则 finally 的 `disconnect()` 会停止客户端当时的当前选择。它不接管客户端/管理器的最终 close。调用方展示电量时继续处理组件 `null` 为未知；`BatteryReading.raw` 是设备原始字节，范围和设备原始字节规则见 [drop](../../../drop/src/drop/Docs.md)。
 
 需要长期交互时，按 [HeadsetPresentationController 的 `runAction`](../presentation/HeadsetPresentationController.kt) 模式：开始动作前和动作协程内再次检查应用与协议 READY，`CancellationException` 先抛回，再处理具体异常；不是只依赖按钮禁用状态。音源 ID 必须从真实能力页面/状态取得，具体分页和可用项选择例子见 [drop](../../../drop/src/drop/Docs.md)，不要硬编码某型号的 ID。
 

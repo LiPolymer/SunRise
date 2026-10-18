@@ -74,17 +74,17 @@ internal fun OverviewEntry(
                     ) {
                         BatteryCell(
                             "左耳",
-                            controlState.battery.left,
+                            controlState.battery.left?.percent,
                             Modifier.weight(1f)
                         )
                         BatteryCell(
                             "右耳",
-                            controlState.battery.right,
+                            controlState.battery.right?.percent,
                             Modifier.weight(1f)
                         )
                         if (controlState.battery.case != null) BatteryCell(
                             "充电盒",
-                            controlState.battery.case,
+                            controlState.battery.case?.percent,
                             Modifier.weight(1f)
                         )
                     }
@@ -137,7 +137,7 @@ internal fun OverviewEntry(
                             options = modes, selected = controlState.ancMode, label = { it.display() },
                             enabled = usable,
                             onSelect = { mode ->
-                                session.headset.runAction("设置降噪", control = true) { gaia.setAncMode(mode) }
+                                session.headset.runAction("设置降噪", control = true) { this.controls.noise?.write(mode) }
                             },
                         )
                     }

@@ -13,10 +13,21 @@ enum class AudioCodec { LC3, LDAC, LHDC }
 enum class EarbudSide { LEFT, RIGHT }
 
 /**
+ * 单个电量组件的读数；两个字段都保留协议原义，不裁剪、不把未知补成 0。
+ * @property raw 协议原始电量字节，调用方不得按固定范围重新解释。
+ * @property percent 协议明确给出的百分比；与 [raw] 的换算关系由协议决定，不在此处推断。
+ */
+data class BatteryReading(val raw: Int, val percent: Int)
+
+/**
  * 最近获知的电量。GAIA 按组件编号 1/2/3 解析无符号字节，不裁剪到 100；
  * 未出现的组件保留最近值，断连后恢复未知。
- * @property left 左耳原始百分比值，null 表示未知。
- * @property right 右耳原始百分比值，null 表示未知。
- * @property case 充电盒原始百分比值，null 表示未知。
+ * @property left 左耳读数，null 表示未知。
+ * @property right 右耳读数，null 表示未知。
+ * @property case 充电盒读数，null 表示未知。
  */
-data class EarbudBattery(val left: Int? = null, val right: Int? = null, val case: Int? = null)
+data class EarbudBatteryReading(
+    val left: BatteryReading? = null,
+    val right: BatteryReading? = null,
+    val case: BatteryReading? = null,
+)

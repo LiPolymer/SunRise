@@ -3,7 +3,7 @@ package ink.lipoly.app.sunrise.compose
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.DropException
-import ink.lipoly.app.sunrise.drop.EarbudBattery
+import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
 import ink.lipoly.app.sunrise.drop.GainLevel
 import ink.lipoly.app.sunrise.drop.GaiaCommand
 import ink.lipoly.app.sunrise.drop.GaiaControls
@@ -72,7 +72,7 @@ internal class StoredGaiaDevice(initial: GaiaParamEqState, private val now: () -
     }
 
     private fun unexpected(): Nothing = throw AssertionError("Editor called an unrelated GAIA operation")
-    override suspend fun getBattery(): EarbudBattery = unexpected()
+    override suspend fun getBattery(): EarbudBatteryReading = unexpected()
     override suspend fun getAncMode(): AncMode = unexpected()
     override suspend fun setAncMode(mode: AncMode): AncMode = unexpected()
     override suspend fun getGain(): GainLevel = unexpected()

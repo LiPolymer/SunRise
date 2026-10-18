@@ -14,7 +14,7 @@ enum class OverviewControl { GAIN, LED, SPATIAL, HEAD_TRACKING }
 fun DropState.hasReadyGaia(): Boolean =
     phase == DropPhase.READY && DropProtocol.GAIA_BLE in protocols
 
-/** 按设备能力与抗风噪显示偏好筛选模式。 */
+/** 按设备能力与抗风噪显示偏好筛选模式；只读状态快照，不在组合期访问控件。 */
 fun shownAncModes(state: DropState, showWind: Boolean): List<AncMode> =
     if (!state.hasReadyGaia()) emptyList() else AncMode.entries.filter {
         it in state.capabilities.ancModes && (showWind || it != AncMode.WIND)

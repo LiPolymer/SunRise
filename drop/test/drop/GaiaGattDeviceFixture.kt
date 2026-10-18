@@ -26,6 +26,8 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
     var currentPreset = 2
     var totalGainRaw = -17
     var bands = List(count) { GaiaPeqBand(it, 1000 + it * 100, 0, 4096, PeqFilter.PEAKING) }
+    /** 组件编号/电量字节对；默认三组件与实机 mock 一致，可修改以验证合并语义。 */
+    var batteryLevels = byteArrayOf(1, 82, 2, 76, 3, 64)
     val codecStorage = mutableMapOf(AudioCodec.LC3 to false, AudioCodec.LDAC to false, AudioCodec.LHDC to false)
     var clampBand: (GaiaPeqBand) -> GaiaPeqBand = { it }
     var acceptCodecWrites = true
@@ -94,12 +96,18 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
         beforeWrite(packet)
         val payload: ByteArray? = when (packet.feature) {
             GaiaIds.BASIC -> byteArrayOf(0, GaiaIds.MUSIC_PROCESSING.toByte(), 1, GaiaIds.CODEC_TYPE.toByte(), 1, GaiaIds.ANC_V2.toByte(), 1)
+            GaiaIds.BATTERY -> batteryCommand(packet)
             GaiaIds.CODEC_TYPE -> codecCommand(packet)
             GaiaIds.MUSIC_PROCESSING -> eqCommand(packet)
             GaiaIds.ANC_V2 -> byteArrayOf(0)
             else -> error("Unexpected feature ${packet.feature}")
         }
         if (payload != null) beforeReply(packet, payload)?.let { emitResponse(packet, it) }
+    }
+
+    private fun batteryCommand(packet: GaiaPacket): ByteArray {
+        if (packet.command != GaiaIds.Battery.LEVELS) error("Unexpected battery command ${packet.command}")
+        return batteryLevels.copyOf()
     }
 
     private fun codecCommand(packet: GaiaPacket): ByteArray? {

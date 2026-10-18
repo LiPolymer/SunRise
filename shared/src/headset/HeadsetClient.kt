@@ -11,8 +11,8 @@ import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.DropOptions
 import ink.lipoly.app.sunrise.drop.DropPhase
-import ink.lipoly.app.sunrise.drop.DropProtocol
 import ink.lipoly.app.sunrise.drop.DropState
+import ink.lipoly.app.sunrise.drop.EarbudControls
 import ink.lipoly.app.sunrise.drop.GaiaControls
 import ink.lipoly.app.sunrise.drop.SourceControls
 import kotlinx.coroutines.CancellationException
@@ -96,6 +96,11 @@ class HeadsetClient internal constructor(
      * @throws DropException.NotReady 无有效 READY 端点（包括本客户端已关闭）。
      */
     val source: SourceControls get() = readyController().source
+    /**
+     * 当前已采纳绑定的跨协议基础门面（电量、降噪）；品牌特有操作仍从 [gaia] / [source] 取得。
+     * 取用约束与 [gaia] 相同：关闭或无 READY 绑定抛 [DropException.NotReady]，旧引用随后失效。
+     */
+    val controls: EarbudControls get() = readyController().controls
 
     /**
      * 对象身份就是 facade epoch，不用地址或阶段判断新旧任务。
@@ -604,7 +609,7 @@ class HeadsetClient internal constructor(
         attempt.observers += polling.launch {
             if (attempt.controller.state.value.capabilities.ancModes.isNotEmpty()) {
                 try {
-                    if (isCurrentAttempt(current, attempt) && hasSession(attempt)) attempt.controller.gaia.getAncMode()
+                    if (isCurrentAttempt(current, attempt) && hasSession(attempt)) attempt.controller.controls.noise?.read()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -615,14 +620,12 @@ class HeadsetClient internal constructor(
         attempt.observers += polling.launch {
             while (isCurrentAttempt(current, attempt) && hasSession(attempt) &&
                 attempt.controller.state.value.phase == DropPhase.READY) {
-                if (DropProtocol.GAIA_BLE in attempt.controller.state.value.protocols) {
-                    try {
-                        attempt.controller.gaia.getBattery()
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        // 轮询失败不能用构造的电量覆盖最近真实读值。
-                    }
+                try {
+                    attempt.controller.controls.battery?.read()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // 轮询失败不能用构造的电量覆盖最近真实读值。
                 }
                 delay(30_000.milliseconds)
             }

@@ -54,22 +54,22 @@ internal class GaiaControlsImpl(
     private suspend fun boolean(feature: Int, command: Int): Boolean = value(feature, command) != 0
 
     /** 严格要求非空偶数负载；只替换出现的组件，未知编号忽略，原始电量字节不裁剪。 */
-    override suspend fun getBattery(): EarbudBattery {
+    override suspend fun getBattery(): EarbudBatteryReading {
         val answer = request(GaiaIds.BATTERY, GaiaIds.Battery.LEVELS)
         if (answer.payload.size < 2 || answer.payload.size % 2 != 0)
             throw DropException.Protocol("Invalid GAIA battery response")
-        var left: Int? = client.state.value.battery.left
-        var right: Int? = client.state.value.battery.right
-        var case: Int? = client.state.value.battery.case
+        var left: BatteryReading? = client.state.value.battery.left
+        var right: BatteryReading? = client.state.value.battery.right
+        var case: BatteryReading? = client.state.value.battery.case
         for (index in 0 until answer.payload.size - 1 step 2) {
             val level = answer.payload[index + 1].toInt() and 0xff
             when (answer.payload[index].toInt() and 0xff) {
-                1 -> left = level
-                2 -> right = level
-                3 -> case = level
+                1 -> left = BatteryReading(level, level)
+                2 -> right = BatteryReading(level, level)
+                3 -> case = BatteryReading(level, level)
             }
         }
-        return EarbudBattery(left, right, case).also { battery ->
+        return EarbudBatteryReading(left, right, case).also { battery ->
             client.mutate { it.copy(battery = battery) }
         }
     }

@@ -7,7 +7,7 @@ package ink.lipoly.app.sunrise.drop
  */
 interface GaiaControls {
     /** 读取组件 ID/电量字节对并合并到 state.battery；空、奇数长度负载抛 Protocol。 */
-    suspend fun getBattery(): EarbudBattery
+    suspend fun getBattery(): EarbudBatteryReading
     /** 用当前 ANC 路径和读映射获取模式、更新 state.ancMode；未知编号抛 Protocol。 */
     suspend fun getAncMode(): AncMode
     /**

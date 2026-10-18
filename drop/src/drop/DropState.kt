@@ -50,7 +50,7 @@ data class DropState(
     val phase: DropPhase = DropPhase.IDLE,
     val protocols: Set<DropProtocol> = emptySet(),
     val capabilities: DropCapabilities = DropCapabilities(),
-    val battery: EarbudBattery = EarbudBattery(),
+    val battery: EarbudBatteryReading = EarbudBatteryReading(),
     val ancMode: AncMode? = null,
     val gain: GainLevel? = null,
     val ledOn: Boolean? = null,

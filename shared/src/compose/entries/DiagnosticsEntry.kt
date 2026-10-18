@@ -196,11 +196,11 @@ internal fun DiagnosticsEntry(
         item(key = "gaia") {
             TestSection("GAIA 控制", collapsible = true) {
                 Text("GAIA ${state.capabilities.gaiaFeatures.sorted()}")
-                Text("电量：左 " + state.battery.left.percent() +
-                    "  右 " + state.battery.right.percent() +
-                    "  盒 " + state.battery.case.percent())
+                Text("电量：左 " + state.battery.left?.percent.percent() +
+                    "  右 " + state.battery.right?.percent.percent() +
+                    "  盒 " + state.battery.case?.percent.percent())
                 OutlinedButton(onClick = {
-                    runAction("读取电量", DropProtocol.GAIA_BLE) { gaia.getBattery(); "完成" }
+                    runAction("读取电量", DropProtocol.GAIA_BLE) { controls.battery?.read(); "完成" }
                 }, enabled = gaiaReady) { Text("刷新电量") }
 
                 Text("降噪：" + (state.ancMode?.label() ?: "未读取"))

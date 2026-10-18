@@ -56,6 +56,8 @@ internal class DropControlBinding(
     val ready = CompletableDeferred<Unit>()
     val gaia: GaiaControls = GaiaControlsImpl(this, classicEq)
     val source: SourceControls = SourceControlsImpl(this)
+    /** 跨协议门面：只投影电量与降噪等基础能力，品牌特有操作仍走 [gaia] / [source]。 */
+    val controls: EarbudControls = BindingControls(this, gaia)
     val isOpen: Boolean get() = !closed.value && lifetime.isActive
 
     private data class PendingGaia(
@@ -161,6 +163,10 @@ internal class DropControlBinding(
 
     private fun ensureBound() {
         if (!isOpen || !isCurrent(this)) throw DropException.Disconnected()
+    }
+
+    override fun checkActive() {
+        ensureBound()
     }
 
     /**
@@ -448,12 +454,12 @@ internal class DropControlBinding(
                 for (index in 0 until packet.payload.size - 1 step 2) {
                     val value = packet.payload[index + 1].toInt() and 0xff
                     when (packet.payload[index].toInt() and 0xff) {
-                        1 -> left = value
-                        2 -> right = value
-                        3 -> case = value
+                        1 -> left = BatteryReading(value, value)
+                        2 -> right = BatteryReading(value, value)
+                        3 -> case = BatteryReading(value, value)
                     }
                 }
-                current.copy(battery = EarbudBattery(left, right, case))
+                current.copy(battery = EarbudBatteryReading(left, right, case))
             }
         }
     }
