@@ -1,6 +1,8 @@
-package ink.lipoly.app.sunrise.drop
+package ink.lipoly.app.sunrise.drop.moondrop
 
 import ink.lipoly.app.sunrise.bluetooth.BtException
+import ink.lipoly.app.sunrise.drop.DropException
+import ink.lipoly.app.sunrise.drop.HeadTrackingMode
 
 /**
  * In-memory GAIA simulation for the desktop UI, not a Bluetooth device or a firmware emulator.

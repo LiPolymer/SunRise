@@ -37,24 +37,30 @@
 | [DropEvent.kt](DropEvent.kt) | 无重放的瞬时协议通知 |
 | [DropException.kt](DropException.kt) | 控制层错误族与语义 |
 | [EarbudModels.kt](EarbudModels.kt) | ANC、增益、追踪、编码、耳侧与电量读数模型 |
-| [GaiaEqModels.kt](GaiaEqModels.kt) | GAIA 参数 EQ 滤波器、频段与完整读回模型 |
-| [GaiaControls.kt](GaiaControls.kt) | GAIA 公共控件接口 |
-| [SourceControls.kt](SourceControls.kt) | 9ECA 公共控件接口 |
 | [EarbudControls.kt](EarbudControls.kt) | 跨协议基础门面：能力、电量、降噪；不继承协议控件接口 |
-| [BindingControls.kt](BindingControls.kt) | internal：把单绑定的 GAIA 控件投影为门面，不含协议逻辑 |
 | [DropController.kt](DropController.kt) | 构造、状态观察、`awaitReady()`、控件 getter、关闭与 epoch 守卫 |
-| [DropControlBinding.kt](DropControlBinding.kt) | 单会话初始化、GAIA/9ECA 回复匹配、通知解释、错误映射 |
 | [DropControlSession.kt](DropControlSession.kt) | 控件所需的单绑定内部接口，不是动态转发到当前连接的 facade |
-| [DropGattIds.kt](DropGattIds.kt) | 完整小写协议 UUID；不属于通用通讯包 |
-| [GaiaProtocol.kt](GaiaProtocol.kt) | `GaiaCommand` / `GaiaPacket`、`GaiaIds`、`GaiaCodec` |
-| [GaiaBluetrumPeqCodec.kt](GaiaBluetrumPeqCodec.kt) | 内部严格 Bluetrum PEQ 负载编解码、响应解析、MTU 批量上限 |
-| [GaiaPeqParameters.kt](GaiaPeqParameters.kt) | 公开原始量纲转换、单段及完整快照验证，无 I/O |
-| [PeqBiquad.kt](PeqBiquad.kt) / [PeqHeadroom.kt](PeqHeadroom.kt) | 公开 48 kHz 响应估算及 768 点前置衰减计算，无 I/O |
-| [SourceProtocol.kt](SourceProtocol.kt) | 9ECA 全部值模型、`SourceIds`、`SourceCodec` |
-| [GaiaControlsImpl.kt](GaiaControlsImpl.kt) | GAIA 参数检查、读回、功能快照更新 |
-| [SourceControlsImpl.kt](SourceControlsImpl.kt) | 9ECA 状态检查、音源稳定等待、SET 响应与固件 fallback |
-| [AncVerification.kt](AncVerification.kt) | 一次 SET、最多四次 GET 的 ANC 确认算法 |
-| [DropProfile.kt](DropProfile.kt) | 身份匹配、内置映射、覆盖合并、协议选项及独立读写编号 |
+| [DropProfile.kt](DropProfile.kt) | 身份匹配、覆盖合并与协议选项（内置型号表在 `moondrop/`） |
+| [moondrop/BindingControls.kt](moondrop/BindingControls.kt) | internal：把单绑定的 GAIA 控件投影为门面，不含协议逻辑 |
+| [moondrop/DropControlBinding.kt](moondrop/DropControlBinding.kt) | 单会话初始化、GAIA/9ECA 回复匹配、通知解释、错误映射 |
+| [moondrop/DropProfiles.kt](moondrop/DropProfiles.kt) | 内置型号名称表、ANC 路径与读写编号合并解析 |
+| [moondrop/DropGattIds.kt](moondrop/DropGattIds.kt) | 完整小写协议 UUID；不属于通用通讯包 |
+| [moondrop/GaiaEqModels.kt](moondrop/GaiaEqModels.kt) | GAIA 参数 EQ 滤波器、频段与完整读回模型 |
+| [moondrop/GaiaControls.kt](moondrop/GaiaControls.kt) | GAIA 公共控件接口 |
+| [moondrop/GaiaControlsImpl.kt](moondrop/GaiaControlsImpl.kt) | GAIA 参数检查、读回、功能快照更新 |
+| [moondrop/GaiaProtocol.kt](moondrop/GaiaProtocol.kt) | `GaiaCommand` / `GaiaPacket`、`GaiaIds`、`GaiaCodec` |
+| [moondrop/GaiaBluetrumPeqCodec.kt](moondrop/GaiaBluetrumPeqCodec.kt) | 内部严格 Bluetrum PEQ 负载编解码、响应解析、MTU 批量上限 |
+| [moondrop/GaiaPeqParameters.kt](moondrop/GaiaPeqParameters.kt) | 公开原始量纲转换、单段及完整快照验证，无 I/O |
+| [moondrop/PeqBiquad.kt](moondrop/PeqBiquad.kt) / [PeqHeadroom.kt](moondrop/PeqHeadroom.kt) | 公开 48 kHz 响应估算及 768 点前置衰减计算，无 I/O |
+| [moondrop/GaiaRfcomm.kt](moondrop/GaiaRfcomm.kt) | 经典 RFCOMM `FF 04 00` 组帧；单帧负载上限 0x7F |
+| [moondrop/SourceProtocol.kt](moondrop/SourceProtocol.kt) | 9ECA 全部值模型、`SourceIds`、`SourceCodec` |
+| [moondrop/SourceControls.kt](moondrop/SourceControls.kt) | 9ECA 公共控件接口 |
+| [moondrop/SourceControlsImpl.kt](moondrop/SourceControlsImpl.kt) | 9ECA 状态检查、音源稳定等待、SET 响应与固件 fallback |
+| [moondrop/AncVerification.kt](moondrop/AncVerification.kt) | 一次 SET、最多四次 GET 的 ANC 确认算法 |
+
+`drop` 源码按层分开：`ink.lipoly.app.sunrise.drop` 只保留跨协议契约、状态与生命周期；
+`ink.lipoly.app.sunrise.drop.moondrop` 承载当前设备的 GAIA/9ECA/Bluetrum 实现。
+新增品牌应新增同级子包（例如 `roselink`、`tanchjim`），不把协议实现放回通用层或 `bluetooth`。
 
 通讯包名是 `ink.lipoly.app.sunrise.bluetooth`；公开通讯入口包括 `BtManager`、`BtDevice`、`GattController`、`GattSession`、`RfcommStream` 与 `createBtManager`，协议组帧不属于这些通用契约。
 
@@ -597,9 +603,9 @@ import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
-import ink.lipoly.app.sunrise.drop.SourceEntry
-import ink.lipoly.app.sunrise.drop.SourceStatus
-import ink.lipoly.app.sunrise.drop.SourceSwitchOptions
+import ink.lipoly.app.sunrise.drop.moondrop.SourceEntry
+import ink.lipoly.app.sunrise.drop.moondrop.SourceStatus
+import ink.lipoly.app.sunrise.drop.moondrop.SourceSwitchOptions
 
 suspend fun chooseReportedSource(
     controller: DropController,

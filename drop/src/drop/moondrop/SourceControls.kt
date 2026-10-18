@@ -1,4 +1,6 @@
-package ink.lipoly.app.sunrise.drop
+package ink.lipoly.app.sunrise.drop.moondrop
+
+import ink.lipoly.app.sunrise.drop.EarbudSide
 
 /**
  * 当前 READY 绑定的 9ECA 控件。响应首字节是状态码；一般非零抛 Rejected，

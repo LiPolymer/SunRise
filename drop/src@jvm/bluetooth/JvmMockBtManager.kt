@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise.bluetooth
 
-import ink.lipoly.app.sunrise.drop.DropGattIds
-import ink.lipoly.app.sunrise.drop.JvmMockGaiaPeripheral
+import ink.lipoly.app.sunrise.drop.moondrop.DropGattIds
+import ink.lipoly.app.sunrise.drop.moondrop.JvmMockGaiaPeripheral
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive

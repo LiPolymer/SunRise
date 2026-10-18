@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise.presentation
 
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.ParamEqEditor
-import ink.lipoly.app.sunrise.drop.GaiaControls
+import ink.lipoly.app.sunrise.drop.moondrop.GaiaControls
 import kotlinx.coroutines.CoroutineScope
 import kotlin.time.TimeSource
 

@@ -1,5 +1,12 @@
 package ink.lipoly.app.sunrise.drop
 
+import ink.lipoly.app.sunrise.drop.moondrop.GaiaParamEqState
+import ink.lipoly.app.sunrise.drop.moondrop.SourceFeature
+import ink.lipoly.app.sunrise.drop.moondrop.SourceMicGain
+import ink.lipoly.app.sunrise.drop.moondrop.SourcePresetEq
+import ink.lipoly.app.sunrise.drop.moondrop.SourceStatus
+import ink.lipoly.app.sunrise.drop.moondrop.SourceVolume
+
 /**
  * 协议控制阶段，不表示蓝牙连接阶段。
  * IDLE：没有绑定；PROBING：订阅响应并探测；READY：至少存在一种可用协议；
@@ -23,9 +30,6 @@ data class DropCapabilities(
     val sourceFeatures: Set<SourceFeature> = emptySet(),
     val complete: Boolean = false,
 )
-
-/** 9ECA 固件位标志可识别的功能：音源、音量、预设 EQ、参数 EQ、麦克风增益。 */
-enum class SourceFeature { AUDIO_SOURCE, VOLUME, PRESET_EQ, PEQ, MIC_GAIN }
 
 /**
  * 控制器当前会话的功能快照；未知标量用 null、未知 codec 用缺 key 表示，断连/关闭重置。

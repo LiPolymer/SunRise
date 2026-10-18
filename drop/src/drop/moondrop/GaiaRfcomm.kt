@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.drop
+package ink.lipoly.app.sunrise.drop.moondrop
 
 /**
  * GAIA 经典 RFCOMM 组帧：`SOF 04 00 <payloadLength>` 加标准 GAIA 帧（`00 1D <feature> <command> <payload>`）。

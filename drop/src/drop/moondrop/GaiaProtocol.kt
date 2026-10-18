@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.drop
+package ink.lipoly.app.sunrise.drop.moondrop
 
 /**
  * GAIA 请求模型；构造不校验，编码时才检查字段范围。

@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise.headset
 
 import ink.lipoly.app.sunrise.bluetooth.*
-import ink.lipoly.app.sunrise.drop.GaiaIds
+import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first

@@ -40,7 +40,8 @@ Kotlin Toolchain 0.12.2 / Kotlin 2.4.20 的 Android + JVM Compose Multiplatform 
 | `android-app` / `jvm-app` | 平台宿主、权限、应用启动与退出 |
 | `bluetooth` | 协议无关的蓝牙通讯契约 |
 | `bluetooth` / `drop/src@jvm` | Android 真实蓝牙；JVM 内存模拟管理器与 GAIA 外设 |
-| `drop/src/drop` | 平台无关的 GAIA / 9ECA 控制器与参数数学 API |
+| `drop/src/drop` | 跨协议契约：状态、事件、异常、profile、门面与控制器生命周期 |
+| `drop/src/drop/moondrop` | 当前设备的 GAIA / 9ECA / Bluetrum 实现、协议 UUID 与参数数学 API |
 | `shared/src/headset` | 应用单耳机连接、选择、音频/BLE 关联和电量轮询 |
 | `shared/src/di` | Koin 模块、进程 runtime 和蓝牙资源 owner |
 | `shared/src/presentation` | 宿主展示会话、连接协调器、目录操作及 EQ 会话所有权 |
@@ -48,7 +49,7 @@ Kotlin Toolchain 0.12.2 / Kotlin 2.4.20 的 Android + JVM Compose Multiplatform 
 | `shared/src/compose` | 用户手写的正式界面、Navigation3 导航、主题与目录绘图，修改边界见上 |
 | `shared/src/compose/FancyEqualizer.kt` | `FancyEqualizer` 对象内的 PEQ 曲线、编辑器和数值工具；完整页面位于 `compose/entries/EqualizerEntry.kt` |
 
-`drop` 可独立消费，仅导出 coroutines，不依赖应用、Compose 或 Koin；`shared` 将它导出给宿主。不建立旧目录副本、兼容转发或别名。公开参数 API 为 `GaiaPeqParameters`，纯数学 API 为 `PeqBiquad` / `PeqHeadroom`，协议 binding 和 payload codec 保持 internal。保留 PolyForm Noncommercial 1.0.0 的 `LICENSE` / `NOTICE`；没有 Maven 发布配置。
+`drop` 可独立消费，仅导出 coroutines，不依赖应用、Compose 或 Koin；`shared` 将它导出给宿主。不建立旧目录副本、兼容转发或别名。`drop` 根包只放跨协议契约；协议实现按设备家族放在子包（当前 `moondrop`，后续 `roselink` / `tanchjim`），不把协议实现放回根包或 `bluetooth`。公开参数 API 为 `GaiaPeqParameters`，纯数学 API 为 `PeqBiquad` / `PeqHeadroom`，协议 binding 和 payload codec 保持 internal。保留 PolyForm Noncommercial 1.0.0 的 `LICENSE` / `NOTICE`；没有 Maven 发布配置。
 
 ## 构建与验证
 

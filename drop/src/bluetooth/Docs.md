@@ -52,7 +52,7 @@
 | [AndroidGattSession.kt](../../src@android/bluetooth/AndroidGattSession.kt) | 服务/句柄、回调匹配、原生期限、通知缓冲 |
 | [AndroidBtRfcomm.kt](../../src@android/bluetooth/AndroidBtRfcomm.kt) | 现有经典通道的打开、字节写入、串行关闭与管理器资源所有权 |
 | [BtPlatform.jvm.kt](../../src@jvm/bluetooth/BtPlatform.jvm.kt) / [JvmMockBtManager.kt](../../src@jvm/bluetooth/JvmMockBtManager.kt) | 桌面模拟工厂、发现、会话身份与关闭 |
-| [JvmMockGaiaPeripheral.kt](../../src@jvm/drop/JvmMockGaiaPeripheral.kt) | JVM 专属的内存 GAIA 控件与 PEQ 状态 |
+| [JvmMockGaiaPeripheral.kt](../../src@jvm/drop/moondrop/JvmMockGaiaPeripheral.kt) | JVM 专属的内存 GAIA 控件与 PEQ 状态 |
 
 协议行为证据入口：[GAIA 设备 fixture](../../test/drop/GaiaGattDeviceFixture.kt)、[经典 EQ 测试](../../test/drop/GaiaClassicEqTest.kt)、[参数 EQ 测试](../../test/drop/GaiaParamEqTest.kt) 和 [JVM 模拟器测试](../../test@jvm/bluetooth/JvmMockBtManagerTest.kt)。它们不证明 Android 无线或实体设备兼容性；测试 fixture 不属于生产后端。许可与 Required Notice 统一位于仓库根目录的 [LICENSE](../../../LICENSE) 与 [NOTICE](../../../NOTICE)；独立复制或分发模块时应同时携带这些文件，不更改许可或配置 Maven 发布。
 

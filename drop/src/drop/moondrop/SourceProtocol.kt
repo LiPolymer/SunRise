@@ -1,4 +1,9 @@
-package ink.lipoly.app.sunrise.drop
+package ink.lipoly.app.sunrise.drop.moondrop
+
+import ink.lipoly.app.sunrise.drop.DropException
+
+/** 9ECA 固件位标志可识别的功能：音源、音量、预设 EQ、参数 EQ、麦克风增益。 */
+enum class SourceFeature { AUDIO_SOURCE, VOLUME, PRESET_EQ, PEQ, MIC_GAIN }
 
 /**
  * 音源切换参数，flags 按 bit0/bit2/bit3 编码。

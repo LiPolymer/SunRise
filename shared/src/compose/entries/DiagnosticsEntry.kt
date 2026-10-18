@@ -35,7 +35,7 @@ import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
 import ink.lipoly.app.sunrise.drop.GainLevel
 import ink.lipoly.app.sunrise.drop.HeadTrackingMode
-import ink.lipoly.app.sunrise.drop.SourceCapability
+import ink.lipoly.app.sunrise.drop.moondrop.SourceCapability
 import ink.lipoly.app.sunrise.headset.HeadsetClient
 import ink.lipoly.app.sunrise.headset.HeadsetDevice
 import ink.lipoly.app.sunrise.headset.HeadsetEvent

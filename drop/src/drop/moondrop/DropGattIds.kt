@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.drop
+package ink.lipoly.app.sunrise.drop.moondrop
 
 /** GAIA/9ECA 完整小写 UUID 属于协议层；通用 bluetooth 不依赖这些协议标识。 */
 internal object DropGattIds {

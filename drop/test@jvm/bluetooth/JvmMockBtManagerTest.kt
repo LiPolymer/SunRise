@@ -3,26 +3,17 @@ package ink.lipoly.app.sunrise.bluetooth
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.DropController
 import ink.lipoly.app.sunrise.drop.DropException
-import ink.lipoly.app.sunrise.drop.GaiaCodec
-import ink.lipoly.app.sunrise.drop.GaiaCommand
-import ink.lipoly.app.sunrise.drop.GaiaIds
 import ink.lipoly.app.sunrise.drop.GainLevel
+import ink.lipoly.app.sunrise.drop.moondrop.GaiaCodec
+import ink.lipoly.app.sunrise.drop.moondrop.GaiaCommand
+import ink.lipoly.app.sunrise.drop.moondrop.GaiaIds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNotSame
-import kotlin.test.assertNull
-import kotlin.test.assertSame
-import kotlin.test.assertTrue
+import kotlin.test.*
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)

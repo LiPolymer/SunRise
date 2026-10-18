@@ -13,8 +13,8 @@ import ink.lipoly.app.sunrise.drop.DropOptions
 import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropState
 import ink.lipoly.app.sunrise.drop.EarbudControls
-import ink.lipoly.app.sunrise.drop.GaiaControls
-import ink.lipoly.app.sunrise.drop.SourceControls
+import ink.lipoly.app.sunrise.drop.moondrop.GaiaControls
+import ink.lipoly.app.sunrise.drop.moondrop.SourceControls
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

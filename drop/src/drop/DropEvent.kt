@@ -1,5 +1,7 @@
 package ink.lipoly.app.sunrise.drop
 
+import ink.lipoly.app.sunrise.drop.moondrop.GaiaPacket
+
 /**
  * 面向界面的瞬时通知，不重放、非可靠事务通道；慢订阅者可能错过事件，应读取 [DropState] 恢复。
  * 请求匹配直接使用绑定内部 pending 槽，不依赖此流。

@@ -1,10 +1,10 @@
 package ink.lipoly.app.sunrise.catalog
 
-import ink.lipoly.app.sunrise.drop.GaiaPeqParameters
-import ink.lipoly.app.sunrise.drop.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.PeqBiquad
-import ink.lipoly.app.sunrise.drop.PeqFilter
-import ink.lipoly.app.sunrise.drop.PeqHeadroom
+import ink.lipoly.app.sunrise.drop.moondrop.GaiaPeqParameters
+import ink.lipoly.app.sunrise.drop.moondrop.GaiaPeqBand
+import ink.lipoly.app.sunrise.drop.moondrop.PeqBiquad
+import ink.lipoly.app.sunrise.drop.moondrop.PeqFilter
+import ink.lipoly.app.sunrise.drop.moondrop.PeqHeadroom
 import kotlin.math.PI
 import kotlin.math.ceil
 import kotlin.math.cos
