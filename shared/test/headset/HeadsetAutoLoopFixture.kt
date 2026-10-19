@@ -1,6 +1,7 @@
 package ink.lipoly.app.sunrise.headset
 
 import ink.lipoly.app.sunrise.bluetooth.*
+import ink.lipoly.app.sunrise.drop.DropOptions
 import ink.lipoly.app.sunrise.drop.gaia.GaiaIds
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -9,7 +10,9 @@ import kotlinx.coroutines.withTimeout
 import kotlin.time.Duration.Companion.milliseconds
 
 /** Audio enumeration and counted GATT lifecycles around the application byte-level GAIA fixture. */
-internal class HeadsetAutoLoopFixture : BtManager {
+internal class HeadsetAutoLoopFixture(
+    router: HeadsetRouter = moondropRouter(DropOptions()),
+) : BtManager {
     override val availability = MutableStateFlow(BtAvailability.ENABLED)
     override val devices = MutableStateFlow<List<BtDevice>>(emptyList())
     override val connectedAudioDevices = MutableStateFlow<List<BtDevice>>(emptyList())
@@ -21,7 +24,7 @@ internal class HeadsetAutoLoopFixture : BtManager {
         override fun endpoint(address: String) = endpoints[address]
         override fun remember(address: String, endpoint: String) { endpoints[address] = endpoint }
     }
-    val client = HeadsetClient(this, associations)
+    val client = HeadsetClient(this, associations, router = router)
 
     inner class Device(override val address: String, name: String?) : BtDevice {
         override val manager: BtManager get() = this@HeadsetAutoLoopFixture
@@ -53,6 +56,8 @@ internal class HeadsetAutoLoopFixture : BtManager {
     fun add(address: String, name: String?): Device = Device(address, name).also {
         devices.value += it
     }
+
+    fun endpointFor(address: String): String? = associations.endpoint(address.uppercase())
 
     suspend fun audio(vararg selected: Device) {
         connectedAudioDevices.value = selected.toList()

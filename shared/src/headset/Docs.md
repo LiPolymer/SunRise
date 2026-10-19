@@ -151,13 +151,14 @@
 
 没有 RFCOMM 最终回退；同名关联只是应用策略，**不能证明同一物理耳机**。扫描缺权限仅跳过扫描阶段，不否定已经尝试的缓存/直接 GATT。其他枚举、扫描、连接和探测异常保留为真实失败。
 
-每次尝试调用 `openMoondrop(endpoint, options, profileDevice = selected.device)`：控制器自己 `gatt.connect()` 并等待探测。因此：
+每次尝试通过所选音频身份的内部控制路由打开控制器；默认路由调用 `openMoondrop(endpoint, options, profileDevice = selected.device)`：控制器自己 `gatt.connect()` 并等待探测。因此：
 
 - 连接所有权在控制器；客户端不再单独 connect/disconnect。
 - profile 地址/名称匹配使用音频身份；BLE 地址不同不会悄悄改变用户配置匹配对象。
 - 音频身份与 BLE 端点地址不同时，其经典 RFCOMM 句柄随控制器转交结构化 EQ 写入（见 [drop 传输选择](../../../drop/src/drop/Docs.md)）；同地址时不猜测对端提供 SPP 记录。
 - 控制器的 PROBING/READY 可能先到达；只有控制器确实 READY、成功写入关联并标记采纳后，才公开应用 READY。
 - 失败/取消先关闭该次控制器；`openMoondrop` 在返回前失败会自行断开连接，再尝试下一候选，不留下静默后台连接。
+- 内部“直接所选设备”路由只使用 `selected.device`，不读取关联、不查已配对设备、不扫描，也不保存关联；它不证明所选设备提供 SPP，也不表示已经支持新品牌。
 
 ### 关联持久化
 

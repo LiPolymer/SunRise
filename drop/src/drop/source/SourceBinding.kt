@@ -2,7 +2,9 @@ package ink.lipoly.app.sunrise.drop.source
 
 import ink.lipoly.app.sunrise.bluetooth.GattEvent
 import ink.lipoly.app.sunrise.bluetooth.GattProperty
+import ink.lipoly.app.sunrise.bluetooth.GattSession
 import ink.lipoly.app.sunrise.drop.ControlSession
+import ink.lipoly.app.sunrise.drop.characteristic
 import ink.lipoly.app.sunrise.drop.DropEvent
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.DropState
@@ -11,19 +13,21 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 
 /** 9ECA wire state for one shared transport epoch; owns no transport resources. */
-internal class SourceBinding(private val control: ControlSession) : SourceControlSession {
-    private val command = control.characteristic(SourceGattIds.SOURCE_SERVICE, SourceGattIds.SOURCE_COMMAND)
-    private val response = control.characteristic(SourceGattIds.SOURCE_SERVICE, SourceGattIds.SOURCE_RESPONSE)
-    private val notification = control.characteristic(SourceGattIds.SOURCE_SERVICE, SourceGattIds.SOURCE_NOTIFICATION)
-    private val capability = control.characteristic(SourceGattIds.SOURCE_SERVICE, SourceGattIds.SOURCE_CAPABILITY)
+internal class SourceBinding(
+    private val control: ControlSession,
+    private val gatt: GattSession,
+) : SourceControlSession {
+    private val command = gatt.characteristic(SourceGattIds.SOURCE_SERVICE, SourceGattIds.SOURCE_COMMAND)
+    private val response = gatt.characteristic(SourceGattIds.SOURCE_SERVICE, SourceGattIds.SOURCE_RESPONSE)
+    private val notification = gatt.characteristic(SourceGattIds.SOURCE_SERVICE, SourceGattIds.SOURCE_NOTIFICATION)
+    private val capability = gatt.characteristic(SourceGattIds.SOURCE_SERVICE, SourceGattIds.SOURCE_CAPABILITY)
         ?.takeIf { GattProperty.READ in it.properties }
-    private val info = control.characteristic(SourceGattIds.SOURCE_SERVICE, SourceGattIds.SOURCE_INFO)
+    private val info = gatt.characteristic(SourceGattIds.SOURCE_SERVICE, SourceGattIds.SOURCE_INFO)
         ?.takeIf { GattProperty.READ in it.properties }
     private val closed = MutableStateFlow(false)
     private val pendingSource = MutableStateFlow<PendingSource?>(null)
@@ -56,7 +60,7 @@ internal class SourceBinding(private val control: ControlSession) : SourceContro
         if (command == null || response == null) throw DropException.UnsupportedCapability("9ECA")
         if (collector != null) return
         collector = control.scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            control.session.events.collect { event ->
+            gatt.events.collect { event ->
                 if (event is GattEvent.ValueChanged && control.isOpen && !closed.value &&
                     (event.characteristic === response || event.characteristic === notification)) {
                     try {
@@ -69,9 +73,9 @@ internal class SourceBinding(private val control: ControlSession) : SourceContro
         }
         control.transaction {
             checkActive()
-            control.session.setNotifications(response, true)
+            gatt.setNotifications(response, true)
             notification?.let { characteristic ->
-                control.optionalOperation { control.session.setNotifications(characteristic, true) }
+                control.optionalOperation { gatt.setNotifications(characteristic, true) }
             }
             checkActive()
         }
@@ -134,7 +138,7 @@ internal class SourceBinding(private val control: ControlSession) : SourceContro
             pendingSource.value = pending
             try {
                 checkActive()
-                control.session.write(command!!, SourceCodec.encode(commandId, pending.sequence, payload))
+                gatt.write(command!!, SourceCodec.encode(commandId, pending.sequence, payload))
                 val frame = withTimeoutOrNull(6_000.milliseconds) { pending.reply.await() }
                     ?: throw DropException.Timeout("9ECA command $commandId")
                 checkActive()
@@ -146,7 +150,7 @@ internal class SourceBinding(private val control: ControlSession) : SourceContro
 
     override suspend fun readSourceCapability(): ByteArray = control.transaction {
         requireReady(probing = false)
-        control.session.read(capability ?: throw DropException.UnsupportedCapability("9ECA capability characteristic"))
+        gatt.read(capability ?: throw DropException.UnsupportedCapability("9ECA capability characteristic"))
             .also { checkActive() }
     }
 
@@ -154,7 +158,7 @@ internal class SourceBinding(private val control: ControlSession) : SourceContro
 
     private suspend fun readSourceInfo(probing: Boolean): ByteArray = control.transaction {
         requireReady(probing)
-        control.session.read(info ?: throw DropException.UnsupportedCapability("9ECA info characteristic"))
+        gatt.read(info ?: throw DropException.UnsupportedCapability("9ECA info characteristic"))
             .also { checkActive() }
     }
 

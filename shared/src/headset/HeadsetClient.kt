@@ -14,7 +14,6 @@ import ink.lipoly.app.sunrise.drop.IBudsController
 import ink.lipoly.app.sunrise.drop.NoiseControls
 import ink.lipoly.app.sunrise.drop.gaia.GaiaControls
 import ink.lipoly.app.sunrise.drop.source.SourceControls
-import ink.lipoly.app.sunrise.drop.moondrop.openMoondrop
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -51,18 +50,21 @@ import kotlin.time.Duration.Companion.milliseconds
  * 公共 common API 不提供构造入口；Android 宿主通过平台工厂创建，并拥有注入的 [BtManager]。
  * 本类关闭自己的控制器（其 GATT/SPP 由控制器释放），但不关闭管理器，也不管理其他设备的会话。
  * 不按品牌过滤，不配对、不建立系统音频连接，也不提供 RFCOMM 回退。
+ * 控制路由由内部 [HeadsetRouter] 决定；默认保留 BLE 候选搜索和关联持久化。
  *
  * 每次选择替换独立连接 epoch，新选择等待前一选择清理完成后才开始无线操作。
  * 同一设备上多个客户端/独立控制器的连接所有权并不隔离，宿主应避免共享受本类控制的端点。
  *
  * @param bt 外部拥有的蓝牙管理器；设备选择应使用此管理器返回的句柄。
- * @param associations 应用私有音频地址到 BLE 端点的成功关联记录。
- * @param options 传给每次新建控制器的协议配置；profile 匹配始终使用所选音频设备身份。
+ * @param associations 应用私有音频地址到端点的成功关联记录。
+ * @param options 默认路由传给新建控制器的协议配置；profile 匹配始终使用所选音频设备身份。
+ * @param router 选择控制路由与打开策略；直接设备路由不读取或写入关联。
  */
 class HeadsetClient internal constructor(
     private val bt: BtManager,
     private val associations: HeadsetAssociations,
-    private val options: DropOptions = DropOptions(),
+    options: DropOptions = DropOptions(),
+    private val router: HeadsetRouter = moondropRouter(options),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     /** 同步 close() 无法挂起等待传输释放；独立作用域只执行有限的关闭任务。 */
@@ -124,7 +126,7 @@ class HeadsetClient internal constructor(
     }
 
     /**
-     * 单次端点尝试及其资源；控制器由 [openMoondrop] 创建并持有传输，尚未返回时为空。
+     * 单次端点尝试及其资源；控制器由默认路由的 `openMoondrop` 创建并持有传输，尚未返回时为空。
      * [adopted] 仅在控制器 READY、epoch 仍匹配且关联已保存后成立，探测完成不等于应用采纳。
      */
     private class Attempt {
@@ -432,13 +434,17 @@ class HeadsetClient internal constructor(
     }
 
     private suspend fun openSelected(current: Connection, selected: HeadsetDevice): Attempt {
+        val route = router.resolve(selected)
+        if (!route.searchBleEndpoints) {
+            return tryEndpoint(current, selected.device, selected, route)
+        }
         val tried = mutableSetOf<String>()
         var lastFailure: Exception? = null
         var unsupported: DropException.UnsupportedDevice? = null
         suspend fun tryCandidate(endpoint: BtDevice): Attempt? {
             if (!tried.add(endpoint.address.uppercase())) return null
             return try {
-                tryEndpoint(current, endpoint, selected)
+                tryEndpoint(current, endpoint, selected, route)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: DropException.UnsupportedDevice) {
@@ -507,6 +513,7 @@ class HeadsetClient internal constructor(
         current: Connection,
         endpoint: BtDevice,
         selected: HeadsetDevice,
+        route: HeadsetRoute,
     ): Attempt {
         ensureCurrent(current)
         val attempt = Attempt()
@@ -522,7 +529,7 @@ class HeadsetClient internal constructor(
                     )
                 }
             }
-            val controller = openMoondrop(endpoint, options, profileDevice = selected.device)
+            val controller = route.open(endpoint, selected.device)
             attempt.controller.value = controller
             val observers = CoroutineScope(currentCoroutineContext())
             attempt.observers += observers.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -539,9 +546,13 @@ class HeadsetClient internal constructor(
             lifecycle.withLock {
                 ensureCurrent(current)
                 if (controller.state.value.phase != DropPhase.READY) throw DropException.Disconnected()
-                associations.remember(selected.address.uppercase(), endpoint.address)
+                if (route.rememberAssociation) {
+                    associations.remember(selected.address.uppercase(), endpoint.address)
+                }
                 attempt.adopted.value = true
-                current.target.value = (current.target.value ?: selected).copy(verified = true)
+                if (route.rememberAssociation) {
+                    current.target.value = (current.target.value ?: selected).copy(verified = true)
+                }
                 publishLocked(current) {
                     HeadsetState(
                         phase = HeadsetPhase.READY,

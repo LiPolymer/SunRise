@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.drop
 
-import ink.lipoly.app.sunrise.bluetooth.*
+import ink.lipoly.app.sunrise.bluetooth.BtException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -9,9 +9,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** One GATT epoch and one transaction gate shared by all installed protocol families. */
+/** One transport epoch and one transaction gate shared by all installed protocol families. */
 internal class ControlSession(
-    val session: GattSession,
     parentScope: CoroutineScope,
     protocols: Set<DropProtocol>,
     private val current: () -> Boolean,
@@ -46,9 +45,6 @@ internal class ControlSession(
         checkActive()
         publishEvent(event)
     }
-
-    fun characteristic(service: String, uuid: String): GattCharacteristic? =
-        session.services.firstOrNull { it.uuid == service }?.characteristics?.firstOrNull { it.uuid == uuid }
 
     fun requireReady(probing: Boolean) {
         checkActive()

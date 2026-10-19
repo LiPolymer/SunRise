@@ -1,9 +1,11 @@
 package ink.lipoly.app.sunrise.drop.gaia
 
 import ink.lipoly.app.sunrise.bluetooth.GattEvent
+import ink.lipoly.app.sunrise.bluetooth.GattSession
 import ink.lipoly.app.sunrise.bluetooth.RfcommStream
 import ink.lipoly.app.sunrise.drop.BatteryReading
 import ink.lipoly.app.sunrise.drop.ControlSession
+import ink.lipoly.app.sunrise.drop.characteristic
 import ink.lipoly.app.sunrise.drop.DropEvent
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.DropProfile
@@ -16,6 +18,7 @@ import kotlin.time.Duration.Companion.milliseconds
 /** GAIA wire state for one shared GATT epoch; closing it never closes the shared session. */
 internal class GaiaBinding(
     private val control: ControlSession,
+    private val gatt: GattSession,
     private val resolvedProfile: DropProfile,
     classicEq: RfcommStream? = null,
 ) : GaiaControlSession {
@@ -23,9 +26,9 @@ internal class GaiaBinding(
     private val pendingGaia = MutableStateFlow<PendingGaia?>(null)
     private var collector: Job? = null
     private var selectedAncPath = AncPath.UNKNOWN
-    private val gaiaCommand = control.characteristic(GaiaGattIds.GAIA_SERVICE, GaiaGattIds.GAIA_COMMAND)
-    private val gaiaResponse = control.characteristic(GaiaGattIds.GAIA_SERVICE, GaiaGattIds.GAIA_RESPONSE)
-    private val gaiaData = control.characteristic(GaiaGattIds.GAIA_SERVICE, GaiaGattIds.GAIA_DATA)
+    private val gaiaCommand = gatt.characteristic(GaiaGattIds.GAIA_SERVICE, GaiaGattIds.GAIA_COMMAND)
+    private val gaiaResponse = gatt.characteristic(GaiaGattIds.GAIA_SERVICE, GaiaGattIds.GAIA_RESPONSE)
+    private val gaiaData = gatt.characteristic(GaiaGattIds.GAIA_SERVICE, GaiaGattIds.GAIA_DATA)
 
     override val state = control.state
     val controls: GaiaControls = GaiaControlsImpl(this, classicEq)
@@ -51,7 +54,7 @@ internal class GaiaBinding(
         override val maxWriteSize: Int get() {
             check(owner != null) { "GAIA transaction has ended" }
             checkActive()
-            return control.session.mtu.value - 3
+            return gatt.mtu.value - 3
         }
         override suspend fun request(command: GaiaCommand, expectedPeqRange: IntRange?): GaiaPacket {
             checkOwner()
@@ -106,7 +109,7 @@ internal class GaiaBinding(
         requireReady(probing = true)
         if (collector != null) return@transaction
         collector = control.scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            control.session.events.collect { event ->
+            gatt.events.collect { event ->
                 if (event is GattEvent.ValueChanged && isOpen &&
                     (event.characteristic === gaiaResponse || event.characteristic === gaiaData)) {
                     try {
@@ -121,8 +124,8 @@ internal class GaiaBinding(
             collector?.cancel()
             throw DropException.Disconnected()
         }
-        control.session.setNotifications(gaiaResponse!!, true)
-        gaiaData?.let { control.optionalOperation { control.session.setNotifications(it, true) } }
+        gatt.setNotifications(gaiaResponse!!, true)
+        gaiaData?.let { control.optionalOperation { gatt.setNotifications(it, true) } }
         checkActive()
     }
 
@@ -204,7 +207,7 @@ internal class GaiaBinding(
 
     private suspend fun sendGaiaLocked(command: GaiaCommand) {
         checkActive()
-        control.session.write(gaiaCommand!!, GaiaCodec.encode(command))
+        gatt.write(gaiaCommand!!, GaiaCodec.encode(command))
         checkActive()
     }
 
