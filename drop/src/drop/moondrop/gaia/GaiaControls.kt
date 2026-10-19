@@ -61,10 +61,10 @@ interface GaiaControls {
     suspend fun getParamEq(): GaiaParamEqState
     /**
      * Selects USER63 first, waits 100 ms, then sends one complete peaking-only snapshot using
-     * Bluetrum type 0 and automatic whole-EQ attenuation, mirroring the official apply order.
+     * Bluetrum type 0 and automatic whole-EQ attenuation, mirroring the official applied order.
      * When the binding has a classic RFCOMM channel, frames go over it (official transport);
-     * otherwise they go over BLE GATT. No preset query, automatic readback or Flash save;
-     * transport completion does not prove DSP application.
+     * otherwise they go over BLE GATT. No preset query, automatic readback, or Flash save;
+     * transport completion does not prove a DSP application.
      */
     suspend fun setParamEq(bands: List<GaiaPeqBand>)
     /** 查询原始手势配置；[gesture]、[context] 均须为 0..255，返回未进一步解释的包。 */

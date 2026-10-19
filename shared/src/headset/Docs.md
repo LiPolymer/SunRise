@@ -36,7 +36,10 @@
 
 | 文件 | 阅读目的 |
 |---|---|
-| [HeadsetApi.kt](HeadsetApi.kt) | 阶段、音频身份快照、应用状态、事件、内部关联存储契约 |
+| [HeadsetDevice.kt](HeadsetDevice.kt) | 音频身份的不可变观察快照，不是 GATT 端点或协议支持证明 |
+| [HeadsetState.kt](HeadsetState.kt) | 应用连接阶段与最新状态，协议功能沿用 `DropState` |
+| [HeadsetEvent.kt](HeadsetEvent.kt) | 无重放、尽力投递的连接错误与协议事件 |
+| [HeadsetAssociations.kt](HeadsetAssociations.kt) | 内部音频地址到成功端点地址的关联存储契约 |
 | [HeadsetClient.kt](HeadsetClient.kt) | 选择循环、候选尝试、会话采纳、epoch、轮询和清理的实际实现 |
 | [HeadsetPlatform.android.kt](../../src@android/headset/HeadsetPlatform.android.kt) | Android 工厂及已有 SharedPreferences 数据语义 |
 | [MainActivity.kt](../../../android-app/src/MainActivity.kt) | 取得 Application runtime、权限请求和 onResume 复核 |
@@ -49,6 +52,8 @@
 | [HeadsetAutoFilterTest.kt](../../test/headset/HeadsetAutoFilterTest.kt) | 生产自动循环的筛选、手动选择与 READY epoch 保留；计数 GATT 包装复用真实字节 GAIA fixture |
 
 包名使用 `bluetooth`，但公共 `Bt*`、`Gatt*` 与 `createBtManager` 名称不变。`HeadsetClient` 的 common 构造器是 **internal**；外部 Android 调用方使用 `createHeadsetClient(context, bt, options)`，不能把测试中的直接构造写成公共 common 用法。
+
+公共声明按职责分文件，包名统一保持 `ink.lipoly.app.sunrise.headset`。连接切换、epoch/attempt 校验、状态发布与清理链仍集中在 `HeadsetClient`，共用同一个生命周期锁和资源所有者。
 
 ## Android 与 Compose 接入
 
