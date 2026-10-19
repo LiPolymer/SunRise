@@ -192,7 +192,6 @@ class HeadsetClient internal constructor(
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 val (next, previous) = replaceConnection(auto = true, selected = null, first = null)
-                previous?.attempt?.value?.controller?.value?.close()
                 launchConnection(next, previous)
             } catch (e: DropException.Disconnected) {
                 if (!closed.value) throw e
@@ -232,7 +231,6 @@ class HeadsetClient internal constructor(
         val first = CompletableDeferred<Unit>()
         val selected = device.copy(verified = associations.endpoint(device.address.uppercase()) != null)
         val (next, previous) = replaceConnection(auto = false, selected = selected, first = first)
-        previous?.attempt?.value?.controller?.value?.close()
         launchConnection(next, previous)
         try {
             first.await()
