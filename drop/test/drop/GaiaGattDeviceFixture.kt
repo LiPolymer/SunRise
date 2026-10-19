@@ -1,31 +1,69 @@
 package ink.lipoly.app.sunrise.drop
 
 import ink.lipoly.app.sunrise.bluetooth.*
-import ink.lipoly.app.sunrise.drop.moondrop.DropGattIds
+import ink.lipoly.app.sunrise.drop.gaia.GaiaGattIds
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
+import ink.lipoly.app.sunrise.drop.gaia.GaiaIds
 import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.moondrop.MoondropController
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqFilter
+import ink.lipoly.app.sunrise.drop.gaia.GaiaPeqBand
+import ink.lipoly.app.sunrise.drop.gaia.GaiaController
+import ink.lipoly.app.sunrise.drop.source.SourceCodec
+import ink.lipoly.app.sunrise.drop.source.SourceFrame
+import ink.lipoly.app.sunrise.drop.source.SourceGattIds
+import ink.lipoly.app.sunrise.drop.source.SourceIds
+import ink.lipoly.app.sunrise.drop.gaia.PeqFilter
 import ink.lipoly.app.sunrise.drop.moondrop.openMoondrop
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** In-memory device storage behind real GATT bytes and the production binding's notification collector. */
-internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, override val id: Long = 1) : GattSession {
-    private class Characteristic(override val uuid: String, override val properties: Set<GattProperty>) : GattCharacteristic {
-        override val serviceUuid = DropGattIds.GAIA_SERVICE
+internal class GaiaGattDeviceFixture(
+    count: Int = 5,
+    negotiatedMtu: Int = 247,
+    override val id: Long = 1,
+    gaia: Boolean = true,
+    source: Boolean = false,
+    private val readableSourceInfo: Boolean = true,
+) : GattSession {
+    private class Characteristic(
+        override val uuid: String,
+        override val properties: Set<GattProperty>,
+        override val serviceUuid: String = GaiaGattIds.GAIA_SERVICE,
+    ) : GattCharacteristic
+    private val commandCharacteristic = Characteristic(GaiaGattIds.GAIA_COMMAND, setOf(GattProperty.WRITE))
+    private val responseCharacteristic = Characteristic(GaiaGattIds.GAIA_RESPONSE, setOf(GattProperty.NOTIFY))
+    private fun sourceCharacteristic(uuid: String, property: GattProperty) =
+        Characteristic(uuid, setOf(property), SourceGattIds.SOURCE_SERVICE)
+    private val sourceCommand = sourceCharacteristic(SourceGattIds.SOURCE_COMMAND, GattProperty.WRITE)
+    private val sourceResponse = sourceCharacteristic(SourceGattIds.SOURCE_RESPONSE, GattProperty.NOTIFY)
+    private val sourceNotification = sourceCharacteristic(SourceGattIds.SOURCE_NOTIFICATION, GattProperty.NOTIFY)
+    private val sourceCapability = sourceCharacteristic(SourceGattIds.SOURCE_CAPABILITY, GattProperty.READ)
+    private val sourceInfo = sourceCharacteristic(SourceGattIds.SOURCE_INFO, GattProperty.READ)
+    override val services = buildList {
+        if (gaia) add(GattService(GaiaGattIds.GAIA_SERVICE, listOf(commandCharacteristic, responseCharacteristic)))
+        if (source) add(GattService(SourceGattIds.SOURCE_SERVICE,
+            listOf(sourceCommand, sourceResponse, sourceNotification, sourceCapability) +
+                if (readableSourceInfo) listOf(sourceInfo) else emptyList()))
     }
-    private val commandCharacteristic = Characteristic(DropGattIds.GAIA_COMMAND, setOf(GattProperty.WRITE))
-    private val responseCharacteristic = Characteristic(DropGattIds.GAIA_RESPONSE, setOf(GattProperty.NOTIFY))
-    override val services = listOf(GattService(DropGattIds.GAIA_SERVICE, listOf(commandCharacteristic, responseCharacteristic)))
     override val mtu = MutableStateFlow(negotiatedMtu)
     override val events = MutableSharedFlow<GattEvent>()
     private var closed = false
     private var notifications = false
     var present = true
+    var closeCount = 0
+        private set
+    var connectCount = 0
+        private set
+    var disconnectCount = 0
+        private set
+    private val sourceNotifications = mutableSetOf<GattCharacteristic>()
+    var sourceId = 2
+    var sourceVolume = 37
+    val sourceWrites = mutableListOf<ByteArray>()
+    val sourceCommands = mutableListOf<SourceFrame>()
+    var beforeSourceReply: suspend (SourceFrame, ByteArray) -> ByteArray? = { _, payload -> payload }
+    val firmwareBytes = byteArrayOf(1, 2, 0x34, 0x12, 3, 4, 5, 0, 0, 0, 0, 0)
     /** 经典 RFCOMM 通道；非空时结构化 EQ 写入走它，测试不模拟 RFCOMM 组帧。 */
     var rfcomm: RfcommStream? = null
     var presets = listOf(0, 2, 63)
@@ -44,19 +82,29 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
     var beforeWrite: suspend (GaiaPacket) -> Unit = {}
     /** May inject malformed readback, drop a response, or suspend a GET after device storage was updated. */
     var beforeReply: suspend (GaiaPacket, ByteArray) -> ByteArray? = { _, payload -> payload }
+    private var connectedSession: GattSession = this
+    private val gattState = MutableStateFlow(GattState(GattPhase.CONNECTED, this))
+
+    /** Simulate the same transport controller publishing a replacement connection epoch. */
+    fun replaceConnection(session: GattSession) {
+        connectedSession = session
+        gattState.value = GattState(GattPhase.CONNECTED, session)
+    }
 
     override val device: BtDevice = object : BtDevice {
         override val address = "00:00:00:00:00:01"
         override val rfcomm: RfcommStream? get() = this@GaiaGattDeviceFixture.rfcomm
         override val info = MutableStateFlow(BtDeviceInfo(name = "Bluetrum fixture"))
         override val gatt: GattController = object : GattController {
-            override val state = MutableStateFlow(GattState(GattPhase.CONNECTED, this@GaiaGattDeviceFixture))
+            override val state = gattState
             override suspend fun connect(): GattSession {
-                check(!closed)
-                return this@GaiaGattDeviceFixture
+                if (connectedSession === this@GaiaGattDeviceFixture) check(!closed)
+                connectCount++
+                return connectedSession
             }
             override suspend fun disconnect() {
-                close()
+                disconnectCount++
+                connectedSession.close()
                 state.value = GattState()
             }
         }
@@ -81,18 +129,38 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
         override fun requestBond(): Boolean = true
     }
 
-    override suspend fun read(characteristic: GattCharacteristic): ByteArray =
-        throw BtException.UnsupportedOperation("Fixture characteristics are write/notify only")
+    override suspend fun read(characteristic: GattCharacteristic): ByteArray {
+        if (closed) throw BtException.Disconnected()
+        return when {
+            characteristic === sourceInfo && readableSourceInfo -> firmwareBytes.copyOf()
+            characteristic === sourceCapability -> byteArrayOf(1, 1, sourceId.toByte(), 0, sourceId.toByte(), 0)
+            else -> throw BtException.UnsupportedOperation("Fixture characteristic is not readable")
+        }
+    }
 
     override suspend fun setNotifications(characteristic: GattCharacteristic, enabled: Boolean) {
-        if (characteristic !== responseCharacteristic) throw BtException.InvalidGattHandle()
-        notifications = enabled
+        when (characteristic) {
+            responseCharacteristic -> notifications = enabled
+            sourceResponse, sourceNotification ->
+                if (enabled) sourceNotifications.add(characteristic) else sourceNotifications.remove(characteristic)
+            else -> throw BtException.InvalidGattHandle()
+        }
     }
     override suspend fun requestMtu(value: Int): Int = mtu.value // Device may negotiate less than requested.
-    override fun close() { closed = true }
+    override fun close() {
+        if (!closed) {
+            closed = true
+            closeCount++
+            if (gattState.value.session === this) gattState.value = GattState()
+        }
+    }
 
     override suspend fun write(characteristic: GattCharacteristic, value: ByteArray) {
         if (closed) throw BtException.Disconnected()
+        if (characteristic === sourceCommand) {
+            writeSource(value)
+            return
+        }
         if (characteristic !== commandCharacteristic) throw BtException.InvalidGattHandle()
         if (value.size > mtu.value - 3) throw BtException.PacketTooLarge()
         val packet = GaiaCodec.decode(value) ?: error("Invalid test command")
@@ -106,6 +174,8 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
             GaiaIds.CODEC_TYPE -> codecCommand(packet)
             GaiaIds.MUSIC_PROCESSING -> eqCommand(packet)
             GaiaIds.ANC_V2 -> byteArrayOf(0)
+            GaiaIds.AUDIO_CURATION, GaiaIds.ANC_V1 ->
+                throw BtException.UnsupportedOperation("Fixture only provides ANC V2")
             else -> error("Unexpected feature ${packet.feature}")
         }
         if (payload != null) beforeReply(packet, payload)?.let { emitResponse(packet, it) }
@@ -191,6 +261,51 @@ internal class GaiaGattDeviceFixture(count: Int = 5, negotiatedMtu: Int = 247, o
         events.emit(GattEvent.ValueChanged(responseCharacteristic, bytes))
     }
 
+    private suspend fun writeSource(value: ByteArray) {
+        require(value.size >= 6 && value.size <= mtu.value - 3)
+        require((value[0].toInt() and 0xff) == 0xa5 && value[1].toInt() == 1 &&
+            value[2].toInt() == SourceCodec.COMMAND)
+        val length = value[5].toInt() and 0xff
+        require(length <= 14 && value.size == 6 + length)
+        val frame = SourceFrame(SourceCodec.COMMAND, value[3].toInt() and 0xff,
+            value[4].toInt() and 0xff, value.copyOfRange(6, value.size))
+        sourceWrites += value.copyOf()
+        sourceCommands += frame
+        val payload = when (frame.commandId) {
+            SourceIds.GET_FW_VERSION -> byteArrayOf(0) + firmwareBytes
+            SourceIds.GET_AUDIO_SOURCE -> sourceStatusBytes()
+            SourceIds.SET_AUDIO_SOURCE -> {
+                sourceId = frame.payload[0].toInt() and 0xff
+                sourceStatusBytes()
+            }
+            SourceIds.GET_VOLUME -> sourceVolumeBytes()
+            SourceIds.SET_VOLUME -> {
+                sourceVolume = frame.payload[1].toInt() and 0xff
+                sourceVolumeBytes()
+            }
+            SourceIds.PING -> byteArrayOf(0)
+            else -> error("Unexpected Source command ${frame.commandId}")
+        }
+        beforeSourceReply(frame, payload)?.let { reply ->
+            if (sourceResponse in sourceNotifications)
+                events.emit(GattEvent.ValueChanged(sourceResponse,
+                    sourceFrame(SourceCodec.RESPONSE, frame.commandId, frame.sequence, reply)))
+        }
+    }
+
+    private fun sourceStatusBytes() = byteArrayOf(0, sourceId.toByte(), sourceId.toByte(), 0, 1)
+    private fun sourceVolumeBytes() = byteArrayOf(0, sourceVolume.toByte(), 0, 100, 1, 0)
+
+    suspend fun emitSourceStatus() {
+        if (sourceNotification in sourceNotifications)
+            events.emit(GattEvent.ValueChanged(sourceNotification,
+                sourceFrame(SourceCodec.NOTIFICATION, 129, 0, sourceStatusBytes())))
+    }
+
+    /** Construct device frames independently of the production request encoder. */
+    private fun sourceFrame(type: Int, command: Int, sequence: Int, payload: ByteArray): ByteArray =
+        byteArrayOf(0xa5.toByte(), 1, type.toByte(), command.toByte(), sequence.toByte(), payload.size.toByte()) + payload
+
     private fun u16(bytes: ByteArray, offset: Int) =
         ((bytes[offset].toInt() and 0xff) shl 8) or (bytes[offset + 1].toInt() and 0xff)
     private fun put16(bytes: ByteArray, offset: Int, value: Int) {
@@ -212,7 +327,9 @@ internal class FakeRfcomm(
     val writtenAt = mutableListOf<Long>()
     var opened = 0
     var closed = 0
-    override suspend fun open() {
+    override suspend fun open(serviceUuid: String, inputPolicy: RfcommInputPolicy) {
+        require(serviceUuid.equals("00001101-0000-1000-8000-00805f9b34fb", ignoreCase = true))
+        require(inputPolicy == RfcommInputPolicy.DRAIN_BEFORE_WRITE)
         opened++
         failOpen?.let { throw it }
     }
@@ -236,9 +353,9 @@ internal class FakeRfcomm(
 internal suspend fun readyController(
     device: GaiaGattDeviceFixture,
     current: () -> Boolean = { true },
-): MoondropController = openMoondrop(
+): GaiaController = openMoondrop(
     session = device,
     profile = DropProfile(DropProfileMatch.NameContains("fixture")),
     classicEq = device.rfcomm,
     current = current,
-)
+) as GaiaController

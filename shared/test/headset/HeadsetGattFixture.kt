@@ -10,10 +10,10 @@ import ink.lipoly.app.sunrise.bluetooth.GattSession
 import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCodec
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
+import ink.lipoly.app.sunrise.drop.gaia.GaiaIds
 import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqFilter
+import ink.lipoly.app.sunrise.drop.gaia.GaiaPeqBand
+import ink.lipoly.app.sunrise.drop.gaia.PeqFilter
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -23,6 +23,7 @@ internal class HeadsetGattFixture(
     count: Int = 5,
     negotiatedMtu: Int = 247,
     override val id: Long = 1,
+    private val onClosed: (GattSession) -> Unit = {},
 ) : GattSession {
     private companion object {
         const val GAIA_SERVICE = "00001100-d102-11e1-9b23-00025b00a5a5"
@@ -73,8 +74,10 @@ internal class HeadsetGattFixture(
     }
 
     override fun close() {
+        if (closed) return
         closed = true
         notifications = false
+        onClosed(this)
     }
 
     override suspend fun write(characteristic: GattCharacteristic, value: ByteArray) {

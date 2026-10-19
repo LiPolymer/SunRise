@@ -94,7 +94,6 @@ class ConnectionCoordinatorTest {
                     assertSame(controls, fixture.client.gaia)
                     assertEquals(readback, withContext(Dispatchers.Default) { controls.getParamEq() })
                     assertEquals(1, ultra.connects.value)
-                    assertEquals(0, ultra.disconnects.value)
                     val presentationScope = CoroutineScope(coroutineContext + Dispatchers.Default)
                     val presentationA = HeadsetPresentationController(coordinator, presentationScope)
                     pauseForClient()

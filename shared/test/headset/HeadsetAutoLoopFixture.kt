@@ -1,7 +1,7 @@
 package ink.lipoly.app.sunrise.headset
 
 import ink.lipoly.app.sunrise.bluetooth.*
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
+import ink.lipoly.app.sunrise.drop.gaia.GaiaIds
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -28,7 +28,6 @@ internal class HeadsetAutoLoopFixture : BtManager {
         override val rfcomm: RfcommStream? = null
         override val info = MutableStateFlow(BtDeviceInfo(name, BtDeviceKind.DUAL, BtBondState.BONDED))
         val connects = MutableStateFlow(0)
-        val disconnects = MutableStateFlow(0)
         var storage: HeadsetGattFixture? = null
             private set
         override val gatt = object : GattController {
@@ -36,13 +35,14 @@ internal class HeadsetAutoLoopFixture : BtManager {
             override suspend fun connect(): GattSession {
                 connects.value++
                 state.value.session?.let { return it }
-                val session = HeadsetGattFixture(device = this@Device, id = ++nextSessionId)
+                val session = HeadsetGattFixture(device = this@Device, id = ++nextSessionId) { retired ->
+                    if (state.value.session === retired) state.value = GattState()
+                }
                 storage = session
                 state.value = GattState(GattPhase.CONNECTED, session)
                 return session
             }
             override suspend fun disconnect() {
-                disconnects.value++
                 state.value.session?.close()
                 state.value = GattState()
             }

@@ -1,6 +1,5 @@
-package ink.lipoly.app.sunrise.drop.moondrop.source
+package ink.lipoly.app.sunrise.drop.source
 
-import ink.lipoly.app.sunrise.drop.DropControlSession
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.EarbudSide
 import kotlinx.coroutines.CancellationException
@@ -13,7 +12,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * SET 多数保存自身响应而非再 GET；PEQ 只返回结构，不缓存到 DropState。
  * 所有传输入口依赖绑定的 lifetime/epoch 守卫，caller cancellation 不转为成功。
  */
-internal class SourceControlsImpl(private val client: DropControlSession) : SourceControls {
+internal class SourceControlsImpl(private val client: SourceControlSession) : SourceControls {
     private suspend fun request(command: Int, payload: ByteArray = byteArrayOf()): ByteArray =
         client.requestSource(command, payload).also {
             val status = SourceCodec.status(it)

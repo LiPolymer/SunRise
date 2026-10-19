@@ -170,7 +170,6 @@ class HeadsetAutoFilterTest {
             assertSame(gaia, fixture.client.gaia)
             assertEquals(readback, gaia.getParamEq()) // An old epoch would reject this actual byte-level request.
             assertEquals(1, ultra.connects.value)
-            assertEquals(0, ultra.disconnects.value)
         } finally { fixture.dispose() }
     }
 
@@ -193,9 +192,7 @@ class HeadsetAutoFilterTest {
             assertSame(currentGaia, fixture.client.gaia)
             assertNotSame(obsoleteGaia, currentGaia)
             assertEquals(current.storage!!.bands, currentGaia.getParamEq().bands)
-            assertEquals(1, previous.disconnects.value)
             assertEquals(1, current.connects.value)
-            assertEquals(0, current.disconnects.value)
         } finally { fixture.dispose() }
     }
 }

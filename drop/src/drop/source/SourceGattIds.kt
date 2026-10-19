@@ -1,0 +1,11 @@
+package ink.lipoly.app.sunrise.drop.source
+
+/** 9ECA 完整小写 UUID 属于协议层；通用 bluetooth 不依赖这些协议标识。 */
+internal object SourceGattIds {
+    const val SOURCE_SERVICE = "9eca0000-7f3a-4f32-9a38-a91b2c6e0100"
+    const val SOURCE_COMMAND = "9eca0001-7f3a-4f32-9a38-a91b2c6e0100"
+    const val SOURCE_RESPONSE = "9eca0002-7f3a-4f32-9a38-a91b2c6e0100"
+    const val SOURCE_NOTIFICATION = "9eca0003-7f3a-4f32-9a38-a91b2c6e0100"
+    const val SOURCE_CAPABILITY = "9eca0004-7f3a-4f32-9a38-a91b2c6e0100"
+    const val SOURCE_INFO = "9eca0005-7f3a-4f32-9a38-a91b2c6e0100"
+}

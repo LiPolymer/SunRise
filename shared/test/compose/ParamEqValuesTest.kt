@@ -24,9 +24,9 @@ import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqReset
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqSliderInRange
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqWithRaw
 import ink.lipoly.app.sunrise.compose.FancyEqualizer.peqXFrequency
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqFilter
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqBiquad
+import ink.lipoly.app.sunrise.drop.gaia.GaiaPeqBand
+import ink.lipoly.app.sunrise.drop.gaia.PeqFilter
+import ink.lipoly.app.sunrise.drop.gaia.PeqBiquad
 import kotlin.math.abs
 import kotlin.test.*
 import kotlin.test.Test

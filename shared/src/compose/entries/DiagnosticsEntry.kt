@@ -36,7 +36,7 @@ import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropProtocol
 import ink.lipoly.app.sunrise.drop.GainLevel
 import ink.lipoly.app.sunrise.drop.HeadTrackingMode
-import ink.lipoly.app.sunrise.drop.moondrop.source.SourceCapability
+import ink.lipoly.app.sunrise.drop.source.SourceCapability
 import ink.lipoly.app.sunrise.headset.HeadsetClient
 import ink.lipoly.app.sunrise.headset.HeadsetDevice
 import ink.lipoly.app.sunrise.headset.HeadsetEvent
@@ -202,7 +202,9 @@ internal fun DiagnosticsEntry(
                     "  盒 " + state.battery.case?.percent.percent())
                 OutlinedButton(onClick = {
                     runAction("读取电量", DropProtocol.GAIA_BLE) {
-                        (this.controller as? BatteryControls)?.readBattery()
+                        val battery = this.controller as? BatteryControls
+                            ?: throw DropException.UnsupportedCapability("Battery")
+                        battery.readBattery()
                         "完成"
                     }
                 }, enabled = gaiaReady) { Text("刷新电量") }

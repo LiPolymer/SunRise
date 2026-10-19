@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.drop.moondrop.gaia
+package ink.lipoly.app.sunrise.drop.gaia
 
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.AudioCodec
@@ -10,9 +10,9 @@ import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
 import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
 
 /**
- * 当前 READY 绑定的 GAIA 控件；换会话后必须重新从 [MoondropController] 取得。
+ * 单会话的 GAIA 控件；从 `IBudsController as? GaiaControls` 取得，换会话后重新获取。
  * ANC/codec/PEQ 的 SET 不等待 ACK，而以 GET 确认；其他大部分 SET 等回复再独立 GET。
- * 功能存在性不由 getter 保证，缺少 GAIA 时操作抛 [DropException.UnsupportedCapability]。
+ * 协议特征对决定接口是否存在；缺少可选功能仍抛 [DropException.UnsupportedCapability]。
  */
 interface GaiaControls {
     /** 读取组件 ID/电量字节对并合并到 state.battery；空、奇数长度负载抛 Protocol。 */

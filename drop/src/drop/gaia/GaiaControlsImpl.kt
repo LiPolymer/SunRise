@@ -1,21 +1,19 @@
-package ink.lipoly.app.sunrise.drop.moondrop.gaia
+package ink.lipoly.app.sunrise.drop.gaia
 
 import ink.lipoly.app.sunrise.bluetooth.BtException
 import ink.lipoly.app.sunrise.bluetooth.RfcommStream
+import ink.lipoly.app.sunrise.bluetooth.RfcommInputPolicy
 import ink.lipoly.app.sunrise.drop.AncMode
 import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.BatteryReading
-import ink.lipoly.app.sunrise.drop.DropControlSession
 import ink.lipoly.app.sunrise.drop.DropException
 import ink.lipoly.app.sunrise.drop.DropState
 import ink.lipoly.app.sunrise.drop.EarbudBatteryReading
-import ink.lipoly.app.sunrise.drop.GaiaTransaction
 import ink.lipoly.app.sunrise.drop.GainLevel
 import ink.lipoly.app.sunrise.drop.HeadTrackingMode
 import ink.lipoly.app.sunrise.drop.gaia.GaiaCommand
 import ink.lipoly.app.sunrise.drop.gaia.GaiaPacket
-import ink.lipoly.app.sunrise.drop.moondrop.AncPath
-import ink.lipoly.app.sunrise.drop.moondrop.DropProfiles
+import ink.lipoly.app.sunrise.drop.gaia.AncPath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
@@ -26,7 +24,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * ANC retains its bounded GET verification; other existing operations are unchanged.
  */
 internal class GaiaControlsImpl(
-    private val client: DropControlSession,
+    private val client: GaiaControlSession,
     /** 经典 RFCOMM 通道；提供时结构化 EQ 写入走该通道，BLE 只用于读取与控件。 */
     private val classicEq: RfcommStream? = null,
 ) : GaiaControls {
@@ -34,6 +32,9 @@ internal class GaiaControlsImpl(
     private var paramEqWriteBandCount = 0
 
     private companion object {
+        /** GAIA 经典 EQ 仅使用标准 SPP 服务，不自动尝试厂商自定义服务。 */
+        const val GAIA_SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb"
+
         /**
          * Official community apply selects USER63 and calls the bulk write from a 100 ms timer,
          * without awaiting the selection reply. Measured on device: 105 ms between the two frames.
@@ -100,7 +101,7 @@ internal class GaiaControlsImpl(
     override suspend fun getAncMode(): AncMode {
         val (feature, command) = ancCommand(true)
         val raw = value(feature, command)
-        val mode = DropProfiles.fromDevice(client.ancPath(), raw, client.profile())
+        val mode = GaiaProfileMappings.fromDevice(client.ancPath(), raw, client.profile())
             ?: throw DropException.Protocol("Unknown ANC mode $raw")
         client.mutate { it.copy(ancMode = mode) }
         return mode
@@ -108,7 +109,7 @@ internal class GaiaControlsImpl(
 
     /** 写 map 与读 map 独立；模式缺失在写前拒绝，读回失败后避免保留虚假的目标值。 */
     override suspend fun setAncMode(mode: AncMode): AncMode {
-        val deviceValue = DropProfiles.toDevice(client.ancPath(), mode, client.profile())
+        val deviceValue = GaiaProfileMappings.toDevice(client.ancPath(), mode, client.profile())
             ?: throw DropException.UnsupportedCapability("ANC mode $mode")
         val (feature, command) = ancCommand(false)
         return try {
@@ -125,7 +126,7 @@ internal class GaiaControlsImpl(
 
     override suspend fun getGain(): GainLevel {
         val raw = value(GaiaIds.DAC_GAIN, GaiaIds.Device.GET)
-        val gain = DropProfiles.gainFromDevice(raw, client.profile())
+        val gain = GaiaProfileMappings.gainFromDevice(raw, client.profile())
             ?: throw DropException.Protocol("Unknown DAC gain $raw")
         client.mutate { it.copy(gain = gain) }
         return gain
@@ -133,7 +134,7 @@ internal class GaiaControlsImpl(
 
     override suspend fun setGain(level: GainLevel): GainLevel {
         request(GaiaIds.DAC_GAIN, GaiaIds.Device.SET,
-            byteArrayOf(DropProfiles.gainToDevice(level, client.profile()).toByte()))
+            byteArrayOf(GaiaProfileMappings.gainToDevice(level, client.profile()).toByte()))
         return getGain()
     }
 
@@ -315,7 +316,7 @@ internal class GaiaControlsImpl(
                 } else {
                     // 官版抓包中 EQ 配置走经典 RFCOMM；同样的字节经 BLE GATT 写入会把设备置于
                     // 单侧无声状态，因此有经典通道时不再回退到 BLE 写入。
-                    channel.open()
+                    channel.open(GAIA_SPP_UUID, RfcommInputPolicy.DRAIN_BEFORE_WRITE)
                     emitParamEq(GaiaBluetrumPeqCodec.batchSize(CLASSIC_WRITE_SIZE), count, target, totalGainRaw) {
                         channel.writeFrame(it)
                     }
@@ -365,7 +366,7 @@ internal class GaiaControlsImpl(
                 if (attempt > 0) {
                     close()
                     delay(CLASSIC_RETRY_DELAY_MILLIS.milliseconds)
-                    open()
+                    open(GAIA_SPP_UUID, RfcommInputPolicy.DRAIN_BEFORE_WRITE)
                 }
                 write(frame)
                 return

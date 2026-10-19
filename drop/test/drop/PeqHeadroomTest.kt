@@ -1,8 +1,8 @@
 package ink.lipoly.app.sunrise.drop
 
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaPeqBand
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqFilter
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.PeqHeadroom
+import ink.lipoly.app.sunrise.drop.gaia.GaiaPeqBand
+import ink.lipoly.app.sunrise.drop.gaia.PeqFilter
+import ink.lipoly.app.sunrise.drop.gaia.PeqHeadroom
 import kotlin.test.*
 
 class PeqHeadroomTest {

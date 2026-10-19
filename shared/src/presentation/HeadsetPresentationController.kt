@@ -3,7 +3,8 @@ package ink.lipoly.app.sunrise.presentation
 import ink.lipoly.app.sunrise.bluetooth.BtDevice
 import ink.lipoly.app.sunrise.drop.AudioCodec
 import ink.lipoly.app.sunrise.drop.DropException
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaIds
+import ink.lipoly.app.sunrise.drop.gaia.GaiaControls
+import ink.lipoly.app.sunrise.drop.gaia.GaiaIds
 import ink.lipoly.app.sunrise.headset.HeadsetClient
 import ink.lipoly.app.sunrise.headset.HeadsetDevice
 import ink.lipoly.app.sunrise.headset.HeadsetEvent
@@ -103,11 +104,12 @@ internal class HeadsetPresentationController(
                         try {
                             val current = active.state.value
                             if (current.phase != HeadsetPhase.READY || !current.controls.hasReadyGaia()) return@collectLatest
+                            val gaia = active.controller as? GaiaControls ?: return@collectLatest
                             when (control) {
-                                OverviewControl.GAIN -> active.gaia.getGain()
-                                OverviewControl.LED -> active.gaia.isLedOn()
-                                OverviewControl.SPATIAL -> active.gaia.isSpatialOn()
-                                OverviewControl.HEAD_TRACKING -> active.gaia.getHeadTracking()
+                                OverviewControl.GAIN -> gaia.getGain()
+                                OverviewControl.LED -> gaia.isLedOn()
+                                OverviewControl.SPATIAL -> gaia.isSpatialOn()
+                                OverviewControl.HEAD_TRACKING -> gaia.getHeadTracking()
                             }
                             update { copy(confirmedReads = confirmedReads + control) }
                         } catch (e: CancellationException) {
@@ -126,7 +128,8 @@ internal class HeadsetPresentationController(
                     val initial = active.state.value
                     if (!initial.controls.hasReadyGaia()) return@collectLatest
                     if (GaiaIds.CODEC_TYPE !in initial.controls.capabilities.gaiaFeatures && initial.controls.capabilities.complete) return@collectLatest
-                    val bound = try { active.gaia } catch (_: DropException.NotReady) { return@collectLatest }
+                    val bound = try { active.controller as? GaiaControls }
+                    catch (_: DropException.NotReady) { null } ?: return@collectLatest
                     for (codec in AudioCodec.entries) {
                         while (mutableState.value.working != null) delay(100.milliseconds)
                         try {
@@ -181,10 +184,11 @@ internal class HeadsetPresentationController(
         when {
             snapshot.phase == HeadsetPhase.READY && snapshot.controls.hasReadyGaia() -> runAction(label, control = true) {
                 val current = active.state.value
+                val bound = controller as? GaiaControls ?: return@runAction
                 var firstFailure: Exception? = null
                 if (current.controls.capabilities.ancModes.isNotEmpty()) {
                     try {
-                        gaia.getAncMode()
+                        bound.getAncMode()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -192,7 +196,7 @@ internal class HeadsetPresentationController(
                     }
                 }
                 try {
-                    gaia.getBattery()
+                    bound.getBattery()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

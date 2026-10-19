@@ -75,8 +75,8 @@
 |---|---|
 | `state: StateFlow<HeadsetState>` | 最新应用快照，有默认初值；晚订阅以它恢复当前状态 |
 | `events: SharedFlow<HeadsetEvent>` | 无重放、额外缓冲 32、`tryEmit` 尽力通知；不是可靠历史/请求通道 |
-| `gaia: GaiaControls` | 当前已采纳且会话仍有效的 READY 控件；getter 不保证 GAIA 或具体能力存在 |
-| `source: SourceControls` | 同上，实际方法检查 9ECA 特征/协议支持 |
+| `gaia: GaiaControls` | 当前已采纳且会话仍有效的 READY GAIA 控件；不含 GAIA 接口时 getter 抛 `NotReady`，可选功能仍可能不支持 |
+| `source: SourceControls` | 当前 READY 9ECA 控件；不含 9ECA 接口时 getter 抛 `NotReady`，方法检查可选特征 |
 | `controller: IBudsController` | 同上；`GaiaControls`/`SourceControls`/`BatteryControls`/`NoiseControls` 用 `as?` 取得，不支持的 cast 为 null |
 | `discoverConnectedDevices()` | 挂起刷新系统原始已连接音频列表并创建快照；不 LE 扫描、不改变当前选择、不建立 GATT |
 | `setAutoDeviceFilter(acceptDevice: (HeadsetDevice) -> Boolean)` | 保存纯 predicate 并发送既有 wake；只过滤下一轮自动选择的音频候选，不替换 epoch，不改变当前目标、原始发现或手动连接 |

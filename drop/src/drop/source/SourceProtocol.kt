@@ -1,4 +1,4 @@
-package ink.lipoly.app.sunrise.drop.moondrop.source
+package ink.lipoly.app.sunrise.drop.source
 
 import ink.lipoly.app.sunrise.drop.DropException
 

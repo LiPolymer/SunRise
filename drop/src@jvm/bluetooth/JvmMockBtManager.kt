@@ -1,6 +1,6 @@
 package ink.lipoly.app.sunrise.bluetooth
 
-import ink.lipoly.app.sunrise.drop.moondrop.DropGattIds
+import ink.lipoly.app.sunrise.drop.gaia.GaiaGattIds
 import ink.lipoly.app.sunrise.drop.moondrop.JvmMockGaiaPeripheral
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
@@ -189,13 +189,13 @@ internal class JvmMockBtManager : BtManager {
         override val uuid: String,
         override val properties: Set<GattProperty>,
     ) : GattCharacteristic {
-        override val serviceUuid = DropGattIds.GAIA_SERVICE
+        override val serviceUuid = GaiaGattIds.GAIA_SERVICE
     }
 
     private inner class Session(override val id: Long, override val device: Device) : GattSession {
-        private val command = Characteristic(DropGattIds.GAIA_COMMAND, setOf(GattProperty.WRITE))
-        private val response = Characteristic(DropGattIds.GAIA_RESPONSE, setOf(GattProperty.NOTIFY))
-        override val services = listOf(GattService(DropGattIds.GAIA_SERVICE, listOf(command, response)))
+        private val command = Characteristic(GaiaGattIds.GAIA_COMMAND, setOf(GattProperty.WRITE))
+        private val response = Characteristic(GaiaGattIds.GAIA_RESPONSE, setOf(GattProperty.NOTIFY))
+        override val services = listOf(GattService(GaiaGattIds.GAIA_SERVICE, listOf(command, response)))
         private val mutableMtu = MutableStateFlow(23)
         override val mtu = mutableMtu.asStateFlow()
         private val mutableEvents = MutableSharedFlow<GattEvent>(extraBufferCapacity = 64)

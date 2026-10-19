@@ -12,8 +12,8 @@ import ink.lipoly.app.sunrise.drop.DropPhase
 import ink.lipoly.app.sunrise.drop.DropState
 import ink.lipoly.app.sunrise.drop.IBudsController
 import ink.lipoly.app.sunrise.drop.NoiseControls
-import ink.lipoly.app.sunrise.drop.moondrop.gaia.GaiaControls
-import ink.lipoly.app.sunrise.drop.moondrop.source.SourceControls
+import ink.lipoly.app.sunrise.drop.gaia.GaiaControls
+import ink.lipoly.app.sunrise.drop.source.SourceControls
 import ink.lipoly.app.sunrise.drop.moondrop.openMoondrop
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -88,15 +88,15 @@ class HeadsetClient internal constructor(
     /**
      * 当前已采纳且仍就绪的 GAIA 控件；每次操作重新取值，不缓存跨重连引用。
      *
-     * 此 getter 检查应用/控制阶段和会话身份，但不证明 GAIA 或具体能力存在。
-     * @throws DropException.NotReady 尚未就绪、正在重连或已关闭；关闭后此 getter 仍抛 NotReady。
+     * 此 getter 检查应用/控制阶段、会话身份与 GAIA 接口存在性，不保证可选功能可用。
+     * @throws DropException.NotReady 尚未就绪、不含 GAIA、正在重连或已关闭。
      */
     val gaia: GaiaControls
         get() = readyController() as? GaiaControls ?: throw DropException.NotReady()
     /**
-     * 当前已采纳且仍就绪的 9ECA 控件；实际方法仍会检查协议/特征支持。
+     * 当前已采纳且仍就绪的 9ECA 控件；缺少协议接口时拒绝，方法仍检查可选特征。
      * 旧引用在绑定失效后不可复用，应在每次调用时重新获取。
-     * @throws DropException.NotReady 无有效 READY 端点（包括本客户端已关闭）。
+     * @throws DropException.NotReady 无有效 READY 端点、不含 9ECA 或本客户端已关闭。
      */
     val source: SourceControls
         get() = readyController() as? SourceControls ?: throw DropException.NotReady()

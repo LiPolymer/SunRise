@@ -24,7 +24,7 @@
 | 层 | 职责 | 文档 |
 | --- | --- | --- |
 | bluetooth | 通用通讯事实与连接资源 | 本页 |
-| Drop | 使用既有设备的 GATT 会话，探测并执行控制协议 | [Drop 参考](../drop/Docs.md) |
+| Drop | 通过 owned 工厂连接设备 GATT，探测并执行控制协议 | [Drop 参考](../drop/Docs.md) |
 | Headset（应用 shared） | 应用自有的单耳机候选、地址关联、显式连接、重试及轮询策略 | [Headset 参考](../../../shared/src/headset/Docs.md) |
 
 资源树为 `BtManager → 每地址 BtDevice → 该设备 BtGatt → 当前 GattSession`。管理器拥有广播接收器和后台作用域；每个会话拥有原生 `BluetoothGatt`、操作队列与通知任务。调用方创建管理器后必须最终 `close()`。注入管理器的组件不应擅自关闭它；先释放组件自有会话，再由管理器所有者关闭管理器。
@@ -41,6 +41,7 @@
 | [BtDevice.kt](BtDevice.kt) | 稳定设备句柄、设备信息、传输类型与配对状态 |
 | [GattSession.kt](GattSession.kt) | GATT 连接入口、状态、会话、服务/特征句柄与原始通知 |
 | [RfcommStream.kt](RfcommStream.kt) | 经典 RFCOMM 字节通道契约 |
+| [RfcommChannel.kt](RfcommChannel.kt) | Android 与 JVM I/O 回归共用的 internal socket 生命周期；UUID/策略、读锁、取消与身份安全释放 |
 | [BtPlatform.kt](BtPlatform.kt) | expect 宿主及工厂 |
 | [GattOperationQueue.kt](GattOperationQueue.kt) | 单 worker、容量 64、等待者取消和关闭竞态 |
 | [BtPlatform.android.kt](../../src@android/bluetooth/BtPlatform.android.kt) | Context actual 与 applicationContext 工厂 |
@@ -50,7 +51,7 @@
 | [AndroidBtDiscovery.kt](../../src@android/bluetooth/AndroidBtDiscovery.kt) | A2DP/HEADSET、串行扫描、OR 匹配、错误与停止 |
 | [AndroidBtGatt.kt](../../src@android/bluetooth/AndroidGattController.kt) | 共享连接任务、显式断开、旧会话隔离 |
 | [AndroidGattSession.kt](../../src@android/bluetooth/AndroidGattSession.kt) | 服务/句柄、回调匹配、原生期限、通知缓冲 |
-| [AndroidBtRfcomm.kt](../../src@android/bluetooth/AndroidBtRfcomm.kt) | 现有经典通道的打开、字节写入、串行关闭与管理器资源所有权 |
+| [AndroidBtRfcomm.kt](../../src@android/bluetooth/AndroidBtRfcomm.kt) | BluetoothSocket 适配、权限/错误分类、诊断与管理器同步关闭 |
 | [BtPlatform.jvm.kt](../../src@jvm/bluetooth/BtPlatform.jvm.kt) / [JvmMockBtManager.kt](../../src@jvm/bluetooth/JvmMockBtManager.kt) | 桌面模拟工厂、发现、会话身份与关闭 |
 | [JvmMockGaiaPeripheral.kt](../../src@jvm/drop/moondrop/JvmMockGaiaPeripheral.kt) | JVM 专属的内存 GAIA 控件与 PEQ 状态 |
 
@@ -63,7 +64,7 @@
 - Android：`BtHost` 是 `android.content.Context` 的 actual typealias。工厂使用 `host.applicationContext`，创建管理器和系统广播订阅，不申请权限，不自动连接或扫描。广播注册失败抛 `BtException.Transport`。
 - JVM：`BtHost` 是抽象标记类，工厂创建独立内存管理器。模拟音频/LE/已配对设备为 `MOONDROP MOCA`，地址 `02:00:00:00:00:01`，类型 DUAL、配对 BONDED；发现与操作立即完成，无真实扫描等待。已获取的有效未知地址保持未知信息，连接明确失败，不为任意地址模拟成功。
 
-模拟器通过会话专属 GAIA command/response 特征让生产 `openMoondrop` / `MoondropController` 完成探测和请求匹配。电量固定左 82%、右 76%、盒 64%；支持六种 ANC、三档增益、LC3/LDAC/LHDC 开关、LED、空间音频、头部追踪及五段峰值 PEQ。SET 更新内存存储，后续 GET 返回实际存储值；重连创建新会话和句柄但保留设备参数，重新创建管理器后重置。未实现的命令明确失败，不提供 9ECA、RFCOMM、音频或 Flash 操作。会话关闭、旧/外部句柄、MTU 和属性检查仍有效；模拟器不复现 Android 原生操作延迟、权限或回调竞态。
+模拟器通过会话专属 GAIA command/response 特征让生产 `openMoondrop` / `GaiaBinding` 完成探测和请求匹配。电量固定左 82%、右 76%、盒 64%；支持六种 ANC、三档增益、LC3/LDAC/LHDC 开关、LED、空间音频、头部追踪及五段峰值 PEQ。SET 更新内存存储，后续 GET 返回实际存储值；重连创建新会话和句柄但保留设备参数，重新创建管理器后重置。未实现的命令明确失败，不提供 9ECA、RFCOMM、音频或 Flash 操作。会话关闭、旧/外部句柄、MTU 和属性检查仍有效；模拟器不复现 Android 原生操作延迟、权限或回调竞态。
 
 Android 宿主负责 Manifest 声明、运行时权限请求、授权结果与重新进入前台后的检查。本包的 `BtPermissions.missing(context, scan = true)` **只检查，不弹授权界面**：
 
@@ -129,12 +130,26 @@ Android 原生调用的 `MissingPermission` 只在已核实的函数边界局部
 | 成员 | 类型/返回 | 使用含义 |
 | --- | --- | --- |
 | `address` | `String` | 远端规范大写地址，仅诊断 |
-| `open()` | 挂起，`Unit` | 已打开直接返回；否则按 SPP 服务记录解析通道并连接，需 `BLUETOOTH_CONNECT` |
+| `open(serviceUuid, inputPolicy)` | 挂起，`Unit` | 显式完整 UUID 与入站策略；同配置幂等，不同配置须先关闭，需 `BLUETOOTH_CONNECT` |
 | `write(bytes)` | 挂起，`Unit` | 向已打开通道写入并刷新；不做组帧、分片或响应匹配 |
 | `read()` | 挂起，`ByteArray` | 读取当前可用的一段入站字节；无数据时挂起等待，取消只结束本次等待，不关闭通道 |
 | `close()` | 挂起，`Unit` | 幂等释放 socket，不抛平台异常 |
 
-Android 实现用系统栈完成 SDP 查询、RFCOMM 组帧、流控与校验，本层只搬运字节；打开或写入的取消会关闭已创建的 socket，避免半开连接。`read()` 采用轮询而非阻塞读，使取消、关闭与超时都能及时返回；单次返回不保证是一帧，组帧由调用方负责。没有活跃读取者时，写入前仍尽力排空已缓冲的入站字节（读取失败不影响写入判定）；一旦有读取者，写入不再排空，避免吞掉协议回复。读取失败会清空并关闭可疑 socket，下一次操作重新连接。写入失败时清空句柄并关闭可疑 socket，下一次写入重新连接。诊断默认关闭，`adb shell setprop log.tag.SunRiseRfcomm DEBUG` 打开后记录 `connect`、`tx`、`rx` 与 `tx-fail`；`tx-fail` 含对端地址、字节数与完整原因链（外层映射错误到平台异常），不含完整 payload。LE 地址上的句柄通常找不到 SPP 记录，因此 `open()` 失败是正常结果而不是状态断言。管理器 `close()` 会同步关闭已开通道。持有句柄不代表对端是经典设备、已配对或提供任何服务。
+Android 通过系统 SDP 连接调用方指定的服务，本层只搬运字节，不添加厂商帧、ACK、命令节奏、重试或服务 fallback。UUID 必须是完整 8-4-4-4-12 ASCII 十六进制形式（大小写不敏感）；非法格式在创建 socket 前抛 `IllegalArgumentException`。已连接时更改 UUID 或策略抛 `IllegalStateException`，原连接保持可用；调用方必须先 `close()`。一个 `BtDevice.rfcomm` 仍只持有一个 socket。
+
+| 配置用途 | 完整 UUID | 选择规则 |
+| --- | --- | --- |
+| 标准 SPP | `00001101-0000-1000-8000-00805f9b34fb` | GAIA EQ、未来标准 SPP 协议显式指定 |
+| U31 | `0cf12d31-fac3-4553-bd80-d6832e7b3931` | 按产品服务配置显式指定 |
+| U32 | `0cf12d32-fac3-4553-bd80-d6832e7b3931` | 仅指定替代/升级配置，不自动尝试 |
+
+- `RfcommInputPolicy.PRESERVE`：写入永不排空入站，即使尚无读取者或处于两次 `read()` 之间；双向控制协议使用它。
+- `DRAIN_BEFORE_WRITE`：只在没有活跃读取者时尽力排空当前缓冲，排空失败不冒充命令写入失败；GAIA 经典 EQ 保留此策略。
+- `read()` 返回任意片段，最多 1024 字节；无数据时每 10 ms 可取消轮询。同一 socket 的读取串行，不持有写 gate 等待数据；取消读取不关闭 socket。
+- 打开/写入失败或取消释放可疑 socket，之后必须显式重新 `open`；不自动重连。关闭使旧读取失败，晚到的旧 socket 错误不能清空新连接。管理器 `close()` 复用同步 `closeBlocking()` 释放，包括连接中的 socket。
+- 平台权限/错误分类留在 Android 适配器；共享 internal 算法通过最小 socket I/O 注入边界供 JVM 验证，不构成公开 Link，也不让桌面模拟器冒充真实 RFCOMM。
+
+诊断默认关闭；`adb shell setprop log.tag.SunRiseRfcomm DEBUG` 开启 `connect`、`tx`、`rx` 与 `tx-fail`。失败日志含对端地址、字节数和原因链，不含 payload。持有句柄不证明对端提供服务；无硬件时不据 JVM 字节回归宣称 Android SDP/射频或厂商命令兼容性。实际 I/O 状态回归见 [RfcommChannelTest](../../test@jvm/bluetooth/RfcommChannelTest.kt)。
 
 ### BtGatt、GattSession 与句柄
 
